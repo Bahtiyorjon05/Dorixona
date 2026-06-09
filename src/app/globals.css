@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+/* ─── Dorixona dizayn tizimi (yashil farmatsevtika temasi) ─── */
+:root {
+  --c-primary: #1a7f5a;
+  --c-primary-light: #e8f5f0;
+  --c-primary-mid: #2da876;
+  --c-accent: #f59e0b;
+  --c-accent-light: #fffbeb;
+  --c-danger: #e24b4a;
+  --c-danger-light: #fcebeb;
+  --c-info: #378add;
+  --c-info-light: #e6f1fb;
+  --c-purple: #7f77dd;
+
+  --c-text: #1c2024;
+  --c-muted: #6b7280;
+  --c-bg: #ffffff;
+  --c-surface: #f6f8f7;
+  --c-border: #e6e9e8;
+}
+
+@theme inline {
+  --color-primary: var(--c-primary);
+  --color-primary-light: var(--c-primary-light);
+  --color-primary-mid: var(--c-primary-mid);
+  --color-accent: var(--c-accent);
+  --color-accent-light: var(--c-accent-light);
+  --color-danger: var(--c-danger);
+  --color-danger-light: var(--c-danger-light);
+  --color-info: var(--c-info);
+  --color-info-light: var(--c-info-light);
+  --color-muted: var(--c-muted);
+  --color-surface: var(--c-surface);
+  --color-card: var(--c-bg);
+  --color-edge: var(--c-border);
+  --font-sans: var(--font-geist-sans);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* ─── Qayta ishlatiladigan komponent klasslari ─── */
+@layer components {
+  .card {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: 14px;
+  }
+  .metric-card {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-green { background: var(--c-primary-light); color: var(--c-primary); }
+  .badge-amber { background: var(--c-accent-light); color: #92400e; }
+  .badge-red { background: var(--c-danger-light); color: var(--c-danger); }
+  .badge-blue { background: var(--c-info-light); color: #185fa5; }
+}

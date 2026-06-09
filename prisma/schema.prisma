@@ -1,0 +1,341 @@
+// Dorixona platformasi — ma'lumotlar bazasi sxemasi
+// Prisma 7 + PostgreSQL
+// Hujjat: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Foydalanuvchilar va rollar (dashboard'ga kiradiganlar)
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  OWNER // egasi
+  MANAGER // menejer
+  PHARMACIST // farmatsevt
+  CASHIER // kassir
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  role         Role      @default(MANAGER)
+  isActive     Boolean   @default(true)
+  branchId     String?
+  branch       Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  employee     Employee? // ixtiyoriy: kirish profili xodimga bog'lanishi mumkin
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([branchId])
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Filiallar (hozircha 1 ta, lekin ko'p filialga tayyor)
+// ─────────────────────────────────────────────────────────────
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String // masalan: "Chilonzor filiali"
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  employees Employee[]
+  products  Product[]
+  sales     Sale[]
+  expenses  Expense[]
+  customers Customer[]
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Xodimlar
+// ─────────────────────────────────────────────────────────────
+
+enum EmployeeStatus {
+  ACTIVE // aktiv
+  ON_LEAVE // ta'tilda
+  INACTIVE // ishdan bo'shagan
+}
+
+model Employee {
+  id         String         @id @default(cuid())
+  fullName   String
+  position   String // Farmatsevt, Kassa xodimi...
+  phone      String?
+  baseSalary Decimal        @db.Decimal(14, 2) // base maosh (so'm)
+  status     EmployeeStatus @default(ACTIVE)
+  hiredAt    DateTime       @default(now())
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  // Dashboard'ga kirish uchun (ixtiyoriy)
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  sales       Sale[]
+  attendances Attendance[]
+  kpiRecords  KpiRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Ombor — mahsulotlar (dorilar)
+// ─────────────────────────────────────────────────────────────
+
+model Product {
+  id         String    @id @default(cuid())
+  name       String // Amoxicillin 500mg
+  sku        String? // kod
+  category   String // Antibiotik, Vitaminlar...
+  unit       String    @default("dona")
+  costPrice  Decimal   @db.Decimal(14, 2) // tan narxi
+  salePrice  Decimal   @db.Decimal(14, 2) // sotuv narxi (dona)
+  stock      Int       @default(0) // joriy qoldiq
+  minStock   Int       @default(0) // minimal norma
+  expiryDate DateTime? // muddati (yaqin partiya)
+  isActive   Boolean   @default(true)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, sku])
+  @@index([branchId])
+  @@index([category])
+}
+
+// Ombor harakatlari (qabul / sotuv / hisobdan chiqarish) — analitika uchun
+enum MovementType {
+  IN // qabul (yangi partiya)
+  OUT // sotuv
+  ADJUST // tuzatish / hisobdan chiqarish
+}
+
+model StockMovement {
+  id        String       @id @default(cuid())
+  productId String
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type      MovementType
+  quantity  Int // musbat son; type yo'nalishni belgilaydi
+  note      String?
+  createdAt DateTime     @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Mijozlar va sodiqlik (Telegram bot orqali)
+// ─────────────────────────────────────────────────────────────
+
+enum LoyaltyTier {
+  BRONZE // Bronza
+  SILVER // Kumush
+  GOLD // Oltin
+}
+
+model Customer {
+  id            String      @id @default(cuid())
+  fullName      String?
+  phone         String      @unique // asosiy identifikator
+  telegramId    BigInt?     @unique // Telegram user id
+  telegramUser  String? // @username
+  cardCode      String      @unique // bonus karta: FP-00123
+  points        Int         @default(0) // joriy bonus ballari
+  totalSpent    Decimal     @default(0) @db.Decimal(16, 2) // jami xarid (tier uchun)
+  tier          LoyaltyTier @default(BRONZE)
+  birthday      DateTime?
+  registeredVia String      @default("telegram")
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  sales               Sale[]
+  loyaltyTransactions LoyaltyTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([telegramId])
+}
+
+enum LoyaltyTxnType {
+  EARN // xariddan ball to'plash
+  REDEEM // ballarni ishlatish
+  SIGNUP_BONUS // ro'yxatdan o'tish bonusi
+  ADJUST // qo'lda tuzatish
+}
+
+model LoyaltyTransaction {
+  id         String         @id @default(cuid())
+  customerId String
+  customer   Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type       LoyaltyTxnType
+  points     Int // musbat = qo'shildi, manfiy = ishlatildi
+  saleId     String?
+  sale       Sale?          @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  note       String?
+  createdAt  DateTime       @default(now())
+
+  @@index([customerId])
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Savdo (POS)
+// ─────────────────────────────────────────────────────────────
+
+enum PaymentMethod {
+  CASH // naqd
+  CARD // terminal
+  MIXED // aralash
+}
+
+model Sale {
+  id             String        @id @default(cuid())
+  receiptNo      String        @unique // chek raqami
+  total          Decimal       @db.Decimal(16, 2) // yakuniy summa (chegirmadan keyin)
+  discount       Decimal       @default(0) @db.Decimal(16, 2)
+  pointsEarned   Int           @default(0)
+  pointsRedeemed Int           @default(0)
+  paymentMethod  PaymentMethod @default(CASH)
+
+  branchId   String
+  branch     Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  items               SaleItem[]
+  loyaltyTransactions LoyaltyTransaction[]
+
+  createdAt DateTime @default(now())
+
+  @@index([branchId])
+  @@index([employeeId])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int
+  unitPrice Decimal @db.Decimal(14, 2) // sotilgan paytdagi narx
+  costPrice Decimal @db.Decimal(14, 2) // marja hisoblash uchun
+  lineTotal Decimal @db.Decimal(16, 2)
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Harajatlar
+// ─────────────────────────────────────────────────────────────
+
+enum ExpenseCategory {
+  RENT // ijara
+  UTILITIES // kommunal
+  GOODS // tovar / yetkazib berish
+  SALARY // maosh fondi
+  LICENSE // litsenziya / rasmiy
+  OTHER // boshqa
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  title       String
+  category    ExpenseCategory
+  amount      Decimal         @db.Decimal(16, 2)
+  spentAt     DateTime        @default(now())
+  isRecurring Boolean         @default(false) // doimiy xarajatmi
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([branchId])
+  @@index([spentAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Davomat
+// ─────────────────────────────────────────────────────────────
+
+enum AttendanceStatus {
+  PRESENT // keldi
+  LATE // kechikdi
+  ABSENT // kelmadi
+  ON_LEAVE // ta'tilda (ruxsatli)
+}
+
+model Attendance {
+  id          String           @id @default(cuid())
+  employeeId  String
+  employee    Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date        DateTime         @db.Date
+  checkIn     DateTime?
+  lateMinutes Int              @default(0)
+  penalty     Int              @default(0) // KPI davomat qismidan chegiriladigan ball
+  status      AttendanceStatus @default(PRESENT)
+
+  createdAt DateTime @default(now())
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+// ─────────────────────────────────────────────────────────────
+//  KPI — oylik baholash (100 ballik)
+//  Tarkib: Savdo 40% + Marja 20% + Davomat 15% + Intizom 10% + Mijoz 15%
+// ─────────────────────────────────────────────────────────────
+
+model KpiRecord {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  year       Int
+  month      Int // 1-12
+
+  salesScore      Int @default(0) // 0-100 (og'irlik 40%)
+  marginScore     Int @default(0) // 0-100 (og'irlik 20%)
+  attendanceScore Int @default(0) // 0-100 (og'irlik 15%)
+  disciplineScore Int @default(0) // 0-100 (og'irlik 10%)
+  customerScore   Int @default(0) // 0-100 (og'irlik 15%)
+
+  totalScore   Int     @default(0) // yakuniy 0-100
+  bonusPercent Int     @default(0) // bonus foizi
+  bonusAmount  Decimal @default(0) @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, year, month])
+  @@index([year, month])
+}

@@ -2,7 +2,45 @@
 
 Dorixona (apteka) tarmog'i uchun **boshqaruv platformasi** — moliya, ombor, xodimlar KPI tizimi, davomat nazorati va mijozlar bilan ishlash uchun **Telegram bot**.
 
-> **Status:** 🟡 Prototip bosqichi. Hozircha faqat dizayn maketi (`dorixona_platform_dashboard.html`) mavjud. Quyida — uni ishlaydigan mahsulotga aylantirish rejasi.
+> **Status:** 🟢 MVP ishlamoqda! Next.js + PostgreSQL to'liq stack qurildi: login, 8 ta sahifa (real ma'lumotlar bazasidan), POS kassa va Telegram bot. Boshlang'ich dizayn maketi `design/` papkasida saqlangan.
+
+---
+
+## ⚡ Tez ishga tushirish (Quick start)
+
+Talablar: **Node.js 20+** va **PostgreSQL** o'rnatilgan bo'lishi kerak.
+
+```bash
+# 1. Paketlarni o'rnatish
+npm install
+
+# 2. .env faylini sozlash (DATABASE_URL ni o'z parolingizga moslang)
+#    DATABASE_URL="postgresql://postgres:PAROL@localhost:5432/dorixona?schema=public"
+
+# 3. Ma'lumotlar bazasini yaratish va jadvallarni qo'yish
+npx prisma migrate dev
+
+# 4. Namuna ma'lumotlar bilan to'ldirish
+npm run db:seed
+
+# 5. Dasturni ishga tushirish
+npm run dev          # → http://localhost:3000
+
+# 6. (ixtiyoriy) Telegram botni ishga tushirish
+#    .env ga TELEGRAM_BOT_TOKEN ni qo'ygach:
+npm run bot
+```
+
+**Test uchun kirish:** `admin@dorixona.uz` / `admin123`
+
+### Asosiy `npm` buyruqlari
+| Buyruq | Vazifasi |
+|--------|----------|
+| `npm run dev` | Dasturni dev rejimida ishga tushiradi |
+| `npm run build` | Production build |
+| `npm run db:seed` | Namuna ma'lumotlarni qayta yuklaydi |
+| `npm run db:studio` | Prisma Studio (bazani ko'rish) |
+| `npm run bot` | Telegram botni ishga tushiradi |
 
 ---
 
@@ -197,41 +235,43 @@ Bot   → "Rahmat! Siz ro'yxatdan o'tdingiz 🎉
 
 ---
 
-## 📁 Loyiha tuzilishi (rejalashtirilgan)
+## 📁 Loyiha tuzilishi (haqiqiy)
+
+Monolit Next.js (full-stack) + ulashilgan Prisma bazasi:
 
 ```
 Dorixona/
-├── README.md                         # Ushbu fayl
-├── dorixona_platform_dashboard.html  # Boshlang'ich dizayn maketi
-├── frontend/                         # Web dashboard (React/Next.js)
-├── backend/                          # API server + DB
-│   ├── src/
-│   ├── prisma/ (yoki migrations/)
-│   └── ...
-├── bot/                              # Telegram bot
-└── docs/                             # Hujjatlar, diagrammalar
+├── README.md
+├── prisma/
+│   ├── schema.prisma        # Ma'lumotlar bazasi sxemasi (barcha modellar)
+│   ├── migrations/          # Migratsiyalar
+│   └── seed.ts              # Namuna ma'lumotlar
+├── src/
+│   ├── app/
+│   │   ├── login/           # Kirish sahifasi
+│   │   ├── (dashboard)/     # Himoyalangan sahifalar (sidebar layout)
+│   │   │   ├── moliya/  harajatlar/  ombor/  pos/
+│   │   │   ├── xodimlar/  kpi/  davomat/  hisobotlar/
+│   │   └── api/auth/        # NextAuth handler
+│   ├── components/          # Sidebar, charts, UI, PosTerminal
+│   ├── lib/
+│   │   ├── db.ts            # Prisma client (pg adapter)
+│   │   ├── queries.ts       # Bazadan analitik so'rovlar
+│   │   ├── kpi.ts  loyalty.ts  format.ts
+│   │   └── actions/         # Server actions (auth, pos)
+│   ├── auth.ts  auth.config.ts  middleware.ts
+│   └── generated/prisma/    # Prisma client (auto, git'ga kirmaydi)
+├── bot/index.ts             # Telegram bot (grammY)
+└── design/                  # Boshlang'ich HTML maket
 ```
 
 ---
 
 ## 🚀 Ishga tushirish
 
-### Hozirgi prototipni ko'rish
-HTML faylni brauzerda ochish kifoya:
-```bash
-# Windows
-start dorixona_platform_dashboard.html
-```
+To'liq qo'llanma yuqoridagi [⚡ Tez ishga tushirish](#-tez-ishga-tushirish-quick-start) bo'limida.
 
-### GitHub'ga ulash (keyingi qadam)
-```bash
-git init
-git add .
-git commit -m "Boshlang'ich: dashboard prototipi va reja"
-git branch -M main
-git remote add origin <SIZNING_REPO_URL>
-git push -u origin main
-```
+Boshlang'ich HTML maketni ko'rish uchun: `design/dorixona_platform_dashboard.html` ni brauzerda oching.
 
 ---
 
