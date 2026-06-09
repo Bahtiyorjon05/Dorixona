@@ -1,0 +1,490 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --c-primary:#1a7f5a;--c-primary-light:#e8f5f0;--c-primary-mid:#2da876;
+  --c-accent:#f59e0b;--c-accent-light:#fffbeb;
+  --c-danger:#e24b4a;--c-danger-light:#fcebeb;
+  --c-info:#378add;--c-info-light:#e6f1fb;
+  --c-text:var(--color-text-primary);--c-muted:var(--color-text-secondary);
+  --c-bg:var(--color-background-primary);--c-surface:var(--color-background-secondary);
+  --c-border:var(--color-border-tertiary);
+  --radius:var(--border-radius-lg);--radius-sm:var(--border-radius-md);
+}
+body{font-family:var(--font-sans);color:var(--c-text);background:transparent}
+.app{display:flex;min-height:600px}
+.sidebar{width:200px;flex-shrink:0;background:var(--c-bg);border-right:0.5px solid var(--c-border);padding:16px 0;display:flex;flex-direction:column;gap:2px}
+.logo{padding:8px 16px 20px;font-size:15px;font-weight:500;color:var(--c-primary);display:flex;align-items:center;gap:8px}
+.logo i{font-size:20px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;font-size:13px;color:var(--c-muted);cursor:pointer;border-radius:0;transition:all .15s;border-left:2px solid transparent}
+.nav-item:hover{background:var(--c-surface);color:var(--c-text)}
+.nav-item.active{background:var(--c-primary-light);color:var(--c-primary);border-left-color:var(--c-primary);font-weight:500}
+.nav-item i{font-size:16px;width:16px}
+.nav-section{padding:12px 16px 4px;font-size:11px;color:var(--c-muted);text-transform:uppercase;letter-spacing:.08em}
+.main{flex:1;overflow:auto;background:var(--c-surface)}
+.page{display:none;padding:20px}
+.page.active{display:block}
+.page-header{margin-bottom:20px}
+.page-header h2{font-size:18px;font-weight:500}
+.page-header p{font-size:13px;color:var(--c-muted);margin-top:2px}
+.metrics-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.metric-card{background:var(--c-bg);border:0.5px solid var(--c-border);border-radius:var(--radius-sm);padding:14px}
+.metric-card .label{font-size:12px;color:var(--c-muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.metric-card .value{font-size:22px;font-weight:500}
+.metric-card .sub{font-size:12px;color:var(--c-muted);margin-top:4px}
+.metric-card .trend-up{color:#1a7f5a;font-size:12px}
+.metric-card .trend-down{color:var(--c-danger);font-size:12px}
+.card{background:var(--c-bg);border:0.5px solid var(--c-border);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px}
+.tab-row{display:flex;gap:2px;background:var(--c-surface);border-radius:var(--radius-sm);padding:3px;margin-bottom:16px}
+.tab{padding:6px 14px;font-size:12px;border-radius:6px;cursor:pointer;color:var(--c-muted);border:none;background:transparent;transition:.15s}
+.tab.active{background:var(--c-bg);color:var(--c-text);font-weight:500;box-shadow:0 0 0 0.5px var(--c-border)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.chart-wrap{position:relative;width:100%}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-green{background:var(--c-primary-light);color:var(--c-primary)}
+.badge-amber{background:var(--c-accent-light);color:#92400e}
+.badge-red{background:var(--c-danger-light);color:var(--c-danger)}
+.badge-blue{background:var(--c-info-light);color:#185fa5}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;font-weight:500;color:var(--c-muted);padding:0 12px 8px;border-bottom:0.5px solid var(--c-border)}
+td{padding:10px 12px;border-bottom:0.5px solid var(--c-border)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--c-surface)}
+.kpi-profile{display:flex;align-items:center;gap:12px;padding:12px;background:var(--c-surface);border-radius:var(--radius-sm);margin-bottom:12px}
+.avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;flex-shrink:0}
+.av-green{background:var(--c-primary-light);color:var(--c-primary)}
+.av-blue{background:var(--c-info-light);color:#185fa5}
+.av-amber{background:var(--c-accent-light);color:#92400e}
+.av-red{background:var(--c-danger-light);color:var(--c-danger)}
+.kpi-name{font-size:13px;font-weight:500}
+.kpi-role{font-size:12px;color:var(--c-muted)}
+.kpi-score{margin-left:auto;text-align:right}
+.kpi-score .score-num{font-size:20px;font-weight:500}
+.kpi-score .score-label{font-size:11px;color:var(--c-muted)}
+.progress-bar{height:6px;border-radius:3px;background:var(--c-surface);overflow:hidden;margin-top:6px}
+.progress-fill{height:100%;border-radius:3px;transition:width .5s ease}
+.fill-green{background:var(--c-primary)}
+.fill-amber{background:var(--c-accent)}
+.fill-red{background:var(--c-danger)}
+.fill-blue{background:var(--c-info)}
+.kpi-breakdown{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.kpi-sub{background:var(--c-bg);border-radius:var(--radius-sm);padding:8px;border:0.5px solid var(--c-border)}
+.kpi-sub .sub-label{font-size:10px;color:var(--c-muted);margin-bottom:4px}
+.kpi-sub .sub-val{font-size:14px;font-weight:500}
+.ranking-row{display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--radius-sm);margin-bottom:6px;border:0.5px solid var(--c-border)}
+.rank-num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0}
+.rank-1{background:#fef3c7;color:#92400e}
+.rank-2{background:#f1f5f9;color:#475569}
+.rank-3{background:#fdf4e7;color:#92400e}
+.rank-rest{background:var(--c-surface);color:var(--c-muted)}
+.expense-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:0.5px solid var(--c-border)}
+.expense-row:last-child{border-bottom:none}
+.expense-cat{width:32px;height:32px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.select-sm{font-size:12px;padding:4px 8px;border-radius:var(--radius-sm);border:0.5px solid var(--c-border);background:var(--c-bg);color:var(--c-text);cursor:pointer}
+.btn-sm{font-size:12px;padding:5px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--c-border);background:transparent;color:var(--c-text);cursor:pointer}
+.btn-primary{background:var(--c-primary);color:#fff;border-color:var(--c-primary)}
+.bonus-calc{background:linear-gradient(135deg,var(--c-primary-light),var(--c-info-light));border-radius:var(--radius);padding:16px;border:0.5px solid var(--c-border)}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.summary-item{text-align:center}
+.summary-item .sv{font-size:18px;font-weight:500}
+.summary-item .sl{font-size:11px;color:var(--c-muted)}
+</style>
+
+<h2 class="sr-only">Dorixona boshqaruv paneli — moliyaviy ko'rsatkichlar va xodim KPI tizimi</h2>
+
+<div class="app">
+  <div class="sidebar">
+    <div class="logo"><i class="ti ti-building-store" aria-hidden="true"></i> FarmaPlus</div>
+    <div class="nav-item active" onclick="showPage('finance',this)"><i class="ti ti-chart-line" aria-hidden="true"></i> Moliya</div>
+    <div class="nav-item" onclick="showPage('expenses',this)"><i class="ti ti-receipt" aria-hidden="true"></i> Harajatlar</div>
+    <div class="nav-item" onclick="showPage('inventory',this)"><i class="ti ti-packages" aria-hidden="true"></i> Ombor</div>
+    <div class="nav-section">Xodimlar</div>
+    <div class="nav-item" onclick="showPage('employees',this)"><i class="ti ti-users" aria-hidden="true"></i> Xodimlar</div>
+    <div class="nav-item" onclick="showPage('kpi',this)"><i class="ti ti-target" aria-hidden="true"></i> KPI</div>
+    <div class="nav-item" onclick="showPage('attendance',this)"><i class="ti ti-clock" aria-hidden="true"></i> Davomat</div>
+    <div class="nav-section">Hisobotlar</div>
+    <div class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-file-analytics" aria-hidden="true"></i> Hisobotlar</div>
+    <div class="nav-item"><i class="ti ti-settings" aria-hidden="true"></i> Sozlamalar</div>
+  </div>
+
+  <div class="main">
+    <!-- FINANCE PAGE -->
+    <div class="page active" id="page-finance">
+      <div class="page-header">
+        <h2>Moliyaviy ko'rsatkichlar</h2>
+        <p>2024-yil, iyun oyidagi holat</p>
+      </div>
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="label"><i class="ti ti-coin" style="color:var(--c-primary)" aria-hidden="true"></i> Kunlik savdo</div>
+          <div class="value">4 250 000</div>
+          <div class="sub"><span class="trend-up">↑ 8.2%</span> kechadan</div>
+        </div>
+        <div class="metric-card">
+          <div class="label"><i class="ti ti-trending-up" style="color:var(--c-accent)" aria-hidden="true"></i> Oylik foyda</div>
+          <div class="value">18 700 000</div>
+          <div class="sub"><span class="trend-up">↑ 12.4%</span> o'tgan oydan</div>
+        </div>
+        <div class="metric-card">
+          <div class="label"><i class="ti ti-wallet" style="color:var(--c-info)" aria-hidden="true"></i> Kassadagi pul</div>
+          <div class="value">6 340 000</div>
+          <div class="sub">Naqd: 2.1M + Terminal: 4.2M</div>
+        </div>
+        <div class="metric-card">
+          <div class="label"><i class="ti ti-packages" style="color:#7f77dd" aria-hidden="true"></i> Ombor qiymati</div>
+          <div class="value">124 500 000</div>
+          <div class="sub"><span class="trend-down">↓ 3.1%</span> o'tgan haftadan</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="ti ti-chart-bar" aria-hidden="true"></i> Savdo dinamikasi</span>
+            <div style="display:flex;gap:6px">
+              <button class="tab active" onclick="switchTab(this,'period')">Kun</button>
+              <button class="tab" onclick="switchTab(this,'period')">Oy</button>
+              <button class="tab" onclick="switchTab(this,'period')">6 oy</button>
+            </div>
+          </div>
+          <div class="chart-wrap" style="height:200px">
+            <canvas id="salesChart" role="img" aria-label="Haftalik savdo grafigi">Savdo: Dush 3.8M, Sesh 4.1M, Chor 4.5M, Pay 3.9M, Jum 5.2M, Sha 4.8M</canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="ti ti-chart-donut" aria-hidden="true"></i> Toifalar ulushi</span>
+          </div>
+          <div class="chart-wrap" style="height:200px">
+            <canvas id="catChart" role="img" aria-label="Mahsulot toifalari ulushi">Dorilar 52%, Vitamins 20%, Kosmetika 18%, Boshqa 10%</canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="ti ti-trending-up" aria-hidden="true"></i> 6 oylik foyda va harajat tahlili</span>
+          <select class="select-sm"><option>2024</option><option>2023</option></select>
+        </div>
+        <div class="chart-wrap" style="height:180px">
+          <canvas id="profitChart" role="img" aria-label="6 oylik foyda grafigi">Yan 45M, Fev 48M, Mar 52M, Apr 49M, May 55M, Iyn 58M</canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPENSES PAGE -->
+    <div class="page" id="page-expenses">
+      <div class="page-header">
+        <h2>Harajatlar boshqaruvi</h2>
+        <p>Oylik harajatlar tahlili</p>
+      </div>
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="label">Jami harajat (oy)</div>
+          <div class="value" style="color:var(--c-danger)">38 200 000</div>
+          <div class="sub"><span class="trend-down">↑ 5.1%</span> rejadan ortiq</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Ijara va kommunal</div>
+          <div class="value">12 000 000</div>
+          <div class="sub">Doimiy xarajat</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Maosh fondi</div>
+          <div class="value">18 500 000</div>
+          <div class="sub">7 xodim + bonus</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Sotib olishlar</div>
+          <div class="value">7 700 000</div>
+          <div class="sub"><span class="trend-up">↓ 2.3%</span> rejalashtirilgan</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="ti ti-list" aria-hidden="true"></i> Harajatlar ro'yxati</span><button class="btn-sm btn-primary"><i class="ti ti-plus" aria-hidden="true"></i> Qo'shish</button></div>
+        <div class="expense-row"><div class="expense-cat" style="background:var(--c-primary-light)"><i class="ti ti-home" style="color:var(--c-primary);font-size:16px" aria-hidden="true"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:500">Ijara — Chilonzor filiali</div><div style="font-size:12px;color:var(--c-muted)">1 iyun, 2024</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:500">8 000 000</div><span class="badge badge-amber">Doimiy</span></div></div>
+        <div class="expense-row"><div class="expense-cat" style="background:var(--c-info-light)"><i class="ti ti-bolt" style="color:var(--c-info);font-size:16px" aria-hidden="true"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:500">Elektr va gaz</div><div style="font-size:12px;color:var(--c-muted)">3 iyun, 2024</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:500">1 240 000</div><span class="badge badge-blue">Kommunal</span></div></div>
+        <div class="expense-row"><div class="expense-cat" style="background:var(--c-accent-light)"><i class="ti ti-truck" style="color:#92400e;font-size:16px" aria-hidden="true"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:500">Tovar yetkazib berish</div><div style="font-size:12px;color:var(--c-muted)">5 iyun, 2024</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:500">3 500 000</div><span class="badge badge-amber">Tovar</span></div></div>
+        <div class="expense-row"><div class="expense-cat" style="background:var(--c-danger-light)"><i class="ti ti-users" style="color:var(--c-danger);font-size:16px" aria-hidden="true"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:500">Maosh fondi</div><div style="font-size:12px;color:var(--c-muted)">5 iyun, 2024</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:500">18 500 000</div><span class="badge badge-red">Xodimlar</span></div></div>
+        <div class="expense-row"><div class="expense-cat" style="background:var(--c-primary-light)"><i class="ti ti-certificate" style="color:var(--c-primary);font-size:16px" aria-hidden="true"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:500">Litsenziya yangilash</div><div style="font-size:12px;color:var(--c-muted)">7 iyun, 2024</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:500">960 000</div><span class="badge badge-green">Rasmiy</span></div></div>
+      </div>
+    </div>
+
+    <!-- INVENTORY PAGE -->
+    <div class="page" id="page-inventory">
+      <div class="page-header">
+        <h2>Ombor holati</h2>
+        <p>Qoldiq va harakatlar nazorati</p>
+      </div>
+      <div class="metrics-row">
+        <div class="metric-card"><div class="label">Jami pozitsiya</div><div class="value">847</div><div class="sub">Aktiv mahsulotlar</div></div>
+        <div class="metric-card"><div class="label">Kam qoldiq</div><div class="value" style="color:var(--c-danger)">23</div><div class="sub">Zudlik bilan buyurtma</div></div>
+        <div class="metric-card"><div class="label">Muddati o'tayotgan</div><div class="value" style="color:var(--c-accent)">12</div><div class="sub">30 kun ichida</div></div>
+        <div class="metric-card"><div class="label">Bugungi qabul</div><div class="value" style="color:var(--c-primary)">+34</div><div class="sub">Yangi partiya</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="ti ti-search" aria-hidden="true"></i> Ombor jadvali</span><input type="text" placeholder="Dori nomi yoki kodi..." style="font-size:12px;padding:5px 10px;border-radius:var(--radius-sm);border:0.5px solid var(--c-border);background:var(--c-bg);color:var(--c-text);width:200px"></div>
+        <table>
+          <thead><tr><th>Mahsulot</th><th>Kategoriya</th><th>Qoldiq</th><th>Min norma</th><th>Narx (dona)</th><th>Holat</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight:500">Amoxicillin 500mg</td><td>Antibiotik</td><td>142 dona</td><td>50</td><td>4 500</td><td><span class="badge badge-green">Yetarli</span></td></tr>
+            <tr><td style="font-weight:500">Paracetamol 500mg</td><td>Og'riq qoldiruvchi</td><td>23 dona</td><td>100</td><td>1 200</td><td><span class="badge badge-red">Kam qoldiq</span></td></tr>
+            <tr><td style="font-weight:500">Vitamin C 1000mg</td><td>Vitaminlar</td><td>87 dona</td><td>50</td><td>8 900</td><td><span class="badge badge-green">Yetarli</span></td></tr>
+            <tr><td style="font-weight:500">Ibuprofen 400mg</td><td>Og'riq qoldiruvchi</td><td>45 dona</td><td>50</td><td>2 800</td><td><span class="badge badge-amber">Chegarada</span></td></tr>
+            <tr><td style="font-weight:500">Omeprazole 20mg</td><td>Oshqozon</td><td>8 dona</td><td>30</td><td>6 200</td><td><span class="badge badge-red">Zudlik buyurtma</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- EMPLOYEES PAGE -->
+    <div class="page" id="page-employees">
+      <div class="page-header">
+        <h2>Xodimlar boshqaruvi</h2>
+        <p>Filial xodimlari ro'yxati va ma'lumotlari</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="ti ti-users" aria-hidden="true"></i> Xodimlar</span><button class="btn-sm btn-primary"><i class="ti ti-plus" aria-hidden="true"></i> Yangi xodim</button></div>
+        <table>
+          <thead><tr><th>Xodim</th><th>Lavozim</th><th>Filial</th><th>Maosh (base)</th><th>Status</th><th>KPI</th></tr></thead>
+          <tbody>
+            <tr><td><div style="display:flex;align-items:center;gap:8px"><div class="avatar av-green" style="width:32px;height:32px;font-size:11px">DX</div><span style="font-weight:500">Dilshod Xolmatov</span></div></td><td>Farmatsevt</td><td>Chilonzor</td><td>4 500 000</td><td><span class="badge badge-green">Aktiv</span></td><td style="font-weight:500;color:var(--c-primary)">94%</td></tr>
+            <tr><td><div style="display:flex;align-items:center;gap:8px"><div class="avatar av-blue" style="width:32px;height:32px;font-size:11px">NK</div><span style="font-weight:500">Nigora Karimova</span></div></td><td>Kassa xodimi</td><td>Chilonzor</td><td>3 200 000</td><td><span class="badge badge-green">Aktiv</span></td><td style="font-weight:500;color:var(--c-primary)">90%</td></tr>
+            <tr><td><div style="display:flex;align-items:center;gap:8px"><div class="avatar av-amber" style="width:32px;height:32px;font-size:11px">AT</div><span style="font-weight:500">Aziza Toshmatova</span></div></td><td>Farmatsevt</td><td>Chilonzor</td><td>4 200 000</td><td><span class="badge badge-green">Aktiv</span></td><td style="font-weight:500;color:var(--c-accent)">88%</td></tr>
+            <tr><td><div style="display:flex;align-items:center;gap:8px"><div class="avatar av-red" style="width:32px;height:32px;font-size:11px">BR</div><span style="font-weight:500">Bobur Rahimov</span></div></td><td>Kassa xodimi</td><td>Chilonzor</td><td>3 000 000</td><td><span class="badge badge-amber">Ta'tilda</span></td><td style="font-weight:500;color:var(--c-danger)">71%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- KPI PAGE -->
+    <div class="page" id="page-kpi">
+      <div class="page-header">
+        <h2>KPI tizimi — xodimlar baholash</h2>
+        <p>Iyun 2024 — 100 ballik tizim</p>
+      </div>
+
+      <div class="metrics-row">
+        <div class="metric-card"><div class="label">O'rtacha KPI (filial)</div><div class="value" style="color:var(--c-primary)">85.7%</div><div class="sub"><span class="trend-up">↑ 3.2%</span> o'tgan oydan</div></div>
+        <div class="metric-card"><div class="label">Jami bonus fondi</div><div class="value">4 200 000</div><div class="sub">Joriy oy hisoblangan</div></div>
+        <div class="metric-card"><div class="label">90%+ xodimlar</div><div class="value" style="color:var(--c-primary)">2/4</div><div class="sub">Maksimal bonus</div></div>
+        <div class="metric-card"><div class="label">60% dan past</div><div class="value" style="color:var(--c-danger)">0</div><div class="sub">Bonus yo'q</div></div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-header"><span class="card-title"><i class="ti ti-trophy" aria-hidden="true"></i> Reyting — Iyun 2024</span></div>
+            <div class="ranking-row"><div class="rank-num rank-1">1</div><div class="avatar av-green" style="width:32px;height:32px;font-size:11px">DX</div><div style="flex:1"><div style="font-size:13px;font-weight:500">Dilshod Xolmatov</div><div style="font-size:12px;color:var(--c-muted)">Farmatsevt · 4.5M plan: 98%</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:500;color:var(--c-primary)">94</div><span class="badge badge-green">+20% bonus</span></div></div>
+            <div class="ranking-row"><div class="rank-num rank-2">2</div><div class="avatar av-blue" style="width:32px;height:32px;font-size:11px">NK</div><div style="flex:1"><div style="font-size:13px;font-weight:500">Nigora Karimova</div><div style="font-size:12px;color:var(--c-muted)">Kassa · 4.5M plan: 94%</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:500;color:var(--c-primary)">90</div><span class="badge badge-green">+20% bonus</span></div></div>
+            <div class="ranking-row"><div class="rank-num rank-3">3</div><div class="avatar av-amber" style="width:32px;height:32px;font-size:11px">AT</div><div style="flex:1"><div style="font-size:13px;font-weight:500">Aziza Toshmatova</div><div style="font-size:12px;color:var(--c-muted)">Farmatsevt · 4.5M plan: 90%</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:500;color:var(--c-accent)">88</div><span class="badge badge-amber">+10% bonus</span></div></div>
+            <div class="ranking-row"><div class="rank-num rank-rest">4</div><div class="avatar av-red" style="width:32px;height:32px;font-size:11px">BR</div><div style="flex:1"><div style="font-size:13px;font-weight:500">Bobur Rahimov</div><div style="font-size:12px;color:var(--c-muted)">Kassa · 3.0M plan: 74%</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:500;color:var(--c-accent)">71</div><span class="badge badge-amber">+5% bonus</span></div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><span class="card-title"><i class="ti ti-chart-pie" aria-hidden="true"></i> KPI tarkibi</span></div>
+            <div style="font-size:12px;color:var(--c-muted);margin-bottom:12px">Har bir komponent og'irligi</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span><i class="ti ti-coin" aria-hidden="true"></i> Savdo KPI</span><span style="font-weight:500;color:var(--c-primary)">40%</span></div><div class="progress-bar"><div class="progress-fill fill-green" style="width:40%"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span><i class="ti ti-trending-up" aria-hidden="true"></i> Marja KPI</span><span style="font-weight:500;color:var(--c-info)">20%</span></div><div class="progress-bar"><div class="progress-fill fill-blue" style="width:20%"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span><i class="ti ti-clock" aria-hidden="true"></i> Davomat KPI</span><span style="font-weight:500;color:var(--c-accent)">15%</span></div><div class="progress-bar"><div class="progress-fill fill-amber" style="width:15%"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span><i class="ti ti-shield-check" aria-hidden="true"></i> Intizom KPI</span><span style="font-weight:500;color:#7f77dd">10%</span></div><div class="progress-bar"><div class="progress-fill" style="width:10%;background:#7f77dd"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span><i class="ti ti-star" aria-hidden="true"></i> Mijoz KPI</span><span style="font-weight:500;color:var(--c-danger)">15%</span></div><div class="progress-bar"><div class="progress-fill fill-red" style="width:15%"></div></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="card-header"><span class="card-title"><i class="ti ti-user-check" aria-hidden="true"></i> Dilshod Xolmatov — profil</span><span class="badge badge-green">Top xodim</span></div>
+            <div style="text-align:center;padding:12px 0 16px">
+              <div class="avatar av-green" style="width:56px;height:56px;font-size:17px;margin:0 auto 8px">DX</div>
+              <div style="font-size:15px;font-weight:500">Dilshod Xolmatov</div>
+              <div style="font-size:12px;color:var(--c-muted)">Farmatsevt · Chilonzor filiali</div>
+              <div style="font-size:32px;font-weight:500;color:var(--c-primary);margin:12px 0 0">94</div>
+              <div style="font-size:12px;color:var(--c-muted)">KPI bali</div>
+            </div>
+            <div class="kpi-breakdown">
+              <div class="kpi-sub"><div class="sub-label">Savdo</div><div class="sub-val" style="color:var(--c-primary)">96%</div><div class="progress-bar" style="margin-top:4px"><div class="progress-fill fill-green" style="width:96%"></div></div></div>
+              <div class="kpi-sub"><div class="sub-label">Marja</div><div class="sub-val" style="color:var(--c-info)">91%</div><div class="progress-bar" style="margin-top:4px"><div class="progress-fill fill-blue" style="width:91%"></div></div></div>
+              <div class="kpi-sub"><div class="sub-label">Davomat</div><div class="sub-val" style="color:var(--c-accent)">100%</div><div class="progress-bar" style="margin-top:4px"><div class="progress-fill fill-amber" style="width:100%"></div></div></div>
+              <div class="kpi-sub"><div class="sub-label">Intizom</div><div class="sub-val" style="color:#7f77dd">88%</div><div class="progress-bar" style="margin-top:4px"><div class="progress-fill" style="width:88%;background:#7f77dd"></div></div></div>
+            </div>
+            <div class="bonus-calc" style="margin-top:14px">
+              <div style="font-size:12px;color:var(--c-muted);margin-bottom:8px">Bonus hisob-kitobi</div>
+              <div class="summary-grid">
+                <div class="summary-item"><div class="sv">4 500 000</div><div class="sl">Base maosh</div></div>
+                <div class="summary-item"><div class="sv" style="color:var(--c-primary)">20%</div><div class="sl">Bonus foiz</div></div>
+                <div class="summary-item"><div class="sv" style="color:var(--c-primary)">900 000</div><div class="sl">Bonus miqdori</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ATTENDANCE PAGE -->
+    <div class="page" id="page-attendance">
+      <div class="page-header">
+        <h2>Davomat nazorati</h2>
+        <p>Iyun 2024 — kechikish va penalti tizimi</p>
+      </div>
+      <div class="metrics-row">
+        <div class="metric-card"><div class="label">Bugun kelganlar</div><div class="value" style="color:var(--c-primary)">3/4</div><div class="sub">1 ta ta'tilda</div></div>
+        <div class="metric-card"><div class="label">Kechikishlar (oy)</div><div class="value" style="color:var(--c-accent)">7</div><div class="sub">Jami penalti: -24 ball</div></div>
+        <div class="metric-card"><div class="label">O'rtacha kelish vaqti</div><div class="value">08:52</div><div class="sub">Ish boshlanishi 09:00</div></div>
+        <div class="metric-card"><div class="label">Mukammal davomat</div><div class="value" style="color:var(--c-primary)">2</div><div class="sub">0 kechikish</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="ti ti-calendar" aria-hidden="true"></i> Iyun davomat jadvali</span></div>
+        <table>
+          <thead><tr><th>Xodim</th><th>Bugungi kelish</th><th>Kechikish (daqiqa)</th><th>Penalti bali</th><th>Oylik davomat %</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight:500">Dilshod Xolmatov</td><td>08:58</td><td style="color:var(--c-primary)">0</td><td style="color:var(--c-primary)">0</td><td><span class="badge badge-green">100%</span></td></tr>
+            <tr><td style="font-weight:500">Nigora Karimova</td><td>09:03</td><td style="color:var(--c-accent)">3 min</td><td style="color:var(--c-accent)">-0 (ogohlantirish)</td><td><span class="badge badge-green">98%</span></td></tr>
+            <tr><td style="font-weight:500">Aziza Toshmatova</td><td>09:18</td><td style="color:var(--c-danger)">18 min</td><td style="color:var(--c-danger)">-2 ball</td><td><span class="badge badge-amber">94%</span></td></tr>
+            <tr><td style="font-weight:500">Bobur Rahimov</td><td colspan="3" style="color:var(--c-muted);font-style:italic">Ta'tilda (ruxsatli)</td><td><span class="badge badge-blue">Ta'til</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="ti ti-alert-circle" aria-hidden="true"></i> Kechikish penalti qoidalari</span></div>
+        <div class="three-col">
+          <div style="background:var(--c-primary-light);border-radius:var(--radius-sm);padding:12px;border-left:3px solid var(--c-primary)"><div style="font-size:12px;color:var(--c-primary);font-weight:500;margin-bottom:4px">1–5 daqiqa</div><div style="font-size:13px">Ogohlantirish (ball chegirilmaydi)</div></div>
+          <div style="background:var(--c-accent-light);border-radius:var(--radius-sm);padding:12px;border-left:3px solid var(--c-accent)"><div style="font-size:12px;color:#92400e;font-weight:500;margin-bottom:4px">6–15 daqiqa</div><div style="font-size:13px">−2 ball (KPI Davomat qismidan)</div></div>
+          <div style="background:var(--c-danger-light);border-radius:var(--radius-sm);padding:12px;border-left:3px solid var(--c-danger)"><div style="font-size:12px;color:var(--c-danger);font-weight:500;margin-bottom:4px">60+ daqiqa</div><div style="font-size:13px">−10 ball + rahbariyat xabardor</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPORTS PAGE -->
+    <div class="page" id="page-reports">
+      <div class="page-header">
+        <h2>Hisobotlar va tahlil</h2>
+        <p>KPI va moliya integratsiyasi</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="ti ti-chart-line" aria-hidden="true"></i> Xodim va foyda korrelyatsiyasi</span><span class="badge badge-green">Yangi insight</span></div>
+        <div style="font-size:13px;color:var(--c-muted);margin-bottom:16px">Qaysi xodim qancha foyda keltirdi — KPI va moliya birlashgan tahlil</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="corrChart" role="img" aria-label="Xodim KPI va foyda korrelyatsiyasi">Dilshod 94 KPI → 18.2M; Nigora 90 KPI → 14.1M; Aziza 88 KPI → 13.8M; Bobur 71 KPI → 8.9M</canvas></div>
+      </div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="ti ti-download" aria-hidden="true"></i> Hisobot eksport</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn-sm" style="justify-content:flex-start;display:flex;align-items:center;gap:8px"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> Oylik KPI hisoboti (.xlsx)</button>
+            <button class="btn-sm" style="justify-content:flex-start;display:flex;align-items:center;gap:8px"><i class="ti ti-file-text" aria-hidden="true"></i> Moliyaviy hisobot (.pdf)</button>
+            <button class="btn-sm" style="justify-content:flex-start;display:flex;align-items:center;gap:8px"><i class="ti ti-file-analytics" aria-hidden="true"></i> Davomat jadvali (.csv)</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="ti ti-robot" aria-hidden="true"></i> AI tavsiyalar</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+            <div style="background:var(--c-primary-light);padding:8px;border-radius:var(--radius-sm);border-left:2px solid var(--c-primary)">Dilshod bu oyda eng yaxshi marja ko'rsatdi — u qaysi dori toifasini ko'p sotganini tahlil qiling</div>
+            <div style="background:var(--c-accent-light);padding:8px;border-radius:var(--radius-sm);border-left:2px solid var(--c-accent)">Paracetamol ombori kritik darajada — zudlik bilan buyurtma bering</div>
+            <div style="background:var(--c-info-light);padding:8px;border-radius:var(--radius-sm);border-left:2px solid var(--c-info)">KPI o'rtacha 85.7% — rejadan 5.7% yuqori, yaxshi tendensiya</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  el.classList.add('active');
+}
+function switchTab(btn, group) {
+  btn.closest('.card-header').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+const salesCtx = document.getElementById('salesChart').getContext('2d');
+new Chart(salesCtx, {
+  type: 'bar',
+  data: {
+    labels: ['Dush', 'Sesh', 'Chor', 'Pay', 'Jum', 'Sha', 'Yak'],
+    datasets: [{
+      label: "Savdo (mln so'm)",
+      data: [3.8, 4.1, 4.5, 3.9, 5.2, 4.8, 2.1],
+      backgroundColor: '#2da876cc',
+      borderRadius: 4
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { grid: { color: 'rgba(128,128,128,0.1)' }, ticks: { font: { size: 11 }, callback: v => v + 'M' } },
+      x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+
+const catCtx = document.getElementById('catChart').getContext('2d');
+new Chart(catCtx, {
+  type: 'doughnut',
+  data: {
+    labels: ['Dorilar', 'Vitaminlar', 'Kosmetika', 'Boshqa'],
+    datasets: [{ data: [52, 20, 18, 10], backgroundColor: ['#2da876', '#378add', '#f59e0b', '#888780'], borderWidth: 0 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: { font: { size: 11 }, boxWidth: 12, padding: 10 }
+      }
+    }
+  }
+});
+
+const profitCtx = document.getElementById('profitChart').getContext('2d');
+new Chart(profitCtx, {
+  type: 'line',
+  data: {
+    labels: ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun'],
+    datasets: [
+      { label: 'Savdo', data: [45, 48, 52, 49, 55, 58], borderColor: '#2da876', backgroundColor: '#2da87620', fill: true, tension: 0.4, pointRadius: 4 },
+      { label: 'Xarajat', data: [31, 33, 35, 34, 37, 38], borderColor: '#e24b4a', backgroundColor: '#e24b4a10', fill: true, tension: 0.4, pointRadius: 4, borderDash: [4, 2] }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { font: { size: 11 }, boxWidth: 12 } } },
+    scales: {
+      y: { grid: { color: 'rgba(128,128,128,0.1)' }, ticks: { font: { size: 11 }, callback: v => v + 'M' } },
+      x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+
+const corrCtx = document.getElementById('corrChart').getContext('2d');
+new Chart(corrCtx, {
+  type: 'bar',
+  data: {
+    labels: ['Dilshod (94)', 'Nigora (90)', 'Aziza (88)', 'Bobur (71)'],
+    datasets: [{
+      label: "Foyda (mln so'm)",
+      data: [18.2, 14.1, 13.8, 8.9],
+      backgroundColor: ['#2da876', '#2da876bb', '#378add', '#f59e0b'],
+      borderRadius: 4
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { grid: { color: 'rgba(128,128,128,0.1)' }, ticks: { font: { size: 11 }, callback: v => v + 'M' } },
+      x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+</script>
