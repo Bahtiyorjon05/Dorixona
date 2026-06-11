@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
-import { Sidebar } from "@/components/Sidebar";
+import { MobileNav, Sidebar } from "@/components/Sidebar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { logout } from "@/lib/actions/auth";
 
 export default async function DashboardLayout({
@@ -19,24 +20,31 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-end gap-3 border-b border-edge bg-card px-6 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light text-xs font-medium text-primary">
-              {initials}
-            </div>
-            <span className="text-sm font-medium">{name}</span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-3 border-b border-edge bg-card px-4 py-3 sm:px-6">
+          <MobileNav />
+          <div className="flex items-center gap-1 font-semibold text-primary md:hidden">
+            <span>💊</span> Dorixona
           </div>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded-lg border border-edge px-3 py-1.5 text-xs text-muted transition hover:bg-surface"
-            >
-              Chiqish
-            </button>
-          </form>
+          <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light text-xs font-medium text-primary">
+                {initials}
+              </div>
+              <span className="hidden text-sm font-medium sm:inline">{name}</span>
+            </div>
+            <form action={logout}>
+              <button
+                type="submit"
+                className="rounded-lg border border-edge px-3 py-1.5 text-xs text-muted transition hover:bg-surface"
+              >
+                Chiqish
+              </button>
+            </form>
+          </div>
         </header>
-        <main className="flex-1 overflow-auto bg-surface p-6">{children}</main>
+        <main className="flex-1 overflow-auto bg-surface p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

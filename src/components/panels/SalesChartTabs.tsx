@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { SalesBarChart } from "@/components/charts";
+import { SalesBarChart } from "@/components/ChartsLazy";
 
 type Series = { label: string; value: number }[];
 

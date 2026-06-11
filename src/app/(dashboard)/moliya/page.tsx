@@ -1,7 +1,7 @@
 import { getFinanceData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
-import { CategoryDonut, ProfitLineChart } from "@/components/charts";
+import { CategoryDonut, ProfitLineChart } from "@/components/ChartsLazy";
 import { SalesChartTabs } from "@/components/panels/SalesChartTabs";
 
 export const dynamic = "force-dynamic";

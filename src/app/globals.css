@@ -1,16 +1,15 @@
 @import "tailwindcss";
 
-/* ─── Dorixona dizayn tizimi (yashil farmatsevtika temasi) ─── */
+/* Sinf asosidagi dark rejim (Tailwind v4) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Dorixona dizayn tizimi — yorug' tema (default) ─── */
 :root {
   --c-primary: #1a7f5a;
-  --c-primary-light: #e8f5f0;
   --c-primary-mid: #2da876;
   --c-accent: #f59e0b;
-  --c-accent-light: #fffbeb;
   --c-danger: #e24b4a;
-  --c-danger-light: #fcebeb;
   --c-info: #378add;
-  --c-info-light: #e6f1fb;
   --c-purple: #7f77dd;
 
   --c-text: #1c2024;
@@ -18,6 +17,44 @@
   --c-bg: #ffffff;
   --c-surface: #f6f8f7;
   --c-border: #e6e9e8;
+
+  /* yengil tonlar (badge / gradient fonlari) */
+  --c-primary-light: #e8f5f0;
+  --c-accent-light: #fffbeb;
+  --c-danger-light: #fcebeb;
+  --c-info-light: #e6f1fb;
+
+  /* badge matn ranglari */
+  --badge-green-fg: #1a7f5a;
+  --badge-amber-fg: #92400e;
+  --badge-red-fg: #c0392b;
+  --badge-blue-fg: #185fa5;
+
+  /* grafik o'qlari */
+  --c-chart-axis: #6b7280;
+  --c-chart-grid: rgba(128, 128, 128, 0.12);
+}
+
+/* ─── Qorong'i tema ─── */
+.dark {
+  --c-text: #e7ebe9;
+  --c-muted: #97a39d;
+  --c-bg: #161d1a;
+  --c-surface: #0e1411;
+  --c-border: #2a322e;
+
+  --c-primary-light: rgba(45, 168, 118, 0.16);
+  --c-accent-light: rgba(245, 158, 11, 0.16);
+  --c-danger-light: rgba(226, 75, 74, 0.16);
+  --c-info-light: rgba(55, 138, 221, 0.16);
+
+  --badge-green-fg: #56cfa0;
+  --badge-amber-fg: #fbbf24;
+  --badge-red-fg: #f78a89;
+  --badge-blue-fg: #6aa9e9;
+
+  --c-chart-axis: #8b958f;
+  --c-chart-grid: rgba(255, 255, 255, 0.08);
 }
 
 @theme inline {
@@ -34,6 +71,7 @@
   --color-surface: var(--c-surface);
   --color-card: var(--c-bg);
   --color-edge: var(--c-border);
+  --color-fg: var(--c-text);
   --font-sans: var(--font-geist-sans);
 }
 
@@ -41,10 +79,18 @@
   box-sizing: border-box;
 }
 
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
 body {
   background: var(--c-surface);
   color: var(--c-text);
   font-family: var(--font-sans), system-ui, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* ─── Qayta ishlatiladigan komponent klasslari ─── */
@@ -70,8 +116,14 @@ body {
     font-weight: 500;
     white-space: nowrap;
   }
-  .badge-green { background: var(--c-primary-light); color: var(--c-primary); }
-  .badge-amber { background: var(--c-accent-light); color: #92400e; }
-  .badge-red { background: var(--c-danger-light); color: var(--c-danger); }
-  .badge-blue { background: var(--c-info-light); color: #185fa5; }
+  .badge-green { background: var(--c-primary-light); color: var(--badge-green-fg); }
+  .badge-amber { background: var(--c-accent-light); color: var(--badge-amber-fg); }
+  .badge-red { background: var(--c-danger-light); color: var(--badge-red-fg); }
+  .badge-blue { background: var(--c-info-light); color: var(--badge-blue-fg); }
+}
+
+/* Chop etish (PDF) — har doim yorug' */
+@media print {
+  .dark { color-scheme: light; }
+  body { background: #fff; color: #000; }
 }

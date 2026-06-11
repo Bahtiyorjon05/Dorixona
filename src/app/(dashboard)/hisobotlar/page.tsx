@@ -1,6 +1,6 @@
 import { getReportsData } from "@/lib/queries";
 import { Badge, Card, PageHeader } from "@/components/ui";
-import { CorrelationBarChart } from "@/components/charts";
+import { CorrelationBarChart } from "@/components/ChartsLazy";
 
 export const dynamic = "force-dynamic";
 

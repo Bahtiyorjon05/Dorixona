@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -27,15 +28,13 @@ const NAV: { section?: string; items: { href: string; label: string; icon: strin
   },
 ];
 
-export function Sidebar() {
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-
   return (
-    <aside className="flex w-56 flex-shrink-0 flex-col gap-1 border-r border-edge bg-card py-4">
+    <>
       <div className="flex items-center gap-2 px-5 pb-5 text-base font-semibold text-primary">
         <span className="text-xl">💊</span> Dorixona
       </div>
-
       {NAV.map((group, i) => (
         <div key={i}>
           {group.section && (
@@ -49,10 +48,11 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={onNavigate}
                 className={`mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
                   active
                     ? "bg-primary-light font-medium text-primary"
-                    : "text-muted hover:bg-surface hover:text-[color:var(--c-text)]"
+                    : "text-muted hover:bg-surface hover:text-fg"
                 }`}
               >
                 <span className="text-base">{item.icon}</span>
@@ -62,6 +62,43 @@ export function Sidebar() {
           })}
         </div>
       ))}
+    </>
+  );
+}
+
+/** Desktop yon panel */
+export function Sidebar() {
+  return (
+    <aside className="hidden w-56 flex-shrink-0 flex-col gap-1 border-r border-edge bg-card py-4 md:flex">
+      <NavLinks />
     </aside>
+  );
+}
+
+/** Mobil — gamburger tugma + chiqib keladigan panel */
+export function MobileNav() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="md:hidden">
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Menyu"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-edge text-lg hover:bg-surface"
+      >
+        ☰
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex" onClick={() => setOpen(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <aside
+            className="relative flex w-60 flex-col gap-1 border-r border-edge bg-card py-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <NavLinks onNavigate={() => setOpen(false)} />
+          </aside>
+        </div>
+      )}
+    </div>
   );
 }
