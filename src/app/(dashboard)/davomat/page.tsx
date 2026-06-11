@@ -1,6 +1,7 @@
 import { getAttendanceData } from "@/lib/queries";
 import { formatTime, monthName } from "@/lib/format";
-import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
+import { Card, MetricCard, PageHeader } from "@/components/ui";
+import { AttendancePanel } from "@/components/panels/AttendancePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -46,58 +47,18 @@ export default async function DavomatPage() {
         />
       </div>
 
-      <Card title="Bugungi davomat jadvali" icon="📅" className="mb-4">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-edge text-left text-[11px] uppercase text-muted">
-                <th className="pb-2 pr-3 font-medium">Xodim</th>
-                <th className="pb-2 pr-3 font-medium">Kelish</th>
-                <th className="pb-2 pr-3 font-medium">Kechikish</th>
-                <th className="pb-2 pr-3 font-medium">Penalti</th>
-                <th className="pb-2 font-medium">Holat</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.records.map((r) => (
-                <tr key={r.id} className="border-b border-edge last:border-0 hover:bg-surface">
-                  <td className="py-2.5 pr-3 font-medium">{r.name}</td>
-                  {r.status === "ON_LEAVE" ? (
-                    <td colSpan={3} className="py-2.5 pr-3 italic text-muted">
-                      Ta'tilda (ruxsatli)
-                    </td>
-                  ) : (
-                    <>
-                      <td className="py-2.5 pr-3">{r.checkIn ? formatTime(r.checkIn) : "—"}</td>
-                      <td
-                        className="py-2.5 pr-3"
-                        style={{ color: r.lateMinutes > 5 ? "var(--c-danger)" : "var(--c-primary)" }}
-                      >
-                        {r.lateMinutes > 0 ? `${r.lateMinutes} min` : "0"}
-                      </td>
-                      <td
-                        className="py-2.5 pr-3"
-                        style={{ color: r.penalty > 0 ? "var(--c-danger)" : "var(--c-primary)" }}
-                      >
-                        {r.penalty > 0 ? `-${r.penalty} ball` : "0"}
-                      </td>
-                    </>
-                  )}
-                  <td className="py-2.5">
-                    {r.status === "ON_LEAVE" ? (
-                      <Badge color="blue">Ta'til</Badge>
-                    ) : r.lateMinutes > 5 ? (
-                      <Badge color="amber">Kechikdi</Badge>
-                    ) : (
-                      <Badge color="green">Keldi</Badge>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      <div className="mb-4">
+        <AttendancePanel
+          records={d.records.map((r) => ({
+            employeeId: r.employeeId,
+            name: r.name,
+            checkIn: r.checkIn ? r.checkIn.toISOString() : null,
+            lateMinutes: r.lateMinutes,
+            penalty: r.penalty,
+            status: r.status,
+          }))}
+        />
+      </div>
 
       <Card title="Kechikish penalti qoidalari" icon="⚠️">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

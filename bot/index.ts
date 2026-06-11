@@ -142,15 +142,54 @@ bot.command("balans", async (ctx) => {
   );
 });
 
+// ─── /tarix — so'nggi harakatlar ───
+bot.command("tarix", async (ctx) => {
+  const customer = await db.customer.findUnique({
+    where: { telegramId: BigInt(ctx.from!.id) },
+    include: { loyaltyTransactions: { orderBy: { createdAt: "desc" }, take: 8 } },
+  });
+  if (!customer) {
+    await ctx.reply("Siz hali ro'yxatdan o'tmagansiz. /start ni bosing.");
+    return;
+  }
+  if (customer.loyaltyTransactions.length === 0) {
+    await ctx.reply("Hali harakatlar yo'q. Birinchi xaridingizdan keyin shu yerda ko'rinadi.");
+    return;
+  }
+
+  const LABEL: Record<string, string> = {
+    EARN: "🛒 Xariddan",
+    REDEEM: "💸 Ishlatildi",
+    SIGNUP_BONUS: "🎁 Ro'yxat bonusi",
+    ADJUST: "🔧 Tuzatish",
+  };
+  const lines = customer.loyaltyTransactions.map((t) => {
+    const d = t.createdAt.toLocaleDateString("uz-UZ");
+    const sign = t.points >= 0 ? "+" : "";
+    return `${d} · ${LABEL[t.type] ?? t.type}: ${sign}${t.points} ball`;
+  });
+
+  await ctx.reply(`🕘 So'nggi harakatlar:\n\n${lines.join("\n")}\n\nJoriy balans: ${customer.points} ball`);
+});
+
 // ─── /help ───
 bot.command("help", async (ctx) => {
   await ctx.reply(
     "Dorixona sodiqlik boti 💊\n\n" +
       "/start — ro'yxatdan o'tish\n" +
       "/balans — bonus ballaringiz va daraja\n" +
+      "/tarix — so'nggi harakatlar\n" +
       "/help — yordam",
   );
 });
+
+// Bot buyruqlari menyusi
+void bot.api.setMyCommands([
+  { command: "start", description: "Ro'yxatdan o'tish" },
+  { command: "balans", description: "Bonus ballari va daraja" },
+  { command: "tarix", description: "So'nggi harakatlar" },
+  { command: "help", description: "Yordam" },
+]);
 
 bot.catch((err) => console.error("Bot xatosi:", err));
 

@@ -65,10 +65,26 @@ export async function getFinanceData() {
       GROUP BY 1 ORDER BY 1`,
   ]);
 
-  const expenseSeries = await db.$queryRaw<{ m: Date; exp: number }[]>`
-    SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount),0)::float8 AS exp
-    FROM "Expense" e WHERE e."spentAt" >= ${sixMonthsAgo}
-    GROUP BY 1 ORDER BY 1`;
+  const [expenseSeries, monthDailyRows] = await Promise.all([
+    db.$queryRaw<{ m: Date; exp: number }[]>`
+      SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount),0)::float8 AS exp
+      FROM "Expense" e WHERE e."spentAt" >= ${sixMonthsAgo}
+      GROUP BY 1 ORDER BY 1`,
+    db.$queryRaw<{ d: Date; total: number }[]>`
+      SELECT date_trunc('day', s."createdAt") AS d, COALESCE(SUM(s.total),0)::float8 AS total
+      FROM "Sale" s WHERE s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
+      GROUP BY 1 ORDER BY 1`,
+  ]);
+
+  // Joriy oy — kunlik savdo (bugungacha)
+  const monthDayMap = new Map(
+    monthDailyRows.map((r) => [startOfDay(new Date(r.d)).getTime(), M(r.total)]),
+  );
+  const daysInMonthSoFar = today.getDate();
+  const monthDaily = Array.from({ length: daysInMonthSoFar }, (_, i) => {
+    const day = new Date(today.getFullYear(), today.getMonth(), i + 1);
+    return { label: String(i + 1), value: +(monthDayMap.get(day.getTime()) ?? 0).toFixed(2) };
+  });
 
   // Haftalik (7 kun, bo'sh kunlarni 0 bilan to'ldirish)
   const UZ = ["Yak", "Dush", "Sesh", "Chor", "Pay", "Jum", "Sha"];
@@ -118,6 +134,8 @@ export async function getFinanceData() {
     card,
     inventoryValue: num(invValue[0]?.value),
     weekSales,
+    monthDaily,
+    sixMonthSales: profitSeries.map((p) => ({ label: p.label, value: p.savdo })),
     categories,
     profitSeries,
   };
@@ -157,6 +175,8 @@ export async function getInventoryData() {
       stock: p.stock,
       minStock: p.minStock,
       salePrice: num(p.salePrice),
+      costPrice: num(p.costPrice),
+      expiryDate: p.expiryDate ? p.expiryDate.toISOString().slice(0, 10) : null,
       status: stockStatus(p.stock, p.minStock),
     })),
     totalCount,
@@ -234,6 +254,7 @@ export async function getKpiData() {
 
   const ranking = records.map((r) => ({
     id: r.id,
+    employeeId: r.employeeId,
     name: r.employee.fullName,
     position: r.employee.position,
     baseSalary: num(r.employee.baseSalary),
@@ -273,16 +294,26 @@ export async function getAttendanceData() {
   const tomorrow = new Date(today.getTime() + 864e5);
   const monthStart = startOfMonth(0);
 
-  const [todayRecords, monthRecords] = await Promise.all([
-    db.attendance.findMany({
-      where: { date: { gte: today, lt: tomorrow } },
-      include: { employee: true },
-      orderBy: { employee: { createdAt: "asc" } },
-    }),
+  const [employees, todayRecords, monthRecords] = await Promise.all([
+    db.employee.findMany({ where: { status: { not: "INACTIVE" } }, orderBy: { createdAt: "asc" } }),
+    db.attendance.findMany({ where: { date: { gte: today, lt: tomorrow } } }),
     db.attendance.findMany({ where: { date: { gte: monthStart } } }),
   ]);
 
-  const present = todayRecords.filter((r) => r.status !== "ON_LEAVE" && r.status !== "ABSENT").length;
+  const byEmp = new Map(todayRecords.map((r) => [r.employeeId, r]));
+  const records = employees.map((e) => {
+    const r = byEmp.get(e.id);
+    return {
+      employeeId: e.id,
+      name: e.fullName,
+      checkIn: r?.checkIn ?? null,
+      lateMinutes: r?.lateMinutes ?? 0,
+      penalty: r?.penalty ?? 0,
+      status: (r?.status as string | undefined) ?? null, // null = belgilanmagan
+    };
+  });
+
+  const present = records.filter((r) => r.status === "PRESENT" || r.status === "LATE").length;
   const lateThisMonth = monthRecords.filter((r) => r.lateMinutes > 5).length;
   const checkIns = todayRecords.filter((r) => r.checkIn).map((r) => r.checkIn!);
   const avgCheckIn = checkIns.length
@@ -292,20 +323,51 @@ export async function getAttendanceData() {
   const totalPenalty = monthRecords.reduce((s, r) => s + r.penalty, 0);
 
   return {
-    records: todayRecords.map((r) => ({
-      id: r.id,
-      name: r.employee.fullName,
-      checkIn: r.checkIn,
-      lateMinutes: r.lateMinutes,
-      penalty: r.penalty,
-      status: r.status,
-    })),
+    records,
     presentCount: present,
-    totalEmployees: todayRecords.length,
+    totalEmployees: employees.length,
     lateThisMonth,
     totalPenalty,
     avgCheckIn,
     perfect,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MIJOZLAR (sodiqlik)
+// ─────────────────────────────────────────────────────────────
+export async function getCustomersData() {
+  const customers = await db.customer.findMany({
+    orderBy: { createdAt: "desc" },
+    include: {
+      loyaltyTransactions: { orderBy: { createdAt: "desc" }, take: 10 },
+    },
+  });
+
+  const list = customers.map((c) => ({
+    id: c.id,
+    fullName: c.fullName,
+    phone: c.phone,
+    cardCode: c.cardCode,
+    points: c.points,
+    tier: c.tier,
+    totalSpent: num(c.totalSpent),
+    viaTelegram: c.telegramId !== null,
+    history: c.loyaltyTransactions.map((t) => ({
+      id: t.id,
+      type: t.type as string,
+      points: t.points,
+      note: t.note,
+      createdAt: t.createdAt.toISOString(),
+    })),
+  }));
+
+  return {
+    list,
+    total: list.length,
+    viaTelegram: list.filter((c) => c.viaTelegram).length,
+    totalPoints: list.reduce((s, c) => s + c.points, 0),
+    gold: list.filter((c) => c.tier === "GOLD").length,
   };
 }
 

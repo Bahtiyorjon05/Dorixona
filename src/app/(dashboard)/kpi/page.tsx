@@ -2,6 +2,7 @@ import { getKpiData } from "@/lib/queries";
 import { formatNumber, monthName } from "@/lib/format";
 import { KPI_WEIGHTS } from "@/lib/kpi";
 import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
+import { KpiEditor } from "@/components/panels/KpiEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,12 @@ export default async function KpiPage() {
                     </div>
                   </div>
                   <Badge color={bonusBadge(r.bonusPercent)}>+{r.bonusPercent}% bonus</Badge>
+                  <KpiEditor
+                    employeeId={r.employeeId}
+                    name={r.name}
+                    baseSalary={r.baseSalary}
+                    current={r.components}
+                  />
                 </div>
               ))}
             </div>

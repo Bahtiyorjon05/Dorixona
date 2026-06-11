@@ -1,7 +1,8 @@
 import { getFinanceData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
-import { CategoryDonut, ProfitLineChart, SalesBarChart } from "@/components/charts";
+import { CategoryDonut, ProfitLineChart } from "@/components/charts";
+import { SalesChartTabs } from "@/components/panels/SalesChartTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -62,9 +63,7 @@ export default async function MoliyaPage() {
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Savdo dinamikasi (7 kun)" icon="📊">
-          <SalesBarChart data={d.weekSales} />
-        </Card>
+        <SalesChartTabs week={d.weekSales} month={d.monthDaily} halfyear={d.sixMonthSales} />
         <Card title="Toifalar ulushi (oy)" icon="🍩">
           <CategoryDonut data={d.categories} />
         </Card>

@@ -50,17 +50,37 @@ export default async function HisobotlarPage() {
         <Card title="Hisobot eksport" icon="⬇️">
           <div className="flex flex-col gap-2">
             {[
-              ["📊", "Oylik KPI hisoboti (.xlsx)"],
-              ["📄", "Moliyaviy hisobot (.pdf)"],
-              ["📑", "Davomat jadvali (.csv)"],
-            ].map(([icon, label]) => (
-              <button
-                key={label}
+              { icon: "📊", label: "Oylik KPI hisoboti (.xlsx)", href: "/api/export/kpi?format=xlsx" },
+              { icon: "📑", label: "Oylik KPI hisoboti (.csv)", href: "/api/export/kpi?format=csv" },
+              { icon: "💰", label: "Moliyaviy hisobot (.xlsx)", href: "/api/export/finance?format=xlsx" },
+              { icon: "🕐", label: "Davomat jadvali (.csv)", href: "/api/export/attendance?format=csv" },
+            ].map((b) => (
+              <a
+                key={b.label}
+                href={b.href}
                 className="flex items-center gap-2 rounded-lg border border-edge px-3 py-2 text-sm hover:bg-surface"
               >
-                <span>{icon}</span>
-                {label}
-              </button>
+                <span>{b.icon}</span>
+                {b.label}
+              </a>
+            ))}
+            <div className="mt-1 border-t border-edge pt-2 text-[11px] uppercase tracking-wider text-muted">
+              PDF (chop etish)
+            </div>
+            {[
+              { label: "KPI hisoboti (PDF)", href: "/chop/kpi" },
+              { label: "Moliyaviy hisobot (PDF)", href: "/chop/finance" },
+              { label: "Davomat (PDF)", href: "/chop/attendance" },
+            ].map((b) => (
+              <a
+                key={b.label}
+                href={b.href}
+                target="_blank"
+                className="flex items-center gap-2 rounded-lg border border-edge px-3 py-2 text-sm hover:bg-surface"
+              >
+                <span>📄</span>
+                {b.label}
+              </a>
             ))}
           </div>
         </Card>

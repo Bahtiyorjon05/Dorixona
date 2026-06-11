@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { formatNumber } from "@/lib/format";
 import { createSale, findCustomerByPhone, type SaleResult } from "@/lib/actions/pos";
+import { createCustomer } from "@/lib/actions/customers";
 
 type Product = { id: string; name: string; category: string; salePrice: number; stock: number };
 type CartItem = { product: Product; quantity: number };
@@ -16,6 +17,8 @@ export function PosTerminal({ products }: { products: Product[] }) {
   const [phone, setPhone] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [customerMsg, setCustomerMsg] = useState("");
+  const [notFound, setNotFound] = useState(false);
+  const [regName, setRegName] = useState("");
   const [payment, setPayment] = useState<"CASH" | "CARD" | "MIXED">("CASH");
   const [receipt, setReceipt] = useState<Extract<SaleResult, { ok: true }> | null>(null);
   const [error, setError] = useState("");
@@ -53,6 +56,7 @@ export function PosTerminal({ products }: { products: Product[] }) {
 
   function lookupCustomer() {
     setCustomerMsg("");
+    setNotFound(false);
     startTransition(async () => {
       const c = await findCustomerByPhone(phone);
       if (c) {
@@ -60,7 +64,26 @@ export function PosTerminal({ products }: { products: Product[] }) {
         setCustomerMsg(`${c.fullName ?? "Mijoz"} — ${TIER_LABEL[c.tier]} · ${c.points} ball · ${c.discount}% chegirma`);
       } else {
         setCustomer(null);
-        setCustomerMsg("Mijoz topilmadi. Bot orqali ro'yxatdan o'tishi mumkin.");
+        setNotFound(true);
+        setCustomerMsg("Mijoz topilmadi — shu yerda ro'yxatdan o'tkazishingiz mumkin.");
+      }
+    });
+  }
+
+  function registerCustomer() {
+    if (regName.trim().length < 2) return;
+    startTransition(async () => {
+      const res = await createCustomer({ fullName: regName.trim(), phone });
+      if (res.ok) {
+        const c = await findCustomerByPhone(phone);
+        if (c) {
+          setCustomer(c);
+          setCustomerMsg(`${c.fullName} ro'yxatdan o'tdi 🎉 — ${TIER_LABEL[c.tier]} · ${c.points} ball`);
+        }
+        setNotFound(false);
+        setRegName("");
+      } else {
+        setCustomerMsg(res.error);
       }
     });
   }
@@ -80,6 +103,8 @@ export function PosTerminal({ products }: { products: Product[] }) {
         setCustomer(null);
         setPhone("");
         setCustomerMsg("");
+        setNotFound(false);
+        setRegName("");
       } else {
         setError(res.error);
       }
@@ -164,6 +189,23 @@ export function PosTerminal({ products }: { products: Product[] }) {
           </div>
           {customerMsg && (
             <p className={`mt-1.5 text-xs ${customer ? "text-primary" : "text-muted"}`}>{customerMsg}</p>
+          )}
+          {notFound && !customer && (
+            <div className="mt-2 flex gap-2">
+              <input
+                value={regName}
+                onChange={(e) => setRegName(e.target.value)}
+                placeholder="Mijoz ismi"
+                className="flex-1 rounded-lg border border-edge px-3 py-1.5 text-sm outline-none focus:border-primary"
+              />
+              <button
+                onClick={registerCustomer}
+                disabled={isPending || regName.trim().length < 2}
+                className="rounded-lg bg-primary px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              >
+                Ro'yxat
+              </button>
+            </div>
           )}
         </div>
 

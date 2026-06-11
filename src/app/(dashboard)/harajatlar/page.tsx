@@ -1,17 +1,9 @@
 import { getExpensesData } from "@/lib/queries";
-import { formatDate, formatNumber } from "@/lib/format";
-import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
+import { formatNumber } from "@/lib/format";
+import { MetricCard, PageHeader } from "@/components/ui";
+import { ExpensesPanel } from "@/components/panels/ExpensesPanel";
 
 export const dynamic = "force-dynamic";
-
-const CATEGORY: Record<string, { label: string; icon: string; color: "green" | "amber" | "red" | "blue" }> = {
-  RENT: { label: "Ijara", icon: "🏠", color: "amber" },
-  UTILITIES: { label: "Kommunal", icon: "⚡", color: "blue" },
-  GOODS: { label: "Tovar", icon: "🚚", color: "amber" },
-  SALARY: { label: "Xodimlar", icon: "👥", color: "red" },
-  LICENSE: { label: "Rasmiy", icon: "📜", color: "green" },
-  OTHER: { label: "Boshqa", icon: "📌", color: "blue" },
-};
 
 export default async function HarajatlarPage() {
   const d = await getExpensesData();
@@ -27,39 +19,16 @@ export default async function HarajatlarPage() {
         <MetricCard label="Sotib olishlar" value={formatNumber(d.goods)} sub="Tovar" />
       </div>
 
-      <Card
-        title="Harajatlar ro'yxati"
-        icon="🧾"
-        action={
-          <button className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white">
-            + Qo'shish
-          </button>
-        }
-      >
-        <div className="flex flex-col">
-          {d.list.map((e) => {
-            const cat = CATEGORY[e.category] ?? CATEGORY.OTHER;
-            return (
-              <div
-                key={e.id}
-                className="flex items-center gap-3 border-b border-edge py-3 last:border-0"
-              >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface text-base">
-                  {cat.icon}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium">{e.title}</div>
-                  <div className="text-xs text-muted">{formatDate(e.spentAt)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium">{formatNumber(e.amount)}</div>
-                  <Badge color={cat.color}>{e.isRecurring ? "Doimiy" : cat.label}</Badge>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+      <ExpensesPanel
+        list={d.list.map((e) => ({
+          id: e.id,
+          title: e.title,
+          category: e.category,
+          amount: e.amount,
+          spentAt: e.spentAt.toISOString(),
+          isRecurring: e.isRecurring,
+        }))}
+      />
     </div>
   );
 }
