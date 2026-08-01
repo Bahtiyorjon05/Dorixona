@@ -90,6 +90,10 @@ export function FaptekaSyncPanel({
             <div className="font-semibold">{summary.movementsCreated} ta</div>
           </div>
           <div className="rounded-lg bg-surface p-2">
+            <div className="text-muted">Xarajatlar</div>
+            <div className="font-semibold">{summary.expensesCreated} ta</div>
+          </div>
+          <div className="rounded-lg bg-surface p-2">
             <div className="text-muted">Savdolar</div>
             <div className="font-semibold">{summary.salesUpserted} ta</div>
           </div>

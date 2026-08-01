@@ -67,6 +67,8 @@ export async function POST(request: NextRequest) {
   revalidatePath("/sozlamalar");
   revalidatePath("/ombor");
   revalidatePath("/pos");
+  revalidatePath("/moliya");
+  revalidatePath("/harajatlar");
   revalidatePath("/hisobotlar");
 
   return NextResponse.json({ ok: summary.ok, summary }, { status: summary.ok ? 200 : 207 });
