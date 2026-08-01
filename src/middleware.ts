@@ -5,5 +5,5 @@ export default NextAuth(authConfig).auth;
 
 export const config = {
   // API, statik fayllar va rasm optimizatsiyasidan tashqari hamma yo'l
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.svg$).*)"],
+  matcher: ["/((?!api|tg-admin|_next/static|_next/image|favicon.ico|.*\\.svg$).*)"],
 };

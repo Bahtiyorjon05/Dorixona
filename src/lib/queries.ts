@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { monthName } from "@/lib/format";
+import { isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 
 // ─── Sana yordamchilari ───
 function startOfDay(d = new Date()) {
@@ -164,24 +165,34 @@ export async function getInventoryData() {
       SELECT COALESCE(SUM(stock * "costPrice"),0)::float8 AS value FROM "Product" WHERE "isActive" = true`,
   ]);
 
+  const faptekaProducts = products.filter((p) => isFaptekaSku(p.sku));
   const lowStock = products.filter((p) => p.stock < p.minStock).length;
   const expiring = products.filter((p) => p.expiryDate && p.expiryDate <= in30).length;
+  const faptekaLastUpdated = faptekaProducts.reduce<Date | null>((latest, product) => {
+    if (!latest || product.updatedAt > latest) return product.updatedAt;
+    return latest;
+  }, null);
 
   return {
     products: products.map((p) => ({
       id: p.id,
       name: p.name,
+      sku: p.sku,
       category: p.category,
       stock: p.stock,
       minStock: p.minStock,
       salePrice: num(p.salePrice),
       costPrice: num(p.costPrice),
       expiryDate: p.expiryDate ? p.expiryDate.toISOString().slice(0, 10) : null,
+      fromFapteka: isFaptekaSku(p.sku),
       status: stockStatus(p.stock, p.minStock),
     })),
     totalCount,
     lowStock,
     expiring,
+    faptekaCount: faptekaProducts.length,
+    faptekaStock: faptekaProducts.reduce((sum, product) => sum + product.stock, 0),
+    faptekaLastUpdated,
     inventoryValue: num(valueRow[0]?.value),
   };
 }

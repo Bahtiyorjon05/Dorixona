@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
+import { isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 import { pointsForPurchase, tierDiscount, tierForSpent } from "@/lib/loyalty";
 
 const saleSchema = z.object({
@@ -70,6 +71,9 @@ export async function createSale(input: z.input<typeof saleSchema>): Promise<Sal
       for (const item of items) {
         const product = map.get(item.productId);
         if (!product) throw new Error("Mahsulot topilmadi");
+        if (isFaptekaSku(product.sku)) {
+          throw new Error(`"${product.name}" F-Apteka mahsuloti — savdo F-KASSA orqali qilinadi`);
+        }
         if (product.stock < item.quantity)
           throw new Error(`"${product.name}" — yetarli qoldiq yo'q (${product.stock} dona)`);
 

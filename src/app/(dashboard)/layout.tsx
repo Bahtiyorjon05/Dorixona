@@ -10,6 +10,8 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
   const name = session?.user?.name ?? "Foydalanuvchi";
+  const role = session?.user?.role;
+  const permissions = session?.user?.permissions ?? [];
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -19,10 +21,10 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar role={role} permissions={permissions} />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-edge bg-card px-4 py-3 sm:px-6">
-          <MobileNav />
+          <MobileNav role={role} permissions={permissions} />
           <div className="flex items-center gap-1 font-semibold text-primary md:hidden">
             <span>💊</span> Dorixona
           </div>

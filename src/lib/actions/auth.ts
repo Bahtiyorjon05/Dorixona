@@ -1,12 +1,10 @@
 "use server";
 
 import { AuthError } from "next-auth";
+import { redirect } from "next/navigation";
 import { signIn, signOut } from "@/auth";
 
-export async function authenticate(
-  _prevState: string | undefined,
-  formData: FormData,
-): Promise<string | undefined> {
+export async function authenticate(formData: FormData) {
   try {
     await signIn("credentials", {
       email: formData.get("email"),
@@ -15,7 +13,7 @@ export async function authenticate(
     });
   } catch (error) {
     if (error instanceof AuthError) {
-      return "Email yoki parol noto'g'ri";
+      redirect("/login?error=credentials");
     }
     throw error; // muvaffaqiyatli redirect (NEXT_REDIRECT) — qayta uloqtiriladi
   }

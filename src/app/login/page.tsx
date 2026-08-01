@@ -1,13 +1,12 @@
-"use client";
-
-import { useActionState } from "react";
 import { authenticate } from "@/lib/actions/auth";
 
-export default function LoginPage() {
-  const [errorMessage, formAction, isPending] = useActionState(
-    authenticate,
-    undefined,
-  );
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const errorMessage = params?.error ? "Email yoki parol noto'g'ri" : "";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface px-4">
@@ -20,7 +19,7 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-muted">Boshqaruv paneliga kirish</p>
         </div>
 
-        <form action={formAction} className="space-y-4">
+        <form action={authenticate} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium" htmlFor="email">
               Email
@@ -45,7 +44,6 @@ export default function LoginPage() {
               name="password"
               type="password"
               required
-              defaultValue="admin123"
               className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-primary"
               placeholder="••••••••"
             />
@@ -59,16 +57,11 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={isPending}
             className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
           >
-            {isPending ? "Kirilmoqda..." : "Kirish"}
+            Kirish
           </button>
         </form>
-
-        <p className="mt-4 text-center text-xs text-muted">
-          Test: admin@dorixona.uz / admin123
-        </p>
       </div>
     </div>
   );

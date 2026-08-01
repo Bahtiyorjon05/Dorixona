@@ -10,18 +10,21 @@ import { createProduct, receiveStock, updateProduct } from "@/lib/actions/produc
 type Product = {
   id: string;
   name: string;
+  sku: string | null;
   category: string;
   stock: number;
   minStock: number;
   salePrice: number;
   costPrice: number;
   expiryDate: string | null;
+  fromFapteka: boolean;
   status: { label: string; color: "green" | "amber" | "red" };
 };
 
 export function InventoryPanel({ products }: { products: Product[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [source, setSource] = useState<"all" | "fapteka" | "erp">("all");
   const [addOpen, setAddOpen] = useState(false);
   const [receive, setReceive] = useState<Product | null>(null);
   const [edit, setEdit] = useState<Product | null>(null);
@@ -30,11 +33,17 @@ export function InventoryPanel({ products }: { products: Product[] }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q),
-    );
-  }, [products, query]);
+    return products.filter((p) => {
+      if (source === "fapteka" && !p.fromFapteka) return false;
+      if (source === "erp" && p.fromFapteka) return false;
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        (p.sku ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [products, query, source]);
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, onOk: () => void) {
     setError("");
@@ -51,7 +60,25 @@ export function InventoryPanel({ products }: { products: Product[] }) {
     <div className="card p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2 text-sm font-medium">🔍 Ombor jadvali</span>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-edge bg-surface p-0.5 text-xs">
+            {[
+              { value: "all", label: "Hammasi" },
+              { value: "fapteka", label: "F-Apteka" },
+              { value: "erp", label: "ERP" },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setSource(item.value as "all" | "fapteka" | "erp")}
+                className={`rounded-md px-2.5 py-1 transition ${
+                  source === item.value ? "bg-primary text-white" : "text-muted hover:text-fg"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -67,6 +94,7 @@ export function InventoryPanel({ products }: { products: Product[] }) {
           <thead>
             <tr className="border-b border-edge text-left text-[11px] uppercase text-muted">
               <th className="pb-2 pr-3 font-medium">Mahsulot</th>
+              <th className="pb-2 pr-3 font-medium">Manba</th>
               <th className="pb-2 pr-3 font-medium">Kategoriya</th>
               <th className="pb-2 pr-3 font-medium">Qoldiq</th>
               <th className="pb-2 pr-3 font-medium">Min</th>
@@ -78,7 +106,13 @@ export function InventoryPanel({ products }: { products: Product[] }) {
           <tbody>
             {filtered.map((p) => (
               <tr key={p.id} className="border-b border-edge last:border-0 hover:bg-surface">
-                <td className="py-2.5 pr-3 font-medium">{p.name}</td>
+                <td className="py-2.5 pr-3">
+                  <div className="font-medium">{p.name}</div>
+                  {p.sku && <div className="text-[11px] text-muted">{p.sku}</div>}
+                </td>
+                <td className="py-2.5 pr-3">
+                  {p.fromFapteka ? <Badge color="blue">F-Apteka</Badge> : <Badge color="green">ERP</Badge>}
+                </td>
                 <td className="py-2.5 pr-3 text-muted">{p.category}</td>
                 <td className="py-2.5 pr-3">{p.stock} dona</td>
                 <td className="py-2.5 pr-3 text-muted">{p.minStock}</td>
@@ -89,15 +123,17 @@ export function InventoryPanel({ products }: { products: Product[] }) {
                 <td className="py-2.5 text-right whitespace-nowrap">
                   <button
                     onClick={() => { setError(""); setReceive(p); }}
-                    className="rounded-md border border-edge px-2 py-1 text-xs hover:bg-surface"
-                    title="Partiya qabul qilish"
+                    disabled={p.fromFapteka}
+                    className="rounded-md border border-edge px-2 py-1 text-xs hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+                    title={p.fromFapteka ? "F-Apteka mahsuloti F-Apteka ichida o'zgartiriladi" : "Partiya qabul qilish"}
                   >
                     📥
                   </button>
                   <button
                     onClick={() => { setError(""); setEdit(p); }}
-                    className="ml-1 rounded-md border border-edge px-2 py-1 text-xs hover:bg-surface"
-                    title="Tahrirlash"
+                    disabled={p.fromFapteka}
+                    className="ml-1 rounded-md border border-edge px-2 py-1 text-xs hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+                    title={p.fromFapteka ? "F-Apteka mahsuloti F-Apteka ichida o'zgartiriladi" : "Tahrirlash"}
                   >
                     ✏️
                   </button>
@@ -106,7 +142,7 @@ export function InventoryPanel({ products }: { products: Product[] }) {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-muted">
+                <td colSpan={8} className="py-6 text-center text-muted">
                   Hech narsa topilmadi
                 </td>
               </tr>

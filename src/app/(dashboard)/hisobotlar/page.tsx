@@ -1,8 +1,24 @@
 import { getReportsData } from "@/lib/queries";
 import { Badge, Card, PageHeader } from "@/components/ui";
-import { CorrelationBarChart } from "@/components/ChartsLazy";
 
 export const dynamic = "force-dynamic";
+
+function CorrelationBars({ data }: { data: { label: string; value: number; kpi: number }[] }) {
+  const max = Math.max(...data.map((item) => item.value), 0.01);
+  return (
+    <div className="space-y-3">
+      {data.length ? data.map((item) => (
+        <div key={item.label} className="grid grid-cols-[120px_1fr_70px] items-center gap-3 text-xs">
+          <span className="truncate text-muted">{item.label}</span>
+          <div className="h-3 overflow-hidden rounded-full bg-surface">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(4, (item.value / max) * 100)}%` }} />
+          </div>
+          <span className="text-right text-muted">{item.value}M · KPI {item.kpi}</span>
+        </div>
+      )) : <p className="text-sm text-muted">Savdo ma'lumotlari to'planmoqda.</p>}
+    </div>
+  );
+}
 
 export default async function HisobotlarPage() {
   const d = await getReportsData();
@@ -43,7 +59,7 @@ export default async function HisobotlarPage() {
         <p className="mb-4 text-sm text-muted">
           Qaysi xodim qancha foyda keltirdi — KPI va moliya birlashgan tahlil (joriy oy, mln so'm)
         </p>
-        <CorrelationBarChart data={d.correlation} />
+        <CorrelationBars data={d.correlation} />
       </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

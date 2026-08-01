@@ -1,11 +1,22 @@
-import "dotenv/config";
+import { readFileSync } from "node:fs";
+import { config as loadEnv, parse as parseEnv } from "dotenv";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { computeTotalScore, bonusPercentForScore } from "../src/lib/kpi";
+import { createPrismaPgAdapter } from "../src/lib/postgres";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+loadEnv();
+try {
+  const localEnv = parseEnv(readFileSync(".env.local"));
+  for (const [key, value] of Object.entries(localEnv)) {
+    if (value) process.env[key] = value;
+  }
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
+
+const adapter = createPrismaPgAdapter();
 const db = new PrismaClient({ adapter });
 
 // ─── Yordamchilar ───
@@ -41,7 +52,7 @@ async function main() {
   });
 
   // ─── Foydalanuvchilar (dashboard'ga kirish) ───
-  const ownerPass = await bcrypt.hash("admin123", 10);
+  const ownerPass = await bcrypt.hash("qwertz123", 10);
   await db.user.create({
     data: {
       email: "admin@dorixona.uz",
@@ -51,7 +62,7 @@ async function main() {
       branchId: branch.id,
     },
   });
-  console.log("👤 Admin: admin@dorixona.uz / admin123");
+  console.log("👤 Admin: admin@dorixona.uz / qwertz123");
 
   // ─── Xodimlar ───
   const employeesData = [

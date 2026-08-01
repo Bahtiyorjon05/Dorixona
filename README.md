@@ -169,12 +169,35 @@ Bot   → "Rahmat! Siz ro'yxatdan o'tdingiz 🎉
 
 > 🌸 ning savoli: *"Bzani apteka pragrammasiga integratsiya bo'ladimi?"*
 
-**✅ Qaror:** Hozir dorixonada **alohida apteka dasturi yo'q**. Demak, tashqi integratsiya shart emas — biz **o'z savdo/POS modulimizni noldan quramiz**. Bu yanada qulay: hamma ma'lumot bitta tizimda bo'ladi, integratsiya muammolari bo'lmaydi.
+**✅ Joriy qaror:** F-Apteka dorixona uchun asosiy savdo/ombor manbai bo'ladi. Bizning ERP esa F-Apteka'dan ma'lumot olib, analitika, KPI, Telegram bot, bonus va hisobotlarni yuritadi.
 
-| Holat | Yo'l |
-|-------|------|
-| **Hozir** | O'z POS / savdo modulimizni quramiz (ombor + savdo + mijoz bitta bazada) |
-| Kelajakda boshqa dastur paydo bo'lsa | API yoki eksport orqali ulash imkoniyati qoldiriladi |
+Write API dokumentatsiyasi yo'q, shuning uchun F-Apteka'dan kelgan mahsulot/qoldiq/savdo ERP'da read-only sifatida ko'riladi. Mahsulot narxi, qoldiq va savdo F-Apteka ichida o'zgartiriladi, ERP esa ikki yo'l bilan yangilanadi:
+
+- `REPORT.exe` pull: ERP F-Apteka serveridagi XML reportlarni o'zi o'qiydi.
+- `SITE.exe` push: F-Apteka ERP'ning public URL'iga joriy qoldiq XML yuboradi.
+
+`SITE.exe` uchun URL: `/api/integrations/fapteka/site`, token esa `.env` dagi `FAPTEKA_SITE_TOKEN`.
+
+| F-Apteka report | ERP dagi joyi |
+|-----------------|---------------|
+| `report_id=188` — mahsulot spravochnigi | `Product.name`, `Product.unit`, `Product.sku = FA:<id>` |
+| `report_id=6` — joriy qoldiq | `Product.stock`, `Product.salePrice`, `Product.expiryDate` |
+| `report_id=11` — kirim Ver.2 | `StockMovement(IN)`, `Product.costPrice` |
+| `report_id=12` — qaytarish Ver.2 | `StockMovement(OUT)` |
+| `report_id=3` — hisobdan chiqarish | `StockMovement(ADJUST)` |
+| `report_id=14` — chakana savdo Ver.2 | `Sale`, `SaleItem` |
+| `report_id=15` — sug'urta savdosi Ver.2 | `Sale`, `SaleItem` |
+| `report_id=189` — tashkilotlar | filial/supplier/insurance mapping uchun asos |
+
+`SITE.exe` XML mapping:
+
+| SITE.exe XML | ERP dagi joyi |
+|--------------|---------------|
+| `I` — mahsulot ID | `Product.sku = FA:<I>` |
+| `N` — mahsulot nomi | `Product.name` |
+| `K` — qoldiq | `Product.stock` |
+| `P` — chakana narx | `Product.salePrice` |
+| `UN` / `E` — birlik | `Product.unit` |
 
 ---
 

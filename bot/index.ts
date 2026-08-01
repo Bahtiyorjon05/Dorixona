@@ -1,7 +1,9 @@
-import "dotenv/config";
-import { Bot, Keyboard } from "grammy";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { readFileSync } from "node:fs";
+import { config as loadEnv, parse as parseEnv } from "dotenv";
+import { Bot, InlineKeyboard, Keyboard, type Context } from "grammy";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { getTelegramWebAppUrl } from "../src/lib/telegram-auth";
+import { createPrismaPgAdapter } from "../src/lib/postgres";
 import {
   SIGNUP_BONUS_POINTS,
   TIERS,
@@ -9,6 +11,16 @@ import {
   spentToNextTier,
   tierDiscount,
 } from "../src/lib/loyalty";
+
+loadEnv();
+try {
+  const localEnv = parseEnv(readFileSync(".env.local"));
+  for (const [key, value] of Object.entries(localEnv)) {
+    if (value) process.env[key] = value;
+  }
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -22,15 +34,115 @@ if (!token) {
   process.exit(0);
 }
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const adapter = createPrismaPgAdapter();
 const db = new PrismaClient({ adapter });
 const bot = new Bot(token);
 
 const som = (n: number) => n.toLocaleString("ru-RU").replace(/,/g, " ");
+const defaultCommands = [
+  { command: "start", description: "Ro'yxatdan o'tish" },
+  { command: "balans", description: "Bonus ballari va daraja" },
+  { command: "tarix", description: "So'nggi harakatlar" },
+  { command: "help", description: "Yordam" },
+];
+const adminCommands = [
+  ...defaultCommands,
+  { command: "panel", description: "Admin Mini App" },
+  { command: "admin", description: "Admin panel" },
+];
+const adminIds = new Set(
+  (process.env.TELEGRAM_ADMIN_IDS ?? "")
+    .split(",")
+    .map((id) => Number(id.trim()))
+    .filter(Number.isSafeInteger),
+);
+
+function isAdmin(id?: number) {
+  return id ? adminIds.has(id) : false;
+}
+
+async function requireAdmin(ctx: Context) {
+  if (!ctx.from) return false;
+  if (adminIds.size === 0) {
+    await ctx.reply(
+      "Admin Mini App uchun .env faylga TELEGRAM_ADMIN_IDS qo'shing.\n" +
+        `Sizning Telegram ID: ${ctx.from.id}`,
+    );
+    return false;
+  }
+  if (!isAdmin(ctx.from.id)) {
+    await ctx.reply("Bu panel faqat adminlar uchun.");
+    return false;
+  }
+  return true;
+}
+
+async function sendAdminPanel(ctx: Context) {
+  const url = getTelegramWebAppUrl();
+  if (!url) {
+    await ctx.reply(
+      "Mini App URL sozlanmagan.\n\n" +
+        ".env yoki Vercel env ichiga TELEGRAM_WEBAPP_URL qo'ying:\n" +
+        "https://your-project.vercel.app/tg-admin",
+    );
+    return;
+  }
+
+  if (isAdmin(ctx.from?.id)) {
+    const keyboard = new InlineKeyboard().webApp("Admin panelni ochish", url);
+    await ctx.reply(
+      "Dorixona admin Mini App tayyor.\n\n" +
+        "Web ilovadagi Moliya, Ombor, Savdo, Mijozlar, Xodimlar, KPI, Davomat, Hisobotlar va Sozlamalar shu panel ichida ko'rinadi.",
+      { reply_markup: keyboard },
+    );
+    return;
+  }
+
+  const keyboard = new InlineKeyboard().webApp("Xodim Mini Appga kirish", url);
+  await ctx.reply(
+    "Bu oynadan xodimlar email va parol bilan kiradi.\n\n" +
+      "Oddiy mijozlar uchun /balans va /tarix ishlaydi. Xodim ekaningiz login orqali tekshiriladi.",
+    { reply_markup: keyboard },
+  );
+}
+
+async function setupAdminMenuButton() {
+  const url = getTelegramWebAppUrl();
+  if (adminIds.size === 0) return;
+
+  await Promise.allSettled(
+    [...adminIds].map((chatId) =>
+      bot.api.setMyCommands(adminCommands, {
+        scope: { type: "chat", chat_id: chatId },
+      }),
+    ),
+  );
+  if (!url) return;
+
+  const results = await Promise.allSettled(
+    [...adminIds].map((chatId) =>
+      bot.api.setChatMenuButton({
+        chat_id: chatId,
+        menu_button: {
+          type: "web_app",
+          text: "Admin panel",
+          web_app: { url },
+        },
+      }),
+    ),
+  );
+  const failed = results.filter((result) => result.status === "rejected").length;
+  if (failed) console.warn(`Admin menu button ${failed} ta admin uchun sozlanmadi.`);
+}
 
 // ─── /start — kutib olish va ro'yxatdan o'tish ───
 bot.command("start", async (ctx) => {
   if (!ctx.from) return;
+  if (isAdmin(ctx.from.id)) {
+    await sendAdminPanel(ctx);
+    return;
+  }
+
   const existing = await db.customer.findUnique({
     where: { telegramId: BigInt(ctx.from.id) },
   });
@@ -172,26 +284,28 @@ bot.command("tarix", async (ctx) => {
   await ctx.reply(`🕘 So'nggi harakatlar:\n\n${lines.join("\n")}\n\nJoriy balans: ${customer.points} ball`);
 });
 
+// ─── Admin Mini App ───
+bot.command(["admin", "panel", "dashboard"], sendAdminPanel);
+
 // ─── /help ───
 bot.command("help", async (ctx) => {
+  const adminLine = isAdmin(ctx.from?.id) ? "/panel — admin Mini App\n" : "";
   await ctx.reply(
     "Dorixona sodiqlik boti 💊\n\n" +
       "/start — ro'yxatdan o'tish\n" +
       "/balans — bonus ballaringiz va daraja\n" +
       "/tarix — so'nggi harakatlar\n" +
+      adminLine +
       "/help — yordam",
   );
 });
 
 // Bot buyruqlari menyusi
-void bot.api.setMyCommands([
-  { command: "start", description: "Ro'yxatdan o'tish" },
-  { command: "balans", description: "Bonus ballari va daraja" },
-  { command: "tarix", description: "So'nggi harakatlar" },
-  { command: "help", description: "Yordam" },
-]);
+void bot.api.setMyCommands(defaultCommands);
 
 bot.catch((err) => console.error("Bot xatosi:", err));
+
+void setupAdminMenuButton();
 
 bot.start({
   onStart: (info) => console.log(`🤖 Bot ishga tushdi: @${info.username}`),

@@ -1,5 +1,5 @@
-import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { createPrismaPgAdapter } from "@/lib/postgres";
 
 // Next.js dev rejimida hot-reload har safar yangi mijoz yaratmasligi uchun
 // global'da saqlaymiz (best practice).
@@ -8,7 +8,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createClient() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const adapter = createPrismaPgAdapter();
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],

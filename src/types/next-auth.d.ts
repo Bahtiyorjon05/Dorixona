@@ -5,11 +5,15 @@ declare module "next-auth" {
   interface User {
     role?: Role;
     branchId?: string | null;
+    permissions?: string[];
+    editPermissions?: string[];
   }
   interface Session {
     user: {
       role?: Role;
       branchId?: string | null;
+      permissions?: string[];
+      editPermissions?: string[];
     } & DefaultSession["user"];
   }
 }
@@ -18,5 +22,7 @@ declare module "next-auth/jwt" {
   interface JWT {
     role?: Role;
     branchId?: string | null;
+    permissions?: string[];
+    editPermissions?: string[];
   }
 }

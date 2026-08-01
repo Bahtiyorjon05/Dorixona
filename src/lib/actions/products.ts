@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 import { activeBranch, fail, requireUser, type ActionResult } from "./_shared";
 
 const createSchema = z.object({
   name: z.string().min(2, "Nomi kamida 2 belgi"),
   category: z.string().min(2, "Kategoriya kiriting"),
-  sku: z.string().optional(),
+  sku: z.string().optional().refine((value) => !isFaptekaSku(value), "FA: kodi F-Apteka sync uchun ajratilgan"),
   costPrice: z.number().nonnegative(),
   salePrice: z.number().positive("Sotuv narxi musbat bo'lishi kerak"),
   stock: z.number().int().nonnegative(),
@@ -59,6 +60,10 @@ export async function updateProduct(input: z.input<typeof updateSchema>): Promis
   try {
     await requireUser();
     const d = updateSchema.parse(input);
+    const product = await db.product.findUnique({ where: { id: d.id }, select: { sku: true } });
+    if (isFaptekaSku(product?.sku)) {
+      throw new Error("F-Apteka mahsuloti faqat F-Apteka ichida o'zgartiriladi");
+    }
     await db.product.update({
       where: { id: d.id },
       data: {
@@ -86,6 +91,10 @@ export async function receiveStock(input: {
   try {
     await requireUser();
     const quantity = z.number().int().positive().parse(input.quantity);
+    const product = await db.product.findUnique({ where: { id: input.productId }, select: { sku: true } });
+    if (isFaptekaSku(product?.sku)) {
+      throw new Error("F-Apteka mahsuloti qoldig'i F-Apteka sync orqali yangilanadi");
+    }
     await db.$transaction([
       db.product.update({
         where: { id: input.productId },
