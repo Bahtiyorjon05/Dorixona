@@ -17,9 +17,122 @@ const parser = new XMLParser({
   parseAttributeValue: false,
 });
 
+export function parseCharset(contentType?: string) {
+  if (!contentType) return null;
+  const match = contentType.match(/charset=\s*(["']?)([^;"']+)\1/i);
+  return match ? match[2].trim().toLowerCase() : null;
+}
+
+function parseXmlDeclarationCharset(text: string) {
+  const match = text.match(/<\?xml[^>]*encoding=(["'])([^"']+)\1/i);
+  return match ? match[2].trim().toLowerCase() : null;
+}
+
+function decodeWithEncoding(buffer: ArrayBuffer, encoding: string) {
+  try {
+    const decoded = new TextDecoder(encoding, { fatal: true }).decode(buffer);
+    return decoded.includes("�") ? null : decoded;
+  } catch {
+    return null;
+  }
+}
+
+export function decodeXmlBuffer(buffer: ArrayBuffer, contentType?: string) {
+  const preferred = parseCharset(contentType);
+  const encodings = [preferred, "utf-8", "windows-1251", "windows-1252"].filter(
+    (value): value is string => Boolean(value),
+  );
+
+  for (const encoding of encodings) {
+    const decoded = decodeWithEncoding(buffer, encoding);
+    if (decoded !== null) return decoded;
+  }
+
+  const utf8Decoded = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+  const fallback = parseXmlDeclarationCharset(utf8Decoded);
+  if (fallback && fallback !== "utf-8") {
+    const xmlDecoded = decodeWithEncoding(buffer, fallback);
+    if (xmlDecoded !== null) return xmlDecoded;
+  }
+
+  return utf8Decoded;
+}
+
+function flattenXmlValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => flattenXmlValue(item))
+      .filter(Boolean)
+      .join(" ")
+      .trim() || null;
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if ("#text" in obj) return flattenXmlValue(obj["#text"]);
+    if ("text" in obj) return flattenXmlValue(obj["text"]);
+  }
+
+  return null;
+}
+
+function toPrimitiveString(value: unknown): string | null {
+  return flattenXmlValue(value);
+}
+
+function parseFaptekaDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+
+  const iso = new Date(text);
+  if (!Number.isNaN(iso.getTime())) return iso;
+
+  const normalized = text.replace(/\s+/g, " ");
+  const dmY = normalized.match(/^(\d{1,2})[\.\-/](\d{1,2})[\.\-/](\d{2,4})(?:[ T](.*))?$/);
+  if (dmY) {
+    const day = Number(dmY[1]);
+    const month = Number(dmY[2]);
+    let year = Number(dmY[3]);
+    if (year < 100) year += year < 70 ? 2000 : 1900;
+    const time = dmY[4] ? dmY[4].trim() : "";
+    const [hours = 0, minutes = 0, seconds = 0] = time
+      ? time.split(/[:\s]+/).map((part) => Number(part))
+      : [];
+    const date = new Date(year, month - 1, day, hours, minutes, seconds);
+    if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+      return date;
+    }
+  }
+
+  const ymd = normalized.match(/^(\d{4})[\.\-/](\d{1,2})[\.\-/](\d{1,2})(?:[ T](.*))?$/);
+  if (ymd) {
+    const year = Number(ymd[1]);
+    const month = Number(ymd[2]);
+    const day = Number(ymd[3]);
+    const time = ymd[4] ? ymd[4].trim() : "";
+    const [hours = 0, minutes = 0, seconds = 0] = time
+      ? time.split(/[:\s]+/).map((part) => Number(part))
+      : [];
+    const date = new Date(year, month - 1, day, hours, minutes, seconds);
+    if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+      return date;
+    }
+  }
+
+  return null;
+}
+
 function formatFaptekaDate(value: Date | string) {
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) throw new Error("F-Apteka sana formati noto'g'ri");
+  const date = parseFaptekaDate(value);
+  if (!date) throw new Error("F-Apteka sana formati noto'g'ri");
   const dd = String(date.getDate()).padStart(2, "0");
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   return `${dd}.${mm}.${date.getFullYear()}`;
@@ -73,13 +186,6 @@ export function getFaptekaEnvStatus() {
     hasSiteToken: Boolean(process.env.FAPTEKA_SITE_TOKEN?.trim()),
     sitePushUrl: getFaptekaSitePushUrl(),
   };
-}
-
-function toPrimitiveString(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return null;
 }
 
 function collectRows(value: unknown, rows: FaptekaRow[] = []): FaptekaRow[] {
@@ -141,7 +247,8 @@ export async function fetchFaptekaReport(input: {
     throw new Error(`F-Apteka ${report.title} javobi xato: ${response.status}`);
   }
 
-  const xml = await response.text();
+  const buffer = await response.arrayBuffer();
+  const xml = decodeXmlBuffer(buffer, response.headers.get("content-type") ?? undefined);
   return {
     report,
     url: url.toString(),
@@ -157,9 +264,7 @@ export function numberValue(value: unknown, fallback = 0) {
 }
 
 export function dateValue(value: unknown) {
-  if (!value) return null;
-  const parsed = new Date(String(value));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseFaptekaDate(value);
 }
 
 export function startOfMonthString(date = new Date()) {

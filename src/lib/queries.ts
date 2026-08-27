@@ -1,6 +1,14 @@
+import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { activeBranch } from "@/lib/actions/_shared";
 import { monthName } from "@/lib/format";
 import { isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
+
+async function getBranchId() {
+  const session = await auth();
+  if (session?.user?.branchId) return session.user.branchId;
+  return (await activeBranch()).id;
+}
 
 // ─── Sana yordamchilari ───
 function startOfDay(d = new Date()) {
@@ -16,6 +24,7 @@ const M = (v: unknown) => num(v) / 1_000_000; // mln so'm
 //  MOLIYA
 // ─────────────────────────────────────────────────────────────
 export async function getFinanceData() {
+  const branchId = await getBranchId();
   const today = startOfDay();
   const tomorrow = new Date(today.getTime() + 864e5);
   const yesterday = new Date(today.getTime() - 864e5);
@@ -36,44 +45,44 @@ export async function getFinanceData() {
     catRows,
     seriesRows,
   ] = await Promise.all([
-    db.sale.aggregate({ _sum: { total: true }, where: { createdAt: { gte: today, lt: tomorrow } } }),
-    db.sale.aggregate({ _sum: { total: true }, where: { createdAt: { gte: yesterday, lt: today } } }),
+    db.sale.aggregate({ _sum: { total: true }, where: { branchId, createdAt: { gte: today, lt: tomorrow } } }),
+    db.sale.aggregate({ _sum: { total: true }, where: { branchId, createdAt: { gte: yesterday, lt: today } } }),
     db.$queryRaw<{ margin: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal" - si."costPrice" * si.quantity), 0)::float8 AS margin
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-      WHERE s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}`,
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}`,
     db.$queryRaw<{ margin: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal" - si."costPrice" * si.quantity), 0)::float8 AS margin
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-      WHERE s."createdAt" >= ${lastMonthStart} AND s."createdAt" < ${monthStart}`,
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${lastMonthStart} AND s."createdAt" < ${monthStart}`,
     db.$queryRaw<{ method: string; sum: number }[]>`
       SELECT s."paymentMethod"::text AS method, COALESCE(SUM(s.total),0)::float8 AS sum
-      FROM "Sale" s WHERE s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
+      FROM "Sale" s WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
       GROUP BY 1`,
     db.$queryRaw<{ value: number }[]>`
-      SELECT COALESCE(SUM(stock * "costPrice"),0)::float8 AS value FROM "Product" WHERE "isActive" = true`,
+      SELECT COALESCE(SUM(stock * "costPrice"),0)::float8 AS value FROM "Product" WHERE "isActive" = true AND "branchId" = ${branchId}`,
     db.$queryRaw<{ d: Date; total: number }[]>`
       SELECT date_trunc('day', s."createdAt") AS d, COALESCE(SUM(s.total),0)::float8 AS total
-      FROM "Sale" s WHERE s."createdAt" >= ${weekAgo}
+      FROM "Sale" s WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${weekAgo}
       GROUP BY 1 ORDER BY 1`,
     db.$queryRaw<{ category: string; revenue: number }[]>`
       SELECT p.category, COALESCE(SUM(si."lineTotal"),0)::float8 AS revenue
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId" JOIN "Product" p ON p.id = si."productId"
-      WHERE s."createdAt" >= ${monthStart} GROUP BY p.category ORDER BY revenue DESC`,
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} GROUP BY p.category ORDER BY revenue DESC`,
     db.$queryRaw<{ m: Date; rev: number }[]>`
       SELECT date_trunc('month', s."createdAt") AS m, COALESCE(SUM(s.total),0)::float8 AS rev
-      FROM "Sale" s WHERE s."createdAt" >= ${sixMonthsAgo}
+      FROM "Sale" s WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${sixMonthsAgo}
       GROUP BY 1 ORDER BY 1`,
   ]);
 
   const [expenseSeries, monthDailyRows] = await Promise.all([
     db.$queryRaw<{ m: Date; exp: number }[]>`
       SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount),0)::float8 AS exp
-      FROM "Expense" e WHERE e."spentAt" >= ${sixMonthsAgo}
+      FROM "Expense" e WHERE e."branchId" = ${branchId} AND e."spentAt" >= ${sixMonthsAgo}
       GROUP BY 1 ORDER BY 1`,
     db.$queryRaw<{ d: Date; total: number }[]>`
       SELECT date_trunc('day', s."createdAt") AS d, COALESCE(SUM(s.total),0)::float8 AS total
-      FROM "Sale" s WHERE s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
+      FROM "Sale" s WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
       GROUP BY 1 ORDER BY 1`,
   ]);
 
@@ -154,15 +163,16 @@ export function stockStatus(stock: number, min: number): StockStatus {
 }
 
 export async function getInventoryData() {
+  const branchId = await getBranchId();
   const in30 = new Date(Date.now() + 30 * 864e5);
   const [products, totalCount, valueRow] = await Promise.all([
     db.product.findMany({
-      where: { isActive: true },
+      where: { isActive: true, branchId },
       orderBy: { name: "asc" },
     }),
-    db.product.count({ where: { isActive: true } }),
+    db.product.count({ where: { isActive: true, branchId } }),
     db.$queryRaw<{ value: number }[]>`
-      SELECT COALESCE(SUM(stock * "costPrice"),0)::float8 AS value FROM "Product" WHERE "isActive" = true`,
+      SELECT COALESCE(SUM(stock * "costPrice"),0)::float8 AS value FROM "Product" WHERE "isActive" = true AND "branchId" = ${branchId}`,
   ]);
 
   const faptekaProducts = products.filter((p) => isFaptekaSku(p.sku));
@@ -201,9 +211,10 @@ export async function getInventoryData() {
 //  HARAJATLAR
 // ─────────────────────────────────────────────────────────────
 export async function getExpensesData() {
+  const branchId = await getBranchId();
   const monthStart = startOfMonth(0);
   const nextMonth = startOfMonth(1);
-  const where = { spentAt: { gte: monthStart, lt: nextMonth } };
+  const where = { branchId, spentAt: { gte: monthStart, lt: nextMonth } };
 
   const [list, totalAgg, byCat] = await Promise.all([
     db.expense.findMany({ where, orderBy: { spentAt: "desc" } }),

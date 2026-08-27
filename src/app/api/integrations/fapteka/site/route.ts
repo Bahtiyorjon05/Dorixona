@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
-import { parseFaptekaXml } from "@/lib/integrations/fapteka/client";
+import { decodeXmlBuffer, parseFaptekaXml } from "@/lib/integrations/fapteka/client";
 import { syncFaptekaSiteRows } from "@/lib/integrations/fapteka/sync";
 
 export const runtime = "nodejs";
@@ -21,8 +21,12 @@ function tokenFromRequest(request: NextRequest) {
   );
 }
 
+function stripBom(text: string) {
+  return text.replace(/^[\uFEFF\uFFFE\u0000]+/, "");
+}
+
 function readXmlFromBody(body: string) {
-  const trimmed = body.trim();
+  const trimmed = stripBom(body).trim();
   if (trimmed.startsWith("<")) return trimmed;
 
   const params = new URLSearchParams(trimmed);
@@ -49,7 +53,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "F-Apteka token noto'g'ri" }, { status: 401 });
   }
 
-  const xml = readXmlFromBody(await request.text());
+  const xml = readXmlFromBody(
+    decodeXmlBuffer(await request.arrayBuffer(), request.headers.get("content-type") ?? undefined),
+  );
   const rows = parseFaptekaXml(xml);
   if (!rows.length) {
     return NextResponse.json({ ok: false, error: "XML ichida F-Apteka qatorlari topilmadi" }, { status: 400 });
