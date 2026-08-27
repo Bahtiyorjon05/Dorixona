@@ -23,6 +23,9 @@ export function createPrismaPgAdapter() {
   const relaxTls = connectionString ? shouldRelaxTls(connectionString) : false;
   const config: PoolConfig = {
     connectionString: connectionString && relaxTls ? withoutSslMode(connectionString) : connectionString,
+    // Serverless: har bir Vercel instance uchun bitta ulanish (Supabase pooler limitini saqlash uchun).
+    max: Number(process.env.POSTGRES_POOL_MAX ?? 1),
+    idleTimeoutMillis: 10_000,
   };
   if (relaxTls) {
     config.ssl = { rejectUnauthorized: false };
