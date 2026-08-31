@@ -56,6 +56,8 @@ model Branch {
   products  Product[]
   sales     Sale[]
   expenses  Expense[]
+  monthlyFinance MonthlyFinance[]
+  debts     Debt[]
   customers Customer[]
 }
 
@@ -274,6 +276,7 @@ model Expense {
   amount      Decimal         @db.Decimal(16, 2)
   spentAt     DateTime        @default(now())
   isRecurring Boolean         @default(false) // doimiy xarajatmi
+  unit        String? // qaysi dorixona: Yunus / Kora (bosh = umumiy)
 
   branchId String
   branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -282,6 +285,7 @@ model Expense {
 
   @@index([branchId])
   @@index([spentAt])
+  @@index([unit])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -338,4 +342,54 @@ model KpiRecord {
 
   @@unique([employeeId, year, month])
   @@index([year, month])
+}
+
+
+// -------------------------------------------------------------
+//  OYLIK MOLIYAVIY XULOSA
+// -------------------------------------------------------------
+model MonthlyFinance {
+  id          String   @id @default(cuid())
+  unit        String
+  periodMonth DateTime
+  turnover    Decimal  @default(0) @db.Decimal(16, 2)
+  profit      Decimal  @default(0) @db.Decimal(16, 2)
+  stockValue  Decimal  @default(0) @db.Decimal(16, 2)
+  revaluation Decimal  @default(0) @db.Decimal(16, 2)
+  bankBalance Decimal? @db.Decimal(16, 2)
+  note        String?
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([unit, periodMonth])
+  @@index([branchId])
+  @@index([periodMonth])
+}
+
+enum DebtDirection {
+  RECEIVABLE
+  PAYABLE
+}
+
+model Debt {
+  id           String        @id @default(cuid())
+  counterparty String
+  direction    DebtDirection
+  totalAmount  Decimal       @db.Decimal(16, 2)
+  paidAmount   Decimal       @default(0) @db.Decimal(16, 2)
+  unit         String?
+  note         String?
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([branchId])
+  @@index([direction])
 }

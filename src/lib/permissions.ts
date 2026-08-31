@@ -1,5 +1,6 @@
 export const PERMISSION_DEFS = [
   { key: "moliya", label: "Moliya", path: "/moliya" },
+  { key: "statistika", label: "Statistika", path: "/statistika" },
   { key: "harajatlar", label: "Harajatlar", path: "/harajatlar" },
   { key: "ombor", label: "Ombor", path: "/ombor" },
   { key: "pos", label: "Kassa (POS)", path: "/pos" },

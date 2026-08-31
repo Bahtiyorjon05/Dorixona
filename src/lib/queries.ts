@@ -428,3 +428,94 @@ export async function getReportsData() {
 
   return { correlation, critical: critical?.name ?? null };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  STATISTIKA — oylik moliyaviy xulosa (Yunus / Kora bo'yicha)
+// ─────────────────────────────────────────────────────────────
+export async function getStatsData(period?: Date) {
+  const branchId = await getBranchId();
+
+  // Oy berilmasa — ma'lumot bor eng oxirgi oyni olamiz
+  const latest =
+    period ??
+    (
+      await db.monthlyFinance.findFirst({
+        where: { branchId },
+        orderBy: { periodMonth: "desc" },
+        select: { periodMonth: true },
+      })
+    )?.periodMonth ??
+    startOfMonth(0);
+
+  const monthStart = new Date(latest.getFullYear(), latest.getMonth(), 1);
+  const nextMonth = new Date(latest.getFullYear(), latest.getMonth() + 1, 1);
+  const where = { branchId, spentAt: { gte: monthStart, lt: nextMonth } };
+
+  const [finance, byUnit, byCat, debts] = await Promise.all([
+    db.monthlyFinance.findMany({
+      where: { branchId, periodMonth: monthStart },
+      orderBy: { unit: "asc" },
+    }),
+    db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, _count: true, where }),
+    db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
+    db.debt.findMany({ where: { branchId }, orderBy: { createdAt: "asc" } }),
+  ]);
+
+  const spentByUnit = new Map<string, { amount: number; count: number }>();
+  for (const row of byUnit) {
+    spentByUnit.set(row.unit ?? "Umumiy", {
+      amount: num(row._sum.amount),
+      count: row._count,
+    });
+  }
+
+  const names = Array.from(
+    new Set([...finance.map((f) => f.unit), ...spentByUnit.keys()]),
+  ).sort();
+
+  const units = names.map((name) => {
+    const f = finance.find((x) => x.unit === name);
+    const spent = spentByUnit.get(name);
+    const profit = num(f?.profit);
+    const expenses = spent?.amount ?? 0;
+    return {
+      name,
+      turnover: num(f?.turnover),
+      profit,
+      expenses,
+      expenseCount: spent?.count ?? 0,
+      netProfit: profit - expenses,
+      stockValue: num(f?.stockValue),
+      revaluation: num(f?.revaluation),
+      bankBalance: f?.bankBalance == null ? null : num(f.bankBalance),
+      note: f?.note ?? null,
+    };
+  });
+
+  const sum = (pick: (u: (typeof units)[number]) => number) =>
+    units.reduce((acc, u) => acc + pick(u), 0);
+
+  return {
+    period: monthStart,
+    units,
+    totals: {
+      turnover: sum((u) => u.turnover),
+      profit: sum((u) => u.profit),
+      expenses: sum((u) => u.expenses),
+      netProfit: sum((u) => u.netProfit),
+      stockValue: sum((u) => u.stockValue),
+    },
+    categories: byCat
+      .map((c) => ({ category: c.category as string, amount: num(c._sum.amount) }))
+      .sort((a, b) => b.amount - a.amount),
+    debts: debts.map((d) => ({
+      id: d.id,
+      counterparty: d.counterparty,
+      direction: d.direction as string,
+      total: num(d.totalAmount),
+      paid: num(d.paidAmount),
+      remaining: num(d.totalAmount) - num(d.paidAmount),
+      note: d.note,
+    })),
+  };
+}

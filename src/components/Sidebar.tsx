@@ -9,6 +9,7 @@ const NAV: { section?: string; items: { href: string; label: string; icon: strin
   {
     items: [
       { href: "/moliya", label: "Moliya", icon: "📈", permission: "moliya" },
+      { href: "/statistika", label: "Statistika", icon: "💹", permission: "statistika" },
       { href: "/harajatlar", label: "Harajatlar", icon: "🧾", permission: "harajatlar" },
       { href: "/ombor", label: "Ombor", icon: "📦", permission: "ombor" },
       { href: "/pos", label: "Kassa (POS)", icon: "🛒", permission: "pos" },
