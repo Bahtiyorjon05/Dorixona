@@ -1,6 +1,6 @@
 import { getExpensesData } from "@/lib/queries";
-import { formatNumber } from "@/lib/format";
-import { MetricCard, PageHeader } from "@/components/ui";
+import { formatNumber, formatSom } from "@/lib/format";
+import { Card, MetricCard, PageHeader } from "@/components/ui";
 import { ExpensesPanel } from "@/components/panels/ExpensesPanel";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,21 @@ export default async function HarajatlarPage() {
         <MetricCard label="Maosh fondi" value={formatNumber(d.salary)} sub="Xodimlar + bonus" />
         <MetricCard label="Sotib olishlar" value={formatNumber(d.goods)} sub="Tovar" />
       </div>
+
+      {d.byUnit.length > 1 && (
+        <Card title="Dorixonalar kesimi" icon="🏪" className="mb-5">
+          <div className="space-y-2">
+            {d.byUnit.map((u) => (
+              <div key={u.unit} className="flex items-center justify-between text-sm">
+                <span>
+                  {u.unit} <span className="text-muted">({u.count} ta)</span>
+                </span>
+                <span>{formatSom(u.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <ExpensesPanel
         list={d.list.map((e) => ({

@@ -1,6 +1,6 @@
 import { getFinanceData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
-import { Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
+import { Badge, Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +134,71 @@ export default async function MoliyaPage() {
           ))}
         </div>
       </Card>
+
+      {d.monthlyPeriod && d.monthlyUnits.length > 0 && (
+        <Card
+          title={`${d.monthlyPeriod.getFullYear()}-yil ${monthName(d.monthlyPeriod.getMonth() + 1)} — dorixonalar kesimi`}
+          icon="🏪"
+          className="mt-5"
+        >
+          <div className="grid gap-4 lg:grid-cols-2">
+            {d.monthlyUnits.map((u) => (
+              <div key={u.unit} className="rounded-lg border border-surface p-3">
+                <div className="mb-2 font-medium">{u.unit}</div>
+                <dl className="space-y-1.5 text-sm">
+                  <div className="flex justify-between"><dt className="text-muted">Savdo</dt><dd>{formatSom(u.turnover)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-muted">Foyda</dt><dd>{formatSom(u.profit)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-muted">Xarajat</dt><dd>−{formatSom(u.expenses)}</dd></div>
+                  <div className="flex justify-between border-t border-surface pt-1.5 font-medium">
+                    <dt>Sof foyda</dt>
+                    <dd style={{ color: u.netProfit >= 0 ? "var(--c-success)" : "var(--c-danger)" }}>
+                      {formatSom(u.netProfit)}
+                    </dd>
+                  </div>
+                  {u.stockValue > 0 && (
+                    <div className="flex justify-between"><dt className="text-muted">Qoldiq</dt><dd>{formatSom(u.stockValue)}</dd></div>
+                  )}
+                  {u.revaluation > 0 && (
+                    <div className="flex justify-between"><dt className="text-muted">Qayta baholash</dt><dd>{formatSom(u.revaluation)}</dd></div>
+                  )}
+                  {u.bankBalance !== null && (
+                    <div className="flex justify-between"><dt className="text-muted">Bank</dt><dd>{formatSom(u.bankBalance)}</dd></div>
+                  )}
+                </dl>
+                {u.note && <p className="mt-2 text-xs text-muted">{u.note}</p>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {d.debts.length > 0 && (
+        <Card title="Qarzlar" icon="🧮" className="mt-5">
+          <div className="space-y-3">
+            {d.debts.map((q) => (
+              <div key={q.id} className="border-b border-surface pb-3 last:border-0 last:pb-0">
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span>{q.counterparty}</span>
+                  <Badge color={q.direction === "PAYABLE" ? "red" : "green"}>
+                    {q.direction === "PAYABLE" ? "To'lashimiz kerak" : "Olishimiz kerak"}
+                  </Badge>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted">Qoldiq</span>
+                  <span>{formatSom(q.remaining)}</span>
+                </div>
+                {q.paid > 0 && (
+                  <div className="flex justify-between text-xs text-muted">
+                    <span>To&apos;langan</span>
+                    <span>{formatSom(q.paid)} / {formatSom(q.total)}</span>
+                  </div>
+                )}
+                {q.note && <p className="mt-1 text-xs text-muted">{q.note}</p>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
