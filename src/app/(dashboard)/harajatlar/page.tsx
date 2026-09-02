@@ -161,13 +161,15 @@ export default async function HarajatlarPage() {
       )}
 
       <ExpensesPanel
+        units={d.byUnit.map((u) => u.unit).filter((u) => u !== "Umumiy")}
         list={d.list.map((e) => ({
           id: e.id,
-          title: e.unit ? `${e.title} · ${e.unit}` : e.title,
+          title: e.title,
           category: e.category,
           amount: e.amount,
           spentAt: e.spentAt.toISOString(),
           isRecurring: e.isRecurring,
+          unit: e.unit,
         }))}
       />
     </div>
