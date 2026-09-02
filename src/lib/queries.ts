@@ -134,30 +134,6 @@ export async function getFinanceData() {
   const margin = num(monthMargin[0]?.margin);
   const lastMargin = num(lastMonthMargin[0]?.margin) || 1;
 
-  // Oylik moliyaviy xulosa (Yunus / Kora) va qarzlar
-  const latestFin = await db.monthlyFinance.findFirst({
-    where: { branchId },
-    orderBy: { periodMonth: "desc" },
-    select: { periodMonth: true },
-  });
-  const finFrom = latestFin?.periodMonth ?? null;
-  const finTo = finFrom ? new Date(finFrom.getFullYear(), finFrom.getMonth() + 1, 1) : null;
-
-  const [finRows, debtRows, finExpRows] = await Promise.all([
-    finFrom
-      ? db.monthlyFinance.findMany({ where: { branchId, periodMonth: finFrom }, orderBy: { unit: "asc" } })
-      : Promise.resolve([]),
-    db.debt.findMany({ where: { branchId }, orderBy: { createdAt: "asc" } }),
-    finFrom && finTo
-      ? db.expense.groupBy({
-          by: ["unit"],
-          _sum: { amount: true },
-          where: { branchId, spentAt: { gte: finFrom, lt: finTo } },
-        })
-      : Promise.resolve([]),
-  ]);
-  const finExpMap = new Map(finExpRows.map((r) => [r.unit ?? "Umumiy", num(r._sum.amount)]));
-
   return {
     todaySales,
     todayTrend: ((todaySales - yesterdaySales) / yesterdaySales) * 100,
@@ -172,31 +148,6 @@ export async function getFinanceData() {
     sixMonthSales: profitSeries.map((p) => ({ label: p.label, value: p.savdo })),
     categories,
     profitSeries,
-    monthlyPeriod: finFrom,
-    monthlyUnits: finRows.map((f) => {
-      const spent = finExpMap.get(f.unit) ?? 0;
-      const profit = num(f.profit);
-      return {
-        unit: f.unit,
-        turnover: num(f.turnover),
-        profit,
-        expenses: spent,
-        netProfit: profit - spent,
-        stockValue: num(f.stockValue),
-        revaluation: num(f.revaluation),
-        bankBalance: f.bankBalance == null ? null : num(f.bankBalance),
-        note: f.note,
-      };
-    }),
-    debts: debtRows.map((q) => ({
-      id: q.id,
-      counterparty: q.counterparty,
-      direction: q.direction as string,
-      total: num(q.totalAmount),
-      paid: num(q.paidAmount),
-      remaining: num(q.totalAmount) - num(q.paidAmount),
-      note: q.note,
-    })),
   };
 }
 
@@ -259,22 +210,69 @@ export async function getInventoryData() {
 // ─────────────────────────────────────────────────────────────
 //  HARAJATLAR
 // ─────────────────────────────────────────────────────────────
-export async function getExpensesData() {
+export async function getExpensesData(period?: Date) {
   const branchId = await getBranchId();
-  const monthStart = startOfMonth(0);
-  const nextMonth = startOfMonth(1);
+
+  // Oy berilmasa: joriy oyda yozuv bo'lmasa, ma'lumot bor eng oxirgi oyni ko'rsatamiz
+  let monthStart: Date;
+  if (period) {
+    monthStart = new Date(period.getFullYear(), period.getMonth(), 1);
+  } else {
+    const current = startOfMonth(0);
+    const currentCount = await db.expense.count({
+      where: { branchId, spentAt: { gte: current, lt: startOfMonth(1) } },
+    });
+    if (currentCount > 0) {
+      monthStart = current;
+    } else {
+      const last = await db.expense.findFirst({
+        where: { branchId },
+        orderBy: { spentAt: "desc" },
+        select: { spentAt: true },
+      });
+      monthStart = last
+        ? new Date(last.spentAt.getFullYear(), last.spentAt.getMonth(), 1)
+        : current;
+    }
+  }
+  const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
   const where = { branchId, spentAt: { gte: monthStart, lt: nextMonth } };
 
-  const [list, totalAgg, byCat, byUnitRows] = await Promise.all([
-    db.expense.findMany({ where, orderBy: { spentAt: "desc" } }),
-    db.expense.aggregate({ _sum: { amount: true }, where }),
-    db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
-    db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, _count: true, where }),
-  ]);
+  const [list, totalAgg, byCat, byUnitRows, finRows, debtRows, allDates] =
+    await Promise.all([
+      db.expense.findMany({ where, orderBy: { spentAt: "desc" } }),
+      db.expense.aggregate({ _sum: { amount: true }, where }),
+      db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
+      db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, _count: true, where }),
+      db.monthlyFinance.findMany({
+        where: { branchId, periodMonth: monthStart },
+        orderBy: { unit: "asc" },
+      }),
+      db.debt.findMany({ where: { branchId }, orderBy: { createdAt: "asc" } }),
+      db.expense.findMany({
+        where: { branchId },
+        select: { spentAt: true },
+        orderBy: { spentAt: "desc" },
+      }),
+    ]);
 
   const catSum = (c: string) => num(byCat.find((b) => b.category === c)?._sum.amount);
 
+  const byUnit = byUnitRows
+    .map((r) => ({ unit: r.unit ?? "Umumiy", amount: num(r._sum.amount), count: r._count }))
+    .sort((a, b) => b.amount - a.amount);
+  const unitSpent = new Map(byUnit.map((u) => [u.unit, u.amount]));
+
+  const availableMonths = Array.from(
+    new Set(allDates.map((d) => `${d.spentAt.getFullYear()}-${d.spentAt.getMonth()}`)),
+  ).map((key) => {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m, 1);
+  });
+
   return {
+    period: monthStart,
+    availableMonths,
     list: list.map((e) => ({
       id: e.id,
       title: e.title,
@@ -288,9 +286,34 @@ export async function getExpensesData() {
     rent: catSum("RENT") + catSum("UTILITIES"),
     salary: catSum("SALARY"),
     goods: catSum("GOODS"),
-    byUnit: byUnitRows
-      .map((r) => ({ unit: r.unit ?? "Umumiy", amount: num(r._sum.amount), count: r._count }))
+    byCategory: byCat
+      .map((c) => ({ category: c.category as string, amount: num(c._sum.amount) }))
       .sort((a, b) => b.amount - a.amount),
+    byUnit,
+    monthlyUnits: finRows.map((f) => {
+      const spent = unitSpent.get(f.unit) ?? 0;
+      const profit = num(f.profit);
+      return {
+        unit: f.unit,
+        turnover: num(f.turnover),
+        profit,
+        expenses: spent,
+        netProfit: profit - spent,
+        stockValue: num(f.stockValue),
+        revaluation: num(f.revaluation),
+        bankBalance: f.bankBalance == null ? null : num(f.bankBalance),
+        note: f.note,
+      };
+    }),
+    debts: debtRows.map((q) => ({
+      id: q.id,
+      counterparty: q.counterparty,
+      direction: q.direction as string,
+      total: num(q.totalAmount),
+      paid: num(q.paidAmount),
+      remaining: num(q.totalAmount) - num(q.paidAmount),
+      note: q.note,
+    })),
   };
 }
 
