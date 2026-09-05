@@ -1,14 +1,16 @@
 import { auth } from "@/auth";
 import { MobileNav, Sidebar } from "@/components/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { FilialSwitcher } from "@/components/FilialSwitcher";
 import { logout } from "@/lib/actions/auth";
+import { currentFilial } from "@/lib/filial-server";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const [session, filial] = await Promise.all([auth(), currentFilial()]);
   const name = session?.user?.name ?? "Foydalanuvchi";
   const role = session?.user?.role;
   const permissions = session?.user?.permissions ?? [];
@@ -29,6 +31,7 @@ export default async function DashboardLayout({
             <span>💊</span> Dorixona
           </div>
           <div className="ml-auto flex items-center gap-3">
+            <FilialSwitcher current={filial} />
             <ThemeToggle />
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light text-xs font-medium text-primary">

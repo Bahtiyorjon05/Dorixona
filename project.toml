@@ -4,4 +4,4 @@ value = ""
 
 [[build.env]]
 name = "GOOGLE_ENTRYPOINT"
-value = "npm run dev"
+value = "npm run dev" 

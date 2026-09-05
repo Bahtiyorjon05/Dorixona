@@ -79,6 +79,7 @@ model Employee {
   baseSalary Decimal        @db.Decimal(14, 2) // base maosh (so'm)
   status     EmployeeStatus @default(ACTIVE)
   hiredAt    DateTime       @default(now())
+  unit       String? // qaysi dorixona: Yunusobod / Qoraqamish (bo'sh = umumiy)
 
   branchId String
   branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -95,6 +96,7 @@ model Employee {
   updatedAt DateTime @updatedAt
 
   @@index([branchId])
+  @@index([unit])
 }
 
 // ─────────────────────────────────────────────────────────────

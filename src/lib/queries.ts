@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { activeBranch } from "@/lib/actions/_shared";
 import { monthName } from "@/lib/format";
 import { isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
+import { unitWhere } from "@/lib/filial";
+import { currentFilial } from "@/lib/filial-server";
 
 async function getBranchId() {
   const session = await auth();
@@ -236,7 +238,9 @@ export async function getExpensesData(period?: Date) {
     }
   }
   const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
-  const where = { branchId, spentAt: { gte: monthStart, lt: nextMonth } };
+  const filial = await currentFilial();
+  const unitFilter = unitWhere(filial);
+  const where = { branchId, spentAt: { gte: monthStart, lt: nextMonth }, ...unitFilter };
 
   const [list, totalAgg, byCat, byUnitRows, finRows, debtRows, allDates] =
     await Promise.all([
@@ -245,7 +249,7 @@ export async function getExpensesData(period?: Date) {
       db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
       db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, _count: true, where }),
       db.monthlyFinance.findMany({
-        where: { branchId, periodMonth: monthStart },
+        where: { branchId, periodMonth: monthStart, ...unitFilter },
         orderBy: { unit: "asc" },
       }),
       db.debt.findMany({ where: { branchId }, orderBy: { createdAt: "asc" } }),
@@ -322,7 +326,9 @@ export async function getExpensesData(period?: Date) {
 // ─────────────────────────────────────────────────────────────
 export async function getEmployeesData() {
   const now = new Date();
+  const filial = await currentFilial();
   const employees = await db.employee.findMany({
+    where: { ...unitWhere(filial) },
     orderBy: { createdAt: "asc" },
     include: {
       branch: true,
@@ -334,6 +340,7 @@ export async function getEmployeesData() {
     fullName: e.fullName,
     position: e.position,
     branch: e.branch.name,
+    unit: e.unit,
     baseSalary: num(e.baseSalary),
     status: e.status,
     kpi: e.kpiRecords[0]?.totalScore ?? null,
