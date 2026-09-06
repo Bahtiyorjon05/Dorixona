@@ -53,6 +53,17 @@ export default async function KpiPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-4">
           <Card title={`Reyting — ${monthName(d.month)} ${d.year}`} icon="🏆">
+            {d.ranking.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted">
+                Faol xodim yo&apos;q. Avval Xodimlar bo&apos;limidan xodim qo&apos;shing.
+              </p>
+            )}
+            {d.ranking.length > 0 && d.scoredCount === 0 && (
+              <p className="mb-3 rounded-lg border border-edge bg-surface p-3 text-xs text-muted">
+                Bu oyga hali KPI kiritilmagan. Har bir xodim yonidagi tahrirlash tugmasi orqali
+                baholarni kiriting — reyting, bonus va o&apos;rtacha KPI avtomatik hisoblanadi.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               {d.ranking.map((r, i) => (
                 <div key={r.id} className="flex items-center gap-3 rounded-lg border border-edge p-2.5">
@@ -70,11 +81,18 @@ export default async function KpiPage() {
                     <div className="text-xs text-muted">{r.position}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-lg font-semibold" style={{ color: scoreColor(r.total) }}>
-                      {r.total}
+                    <div
+                      className="text-lg font-semibold"
+                      style={{ color: r.hasRecord ? scoreColor(r.total) : "var(--c-muted)" }}
+                    >
+                      {r.hasRecord ? r.total : "—"}
                     </div>
                   </div>
-                  <Badge color={bonusBadge(r.bonusPercent)}>+{r.bonusPercent}% bonus</Badge>
+                  {r.hasRecord ? (
+                    <Badge color={bonusBadge(r.bonusPercent)}>+{r.bonusPercent}% bonus</Badge>
+                  ) : (
+                    <Badge color="amber">KPI kiritilmagan</Badge>
+                  )}
                   <KpiEditor
                     employeeId={r.employeeId}
                     name={r.name}

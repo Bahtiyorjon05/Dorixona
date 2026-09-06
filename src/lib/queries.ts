@@ -352,43 +352,68 @@ export async function getEmployeesData() {
 // ─────────────────────────────────────────────────────────────
 export async function getKpiData() {
   const now = new Date();
-  const records = await db.kpiRecord.findMany({
-    where: { year: now.getFullYear(), month: now.getMonth() + 1 },
-    include: { employee: true },
-    orderBy: { totalScore: "desc" },
+  const filial = await currentFilial();
+
+  // Joriy oyda yozuv bo'lmasa — ma'lumot bor eng oxirgi oyni ko'rsatamiz
+  const latest = await db.kpiRecord.findFirst({
+    orderBy: [{ year: "desc" }, { month: "desc" }],
+    select: { year: true, month: true },
   });
+  const year = latest?.year ?? now.getFullYear();
+  const month = latest?.month ?? now.getMonth() + 1;
 
-  const ranking = records.map((r) => ({
-    id: r.id,
-    employeeId: r.employeeId,
-    name: r.employee.fullName,
-    position: r.employee.position,
-    baseSalary: num(r.employee.baseSalary),
-    total: r.totalScore,
-    bonusPercent: r.bonusPercent,
-    bonusAmount: num(r.bonusAmount),
-    components: {
-      sales: r.salesScore,
-      margin: r.marginScore,
-      attendance: r.attendanceScore,
-      discipline: r.disciplineScore,
-      customer: r.customerScore,
-    },
-  }));
+  // Barcha faol xodimlar ro'yxatga kiradi — KPI hali kiritilmagan bo'lsa ham,
+  // aks holda birinchi KPI ni kiritishning iloji bo'lmaydi.
+  const [employees, records] = await Promise.all([
+    db.employee.findMany({
+      where: { status: "ACTIVE", ...unitWhere(filial) },
+      orderBy: { fullName: "asc" },
+    }),
+    db.kpiRecord.findMany({ where: { year, month } }),
+  ]);
 
-  const avg = ranking.length
-    ? Math.round((ranking.reduce((s, r) => s + r.total, 0) / ranking.length) * 10) / 10
+  const byEmployee = new Map(records.map((r) => [r.employeeId, r]));
+
+  const ranking = employees
+    .map((e) => {
+      const r = byEmployee.get(e.id);
+      return {
+        id: r?.id ?? `pending-${e.id}`,
+        employeeId: e.id,
+        name: e.fullName,
+        position: e.position,
+        unit: e.unit,
+        baseSalary: num(e.baseSalary),
+        hasRecord: Boolean(r),
+        total: r?.totalScore ?? 0,
+        bonusPercent: r?.bonusPercent ?? 0,
+        bonusAmount: num(r?.bonusAmount),
+        components: {
+          sales: r?.salesScore ?? 0,
+          margin: r?.marginScore ?? 0,
+          attendance: r?.attendanceScore ?? 0,
+          discipline: r?.disciplineScore ?? 0,
+          customer: r?.customerScore ?? 0,
+        },
+      };
+    })
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+
+  const scored = ranking.filter((r) => r.hasRecord);
+  const avg = scored.length
+    ? Math.round((scored.reduce((s, r) => s + r.total, 0) / scored.length) * 10) / 10
     : 0;
 
   return {
     ranking,
+    scoredCount: scored.length,
     avg,
     bonusFund: ranking.reduce((s, r) => s + r.bonusAmount, 0),
-    over90: ranking.filter((r) => r.total >= 90).length,
-    under60: ranking.filter((r) => r.total < 60).length,
-    top: ranking[0] ?? null,
-    month: now.getMonth() + 1,
-    year: now.getFullYear(),
+    over90: scored.filter((r) => r.total >= 90).length,
+    under60: scored.filter((r) => r.total < 60).length,
+    top: scored[0] ?? null,
+    month,
+    year,
   };
 }
 

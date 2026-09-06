@@ -1,6 +1,8 @@
 import { getExpensesData, getFinanceData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
-import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
+import { Badge, Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
+import { FoydaXarajatChart, SavdoChart, ToifalarChart } from "@/components/charts/FinanceCharts";
+import { currentFilial } from "@/lib/filial-server";
 
 export const dynamic = "force-dynamic";
 
@@ -55,14 +57,13 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export default async function MoliyaPage() {
-  const [d, ex] = await Promise.all([getFinanceData(), getExpensesData()]);
+  const [d, ex, filial] = await Promise.all([getFinanceData(), getExpensesData(), currentFilial()]);
 
   const units = ex.monthlyUnits;
   const totalTurnover = units.reduce((s, u) => s + u.turnover, 0);
   const totalProfit = units.reduce((s, u) => s + u.profit, 0);
   const net = totalProfit - ex.total;
   const period = `${ex.period.getFullYear()}-yil ${monthName(ex.period.getMonth() + 1)}`;
-  const hasPos = d.cashTotal > 0 || d.todaySales > 0;
 
   const catBars = ex.byCategory.map((c) => ({
     label: CATEGORY_LABEL[c.category] ?? c.category,
@@ -76,12 +77,56 @@ export default async function MoliyaPage() {
 
   return (
     <div>
-      <PageHeader title="Moliyaviy statistika" subtitle={`${period} — umumiy holat`} />
+      <PageHeader
+        title="Moliyaviy ko'rsatkichlar"
+        subtitle={`${period}${filial === "Umumiy" ? "" : ` — ${filial} filiali`}`}
+      />
 
-      {/* Asosiy ko'rsatkichlar */}
+      {/* Kassa ko'rsatkichlari */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard icon="🪙" label="Jami savdo" value={formatNumber(totalTurnover)} sub={period} />
-        <MetricCard icon="📈" label="Jami foyda" value={formatNumber(totalProfit)} sub="Harajatlardan oldin" />
+        <MetricCard
+          icon="🪙"
+          label="Kunlik savdo"
+          value={formatNumber(d.todaySales)}
+          sub={
+            <>
+              {d.todayTrend >= 0 ? (
+                <TrendUp>{Math.abs(d.todayTrend).toFixed(1)}%</TrendUp>
+              ) : (
+                <TrendDown>{Math.abs(d.todayTrend).toFixed(1)}%</TrendDown>
+              )}{" "}
+              kechadan
+            </>
+          }
+        />
+        <MetricCard icon="📈" label="Oylik foyda (marja)" value={formatNumber(d.monthlyProfit)} sub="POS savdolaridan" />
+        <MetricCard
+          icon="👛"
+          label="Kassadagi pul"
+          value={formatNumber(d.cashTotal)}
+          sub={`Naqd: ${formatNumber(d.cash)} · Terminal: ${formatNumber(d.card)}`}
+        />
+        <MetricCard icon="📦" label="Ombor qiymati" value={formatNumber(d.inventoryValue)} sub="Tan narxida" />
+      </div>
+
+      {/* Grafiklar */}
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="Savdo dinamikasi" icon="📊">
+          <SavdoChart week={d.weekSales} month={d.monthDaily} sixMonth={d.sixMonthSales} />
+        </Card>
+        <Card title="Toifalar ulushi" icon="🍩">
+          <ToifalarChart data={d.categories} />
+        </Card>
+      </div>
+
+      <Card title="6 oylik savdo va harajat tahlili" icon="📈" className="mb-5">
+        <FoydaXarajatChart data={d.profitSeries} />
+      </Card>
+
+      {/* Hisobot raqamlari */}
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard icon="💰" label="Jami savdo (hisobot)" value={formatNumber(totalTurnover)} sub={period} />
+        <MetricCard icon="📊" label="Jami foyda (hisobot)" value={formatNumber(totalProfit)} sub="Harajatlardan oldin" />
         <MetricCard
           icon="🧾"
           label="Jami harajat"
@@ -98,7 +143,6 @@ export default async function MoliyaPage() {
         />
       </div>
 
-      {/* Dorixonalar kesimi */}
       {units.length > 0 && (
         <Card title={`${period} — dorixonalar kesimi`} icon="🏪" className="mb-5">
           <div className="grid gap-4 lg:grid-cols-3">
@@ -128,7 +172,6 @@ export default async function MoliyaPage() {
         </Card>
       )}
 
-      {/* Harajat statistikasi — harajatlar sahifasidan sinxron */}
       <div className="mb-5 grid gap-3 lg:grid-cols-2">
         <Card title="Harajat toifalari" icon="📊">
           <Bars data={catBars} tone="danger" />
@@ -139,29 +182,11 @@ export default async function MoliyaPage() {
         </Card>
         <Card title="Dorixonalar bo'yicha harajat" icon="🏪">
           <Bars data={unitBars} />
-          <div className="mt-4 flex justify-between border-t border-surface pt-3 text-sm font-medium">
-            <span>Eng ko&apos;p</span>
-            <span>{unitBars[0]?.label ?? "—"}</span>
-          </div>
         </Card>
       </div>
 
-      {/* Ombor va kassa */}
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard icon="📦" label="Ombor qiymati" value={formatNumber(d.inventoryValue)} sub="Sotuv narxida" />
-        <MetricCard icon="🛒" label="Kunlik savdo (kassa)" value={formatNumber(d.todaySales)} sub="Bugun, POS orqali" />
-        <MetricCard
-          icon="👛"
-          label="Oylik tushum (kassa)"
-          value={formatNumber(d.cashTotal)}
-          sub={`Naqd: ${formatNumber(d.cash)} · Terminal: ${formatNumber(d.card)}`}
-        />
-        <MetricCard icon="💹" label="Oylik marja (kassa)" value={formatNumber(d.monthlyProfit)} sub="POS savdolaridan" />
-      </div>
-
-      {/* Qarzlar */}
       {ex.debts.length > 0 && (
-        <Card title="Qarzlar" icon="🧮" className="mb-5">
+        <Card title="Qarzlar" icon="🧮">
           <div className="space-y-3">
             {ex.debts.map((q) => (
               <div key={q.id} className="border-b border-surface pb-3 last:border-0 last:pb-0">
@@ -175,53 +200,12 @@ export default async function MoliyaPage() {
                   <span className="text-muted">Qoldiq</span>
                   <span>{formatSom(q.remaining)}</span>
                 </div>
-                {q.paid > 0 && (
-                  <div className="flex justify-between text-xs text-muted">
-                    <span>To&apos;langan</span>
-                    <span>
-                      {formatSom(q.paid)} / {formatSom(q.total)}
-                    </span>
-                  </div>
-                )}
                 {q.note && <p className="mt-1 text-xs text-muted">{q.note}</p>}
               </div>
             ))}
           </div>
         </Card>
       )}
-
-      {!hasPos && (
-        <p className="mb-5 text-xs text-muted">
-          Kassada (POS) hali savdo qayd etilmagan — quyidagi grafiklar shu sababli bo&apos;sh. Yuqoridagi savdo va
-          foyda raqamlari oylik hisobotdan olingan.
-        </p>
-      )}
-
-      <Card title="6 oylik savdo va harajat tahlili" icon="📈">
-        <div className="space-y-2">
-          {d.profitSeries.map((month) => (
-            <div key={month.label} className="grid grid-cols-[48px_1fr] items-center gap-3 text-xs">
-              <span className="text-muted">{month.label}</span>
-              <div className="grid gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="w-14 text-muted">Savdo</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface">
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, month.savdo * 12)}%` }} />
-                  </div>
-                  <span className="w-14 text-right text-muted">{month.savdo}M</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-14 text-muted">Harajat</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface">
-                    <div className="h-full rounded-full bg-danger" style={{ width: `${Math.min(100, month.xarajat * 12)}%` }} />
-                  </div>
-                  <span className="w-14 text-right text-muted">{month.xarajat}M</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
