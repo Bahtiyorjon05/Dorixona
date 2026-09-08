@@ -5,12 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDate, formatNumber } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, PrimaryButton, Select, SubmitButton } from "@/components/Modal";
-import {
-  copyRecurringExpenses,
-  createExpense,
-  deleteExpense,
-  updateExpense,
-} from "@/lib/actions/expenses";
+import { createExpense, deleteExpense, updateExpense } from "@/lib/actions/expenses";
 
 type Expense = {
   id: string;
@@ -39,18 +34,7 @@ function toDateInput(value: string | Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function ExpensesPanel({
-  list,
-  units = [],
-  year,
-  month,
-}: {
-  list: Expense[];
-  units?: string[];
-  /** Ko'rsatilayotgan oy — takrorlanuvchi harajatlarni ko'chirish uchun */
-  year: number;
-  month: number;
-}) {
+export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: string[] }) {
   const router = useRouter();
   const [filter, setFilter] = useState("ALL");
   const [unitFilter, setUnitFilter] = useState("ALL");
@@ -58,7 +42,6 @@ export function ExpensesPanel({
   const [formOpen, setFormOpen] = useState(false);
   const [confirming, setConfirming] = useState<Expense | null>(null);
   const [error, setError] = useState("");
-  const [copyInfo, setCopyInfo] = useState("");
   const [pending, start] = useTransition();
 
   const unitOptions = useMemo(() => {
@@ -124,24 +107,6 @@ export function ExpensesPanel({
     });
   }
 
-  function copyRecurring() {
-    setCopyInfo("");
-    start(async () => {
-      const res = await copyRecurringExpenses({ year, month });
-      if (!res.ok) {
-        setCopyInfo(res.error);
-        return;
-      }
-      setCopyInfo(
-        res.created === 0
-          ? `${res.fromLabel} oyidagi barcha takrorlanuvchi harajatlar allaqachon kiritilgan.`
-          : `${res.fromLabel} oyidan ${res.created} ta harajat ko'chirildi` +
-              (res.skipped > 0 ? ` (${res.skipped} tasi allaqachon bor edi).` : "."),
-      );
-      router.refresh();
-    });
-  }
-
   return (
     <div className="card p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -175,19 +140,9 @@ export function ExpensesPanel({
               </option>
             ))}
           </Select>
-          <button
-            onClick={copyRecurring}
-            disabled={pending}
-            title="Oldingi oydagi takrorlanuvchi harajatlarni (ijara, oylik, kommunal) shu oyga ko'chirish"
-            className="rounded-lg border border-edge px-2.5 py-1.5 text-xs hover:bg-surface disabled:opacity-50"
-          >
-            ⧉ Oldingi oydan
-          </button>
           <PrimaryButton onClick={openCreate}>+ Qo&apos;shish</PrimaryButton>
         </div>
       </div>
-
-      {copyInfo && <p className="mb-3 rounded-lg bg-surface px-3 py-2 text-xs">{copyInfo}</p>}
 
       <div className="flex flex-col">
         {filtered.length === 0 && <p className="py-6 text-center text-sm text-muted">Harajat yo&apos;q</p>}
