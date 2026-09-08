@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { monthName } from "@/lib/format";
 import { activeBranch, fail, requireUser, type ActionResult } from "./_shared";
 
 const schema = z.object({
@@ -96,4 +97,77 @@ export async function listExpenseUnits(): Promise<string[]> {
     orderBy: { unit: "asc" },
   });
   return rows.map((r) => r.unit!).filter(Boolean);
+}
+
+export type CopyResult =
+  | { ok: true; created: number; skipped: number; fromLabel: string }
+  | { ok: false; error: string };
+
+/**
+ * Oldingi oydagi takrorlanuvchi (isRecurring) harajatlarni tanlangan oyga
+ * nusxalaydi — ijara, kommunal, oyliklar va shunga o'xshash har oy
+ * qaytariladigan yozuvlarni qayta-qayta qo'lda kiritmaslik uchun.
+ *
+ * Bir xil nom + dorixona kombinatsiyasi maqsad oyda allaqachon bo'lsa,
+ * o'sha qator o'tkazib yuboriladi. Shuning uchun tugmani ikki marta
+ * bossangiz ham dublikat paydo bo'lmaydi.
+ */
+export async function copyRecurringExpenses(input: {
+  year: number;
+  month: number;
+}): Promise<CopyResult> {
+  try {
+    await requireUser();
+    const branch = await activeBranch();
+
+    const targetStart = new Date(input.year, input.month - 1, 1);
+    const targetEnd = new Date(input.year, input.month, 1);
+    const sourceStart = new Date(input.year, input.month - 2, 1);
+
+    const [source, existing] = await Promise.all([
+      db.expense.findMany({
+        where: {
+          branchId: branch.id,
+          isRecurring: true,
+          spentAt: { gte: sourceStart, lt: targetStart },
+        },
+      }),
+      db.expense.findMany({
+        where: { branchId: branch.id, spentAt: { gte: targetStart, lt: targetEnd } },
+        select: { title: true, unit: true },
+      }),
+    ]);
+
+    const fromLabel = `${monthName(sourceStart.getMonth() + 1)} ${sourceStart.getFullYear()}`;
+    if (source.length === 0) {
+      return { ok: false, error: `${fromLabel} oyida takrorlanuvchi harajat yo'q` };
+    }
+
+    const seen = new Set(existing.map((e) => `${e.title}|${e.unit ?? ""}`));
+    // Manba kunini saqlaymiz, lekin qisqa oyga tushib qolmasin (31 -> 30)
+    const daysInTarget = new Date(input.year, input.month, 0).getDate();
+
+    let created = 0;
+    for (const row of source) {
+      if (seen.has(`${row.title}|${row.unit ?? ""}`)) continue;
+      const day = Math.min(row.spentAt.getDate(), daysInTarget);
+      await db.expense.create({
+        data: {
+          title: row.title,
+          category: row.category,
+          amount: row.amount,
+          isRecurring: true,
+          unit: row.unit,
+          spentAt: new Date(input.year, input.month - 1, day, 12),
+          branchId: branch.id,
+        },
+      });
+      created += 1;
+    }
+
+    revalidateAll();
+    return { ok: true, created, skipped: source.length - created, fromLabel };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Xatolik yuz berdi" };
+  }
 }

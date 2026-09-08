@@ -171,6 +171,8 @@ export default async function HarajatlarPage({
       )}
 
       <ExpensesPanel
+        year={d.period.getFullYear()}
+        month={d.period.getMonth() + 1}
         units={d.byUnit.map((u) => u.unit).filter((u) => u !== "Umumiy")}
         list={d.list.map((e) => ({
           id: e.id,
