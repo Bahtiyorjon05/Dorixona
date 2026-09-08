@@ -379,6 +379,27 @@ enum DebtDirection {
   PAYABLE
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Integratsiya jurnali
+//
+//  Vercel Hobby tarifda loglar qisqa saqlanadi, shuning uchun
+//  F-Apteka nima yuborayotganini bazaga yozamiz — keyin istalgan
+//  vaqtda SQL bilan ko'rish mumkin.
+// ─────────────────────────────────────────────────────────────
+
+model IntegrationLog {
+  id        String   @id @default(cuid())
+  source    String // "fapteka-site" | "fapteka-auto"
+  rowCount  Int      @default(0)
+  keys      String? // kelgan maydonlar: "I:120,N:120,K:120"
+  sample    String? // bitta namuna qator (JSON)
+  note      String?
+  ok        Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([source, createdAt])
+}
+
 model Debt {
   id           String        @id @default(cuid())
   counterparty String

@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
 import { decodeXmlBuffer, parseFaptekaXml } from "@/lib/integrations/fapteka/client";
 import { syncFaptekaSiteRows } from "@/lib/integrations/fapteka/sync";
 
@@ -85,6 +86,23 @@ export async function POST(request: NextRequest) {
     durationMs: Date.now() - startedAt,
     ok: summary.ok,
   });
+
+  // Bazaga ham yozamiz: Vercel Hobby'da loglar qisqa saqlanadi, bu esa
+  // qolib ketadi va istalgan vaqtda SQL bilan ko'riladi.
+  try {
+    await db.integrationLog.create({
+      data: {
+        source: "fapteka-site",
+        rowCount: summary.receivedRows,
+        keys: keys.join(", ").slice(0, 2000),
+        sample: JSON.stringify(rows[0] ?? {}).slice(0, 2000),
+        note: `upsert=${summary.productsUpserted}, skip=${summary.skippedRows}`,
+        ok: summary.ok,
+      },
+    });
+  } catch {
+    // Jurnalga yozilmasa ham asosiy ish buzilmasin
+  }
 
   revalidatePath("/sozlamalar");
   revalidatePath("/ombor");
