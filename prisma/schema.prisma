@@ -224,6 +224,7 @@ model Sale {
   pointsEarned   Int           @default(0)
   pointsRedeemed Int           @default(0)
   paymentMethod  PaymentMethod @default(CASH)
+  unit           String? // qaysi dorixona: Yunusobod / Qoraqamish (bo'sh = ajratilmagan)
 
   branchId   String
   branch     Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -241,6 +242,7 @@ model Sale {
   @@index([employeeId])
   @@index([customerId])
   @@index([createdAt])
+  @@index([unit])
 }
 
 model SaleItem {

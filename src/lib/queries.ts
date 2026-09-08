@@ -20,6 +20,10 @@ function startOfMonth(offset = 0, base = new Date()) {
   return new Date(base.getFullYear(), base.getMonth() + offset, 1);
 }
 const num = (v: unknown) => Number(v ?? 0);
+/** MonthlyFinance.periodMonth uchun: oy boshi UTC yarim tunda */
+export function utcMonthStart(d: Date) {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1));
+}
 const M = (v: unknown) => num(v) / 1_000_000; // mln so'm
 
 // ─────────────────────────────────────────────────────────────
@@ -221,19 +225,34 @@ export async function getExpensesData(period?: Date) {
     monthStart = new Date(period.getFullYear(), period.getMonth(), 1);
   } else {
     const current = startOfMonth(0);
-    const currentCount = await db.expense.count({
-      where: { branchId, spentAt: { gte: current, lt: startOfMonth(1) } },
-    });
-    if (currentCount > 0) {
+    const [currentCount, currentFin] = await Promise.all([
+      db.expense.count({ where: { branchId, spentAt: { gte: current, lt: startOfMonth(1) } } }),
+      db.monthlyFinance.count({ where: { branchId, periodMonth: utcMonthStart(current) } }),
+    ]);
+    if (currentCount > 0 || currentFin > 0) {
       monthStart = current;
     } else {
-      const last = await db.expense.findFirst({
-        where: { branchId },
-        orderBy: { spentAt: "desc" },
-        select: { spentAt: true },
-      });
-      monthStart = last
-        ? new Date(last.spentAt.getFullYear(), last.spentAt.getMonth(), 1)
+      // Harajat ham, moliyaviy xulosa ham hisobga olinadi — aks holda
+      // faqat moliya kiritilgan oy (masalan avgust) ochilmay qolardi
+      const [lastExpense, lastFin] = await Promise.all([
+        db.expense.findFirst({
+          where: { branchId },
+          orderBy: { spentAt: "desc" },
+          select: { spentAt: true },
+        }),
+        db.monthlyFinance.findFirst({
+          where: { branchId },
+          orderBy: { periodMonth: "desc" },
+          select: { periodMonth: true },
+        }),
+      ]);
+      const candidates = [
+        lastExpense && new Date(lastExpense.spentAt.getFullYear(), lastExpense.spentAt.getMonth(), 1),
+        lastFin &&
+          new Date(lastFin.periodMonth.getUTCFullYear(), lastFin.periodMonth.getUTCMonth(), 1),
+      ].filter((d): d is Date => d !== null && d !== undefined);
+      monthStart = candidates.length
+        ? new Date(Math.max(...candidates.map((d) => d.getTime())))
         : current;
     }
   }
@@ -242,14 +261,16 @@ export async function getExpensesData(period?: Date) {
   const unitFilter = unitWhere(filial);
   const where = { branchId, spentAt: { gte: monthStart, lt: nextMonth }, ...unitFilter };
 
-  const [list, totalAgg, byCat, byUnitRows, finRows, debtRows, allDates] =
+  const [list, totalAgg, byCat, byUnitRows, finRows, debtRows, allDates, finMonths] =
     await Promise.all([
       db.expense.findMany({ where, orderBy: { spentAt: "desc" } }),
       db.expense.aggregate({ _sum: { amount: true }, where }),
       db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
       db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, _count: true, where }),
       db.monthlyFinance.findMany({
-        where: { branchId, periodMonth: monthStart, ...unitFilter },
+        // periodMonth UTC yarim tunda saqlanadi — mahalliy vaqt bilan
+        // taqqoslasak UTC+5 da oy siljib ketadi
+        where: { branchId, periodMonth: utcMonthStart(monthStart), ...unitFilter },
         orderBy: { unit: "asc" },
       }),
       db.debt.findMany({ where: { branchId }, orderBy: { createdAt: "asc" } }),
@@ -257,6 +278,13 @@ export async function getExpensesData(period?: Date) {
         where: { branchId },
         select: { spentAt: true },
         orderBy: { spentAt: "desc" },
+      }),
+      // Moliyaviy xulosa bor, lekin harajat yozuvi yo'q oylar ham
+      // ro'yxatda ko'rinishi kerak
+      db.monthlyFinance.findMany({
+        where: { branchId },
+        select: { periodMonth: true },
+        distinct: ["periodMonth"],
       }),
     ]);
 
@@ -267,12 +295,19 @@ export async function getExpensesData(period?: Date) {
     .sort((a, b) => b.amount - a.amount);
   const unitSpent = new Map(byUnit.map((u) => [u.unit, u.amount]));
 
-  const availableMonths = Array.from(
-    new Set(allDates.map((d) => `${d.spentAt.getFullYear()}-${d.spentAt.getMonth()}`)),
-  ).map((key) => {
-    const [y, m] = key.split("-").map(Number);
-    return new Date(y, m, 1);
-  });
+  // Harajat sanalari + moliyaviy xulosa oylari birlashtiriladi, yangisi birinchi
+  const monthKeys = new Set<string>([
+    ...allDates.map((d) => `${d.spentAt.getFullYear()}-${d.spentAt.getMonth()}`),
+    ...finMonths.map(
+      (f) => `${f.periodMonth.getUTCFullYear()}-${f.periodMonth.getUTCMonth()}`,
+    ),
+  ]);
+  const availableMonths = Array.from(monthKeys)
+    .map((key) => {
+      const [y, m] = key.split("-").map(Number);
+      return new Date(y, m, 1);
+    })
+    .sort((a, b) => b.getTime() - a.getTime());
 
   return {
     period: monthStart,

@@ -2,8 +2,23 @@ import { getExpensesData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
 import { ExpensesPanel } from "@/components/panels/ExpensesPanel";
+import { MonthlyFinancePanel } from "@/components/panels/MonthlyFinancePanel";
+import { MonthPicker } from "@/components/MonthPicker";
+import { FILIALS } from "@/lib/filial";
+import { currentFilial } from "@/lib/filial-server";
 
 export const dynamic = "force-dynamic";
+
+/** ?oy=2026-08 — noto'g'ri qiymatda avtomatik tanlovga tushadi */
+function parseMonth(raw: string | string[] | undefined): Date | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const match = /^(\d{4})-(\d{1,2})$/.exec(value ?? "");
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return undefined;
+  return new Date(year, month - 1, 1);
+}
 
 const CATEGORY_LABEL: Record<string, string> = {
   RENT: "Ijara",
@@ -14,17 +29,12 @@ const CATEGORY_LABEL: Record<string, string> = {
   OTHER: "Boshqa",
 };
 
-function Row({ label, value, muted = true }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div className="flex justify-between">
-      <dt className={muted ? "text-muted" : ""}>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-export default async function HarajatlarPage() {
-  const d = await getExpensesData();
+export default async function HarajatlarPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const d = await getExpensesData(parseMonth((await searchParams).oy));
   const now = new Date();
   const isPast =
     d.period.getFullYear() !== now.getFullYear() || d.period.getMonth() !== now.getMonth();
@@ -32,15 +42,31 @@ export default async function HarajatlarPage() {
 
   const maxCat = Math.max(...d.byCategory.map((c) => c.amount), 1);
   const maxUnit = Math.max(...d.byUnit.map((u) => u.amount), 1);
-  const totalTurnover = d.monthlyUnits.reduce((s, u) => s + u.turnover, 0);
   const totalProfit = d.monthlyUnits.reduce((s, u) => s + u.profit, 0);
+
+  const monthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}`;
+
+  // Yuqoridagi filial tanlovi bilan bir xil bo'lsin: aniq dorixona tanlangan
+  // bo'lsa faqat o'sha kartochka, "Umumiy" da esa uchalasi ham ko'rinadi
+  // ("Umumiy" — dorixonaga taqsimlanmagan summalar uchun alohida qator).
+  const filial = await currentFilial();
+  const visibleUnits = filial === "Umumiy" ? [...FILIALS] : [filial];
 
   return (
     <div>
       <PageHeader
         title="Harajatlar boshqaruvi"
         subtitle={`${label} — moliyaviy xulosa va xarajatlar`}
-        action={isPast ? <Badge color="amber">{label} ma&apos;lumotlari</Badge> : undefined}
+        action={
+          <div className="flex items-center gap-2">
+            {isPast && <Badge color="amber">o&apos;tgan oy</Badge>}
+            <MonthPicker
+              current={monthKey(d.period)}
+              available={d.availableMonths.map(monthKey)}
+              basePath="/harajatlar"
+            />
+          </div>
+        }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -59,40 +85,13 @@ export default async function HarajatlarPage() {
         )}
       </div>
 
-      {d.monthlyUnits.length > 0 && (
-        <Card title={`${label} — dorixonalar kesimi`} icon="🏪" className="mb-5">
-          <div className="grid gap-4 lg:grid-cols-3">
-            {d.monthlyUnits.map((u) => (
-              <div key={u.unit} className="rounded-lg border border-surface p-3">
-                <div className="mb-2 font-medium">{u.unit}</div>
-                <dl className="space-y-1.5 text-sm">
-                  {u.turnover > 0 && <Row label="Savdo" value={formatSom(u.turnover)} />}
-                  {u.profit > 0 && <Row label="Foyda" value={formatSom(u.profit)} />}
-                  <Row label="Harajat" value={`−${formatSom(u.expenses)}`} />
-                  {u.profit > 0 && (
-                    <div className="flex justify-between border-t border-surface pt-1.5 font-medium">
-                      <dt>Sof foyda</dt>
-                      <dd style={{ color: u.netProfit >= 0 ? "var(--c-success)" : "var(--c-danger)" }}>
-                        {formatSom(u.netProfit)}
-                      </dd>
-                    </div>
-                  )}
-                  {u.stockValue > 0 && <Row label="Qoldiq (astatka)" value={formatSom(u.stockValue)} />}
-                  {u.revaluation > 0 && <Row label="Qayta baholash" value={formatSom(u.revaluation)} />}
-                  {u.bankBalance !== null && <Row label="Bank" value={formatSom(u.bankBalance)} />}
-                </dl>
-                {u.note && <p className="mt-2 text-xs text-muted">{u.note}</p>}
-              </div>
-            ))}
-          </div>
-          {totalTurnover > 0 && (
-            <div className="mt-4 flex justify-between border-t border-surface pt-3 text-sm font-medium">
-              <span>Jami savdo</span>
-              <span>{formatSom(totalTurnover)}</span>
-            </div>
-          )}
-        </Card>
-      )}
+      <MonthlyFinancePanel
+        label={label}
+        year={d.period.getFullYear()}
+        month={d.period.getMonth() + 1}
+        rows={d.monthlyUnits}
+        allUnits={visibleUnits}
+      />
 
       <div className="mb-5 grid gap-3 lg:grid-cols-2">
         <Card title="Dorixonalar bo'yicha harajat" icon="🏪">
