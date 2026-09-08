@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/integrations/fapteka/auto?mode=sales&days=2",
+      "schedule": "0 21 * * *"
+    }
+  ]
+}
