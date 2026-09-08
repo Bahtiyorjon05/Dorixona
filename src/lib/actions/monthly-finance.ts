@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { isFilial } from "@/lib/filial";
+import { recomputeMonthlyFinance } from "@/lib/monthly-finance";
 import { activeBranch, fail, requireUser, type ActionResult } from "./_shared";
 
 /** Bo'sh satr -> null, aks holda son. Mln emas, so'mda saqlanadi. */
@@ -94,20 +95,19 @@ export async function deleteMonthlyFinance(input: {
 }
 
 export type AutofillResult =
-  | { ok: true; turnover: number; profit: number; salesCount: number }
+  | { ok: true; turnover: number; profit: number; salesCount: number; skipped: boolean }
   | { ok: false; error: string };
 
 /**
  * Savdo va foydani bazadagi haqiqiy savdodan (POS + F-Apteka sync) hisoblab,
  * MonthlyFinance'ga yozadi.
  *
- * Faqat `Sale.unit` shu dorixonaga teng bo'lgan cheklar qo'shiladi. F-Apteka
- * sync hozircha `unit` ni to'ldirmaydi (bitta FAPTEKA_FILIAL_ID bilan ishlaydi),
- * shuning uchun ikkinchi dorixona ulanmaguncha natija 0 chiqishi mumkin —
- * bu xato emas, ma'lumot yo'qligini bildiradi.
+ * Shu oyda chek topilmasa hech narsa yozilmaydi — qo'lda kiritilgan raqamlar
+ * nol bilan almashib ketmasligi uchun. F-Apteka sync hozircha `Sale.unit` ni
+ * to'ldirmaydi, shuning uchun natija ko'pincha "savdo topilmadi" bo'ladi.
  *
- * Astatka va pereotsenka bu yerda hisoblanmaydi: `Product` jadvalida dorixona
- * ajratmasi yo'q, qoldiq esa tarixsiz (jonli qiymat). Ular qo'lda kiritiladi.
+ * Astatka va pereotsenkaga tegilmaydi: `Product` da dorixona ajratmasi yo'q,
+ * qoldiq esa tarixsiz.
  */
 export async function autofillMonthlyFinance(input: {
   unit: string;
@@ -118,48 +118,20 @@ export async function autofillMonthlyFinance(input: {
     await requireUser();
     const unit = assertUnit(input.unit);
     const branch = await activeBranch();
-    const from = new Date(input.year, input.month - 1, 1);
-    const to = new Date(input.year, input.month, 1);
-
-    // "Umumiy" = dorixonaga ajratilmagan cheklar, ya'ni Sale.unit IS NULL
-    const isUnassigned = unit === "Umumiy";
-    const where = {
+    const result = await recomputeMonthlyFinance({
       branchId: branch.id,
-      unit: isUnassigned ? null : unit,
-      createdAt: { gte: from, lt: to },
-    };
-
-    const marginQuery = isUnassigned
-      ? db.$queryRaw<{ margin: number }[]>`
-          SELECT COALESCE(SUM(si."lineTotal" - si."costPrice" * si.quantity), 0)::float8 AS margin
-          FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-          WHERE s."branchId" = ${branch.id} AND s."unit" IS NULL
-            AND s."createdAt" >= ${from} AND s."createdAt" < ${to}`
-      : db.$queryRaw<{ margin: number }[]>`
-          SELECT COALESCE(SUM(si."lineTotal" - si."costPrice" * si.quantity), 0)::float8 AS margin
-          FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-          WHERE s."branchId" = ${branch.id} AND s."unit" = ${unit}
-            AND s."createdAt" >= ${from} AND s."createdAt" < ${to}`;
-
-    const [agg, marginRows] = await Promise.all([
-      db.sale.aggregate({ _sum: { total: true }, _count: true, where }),
-      marginQuery,
-    ]);
-
-    const turnover = Number(agg._sum.total ?? 0);
-    const profit = Number(marginRows[0]?.margin ?? 0);
-    const periodMonth = new Date(Date.UTC(input.year, input.month - 1, 1));
-
-    // Faqat savdo va foyda yangilanadi — qo'lda kiritilgan astatka,
-    // pereotsenka va bank qoldig'iga tegilmaydi.
-    await db.monthlyFinance.upsert({
-      where: { unit_periodMonth: { unit, periodMonth } },
-      create: { unit, periodMonth, branchId: branch.id, turnover, profit },
-      update: { turnover, profit },
+      unit,
+      year: input.year,
+      month: input.month,
     });
-
-    revalidateAll();
-    return { ok: true, turnover, profit, salesCount: agg._count };
+    if (!result.skipped) revalidateAll();
+    return {
+      ok: true,
+      turnover: result.turnover,
+      profit: result.profit,
+      salesCount: result.salesCount,
+      skipped: result.skipped,
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Xatolik yuz berdi" };
   }

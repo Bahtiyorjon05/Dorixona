@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
 import { syncFapteka } from "@/lib/integrations/fapteka/sync";
+import { recomputeRange } from "@/lib/monthly-finance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,22 +66,40 @@ async function handle(request: NextRequest) {
 
   const days = Math.min(Math.max(Number(params.get("days") ?? 2) || 2, 1), 31);
 
+  const dateFrom = isoDay(-(days - 1));
+  const dateTo = isoDay(0);
+
   const startedAt = Date.now();
   try {
-    const summary = await syncFapteka({
-      mode,
-      dateFrom: isoDay(-(days - 1)),
-      dateTo: isoDay(0),
-    });
+    const summary = await syncFapteka({ mode, dateFrom, dateTo });
+
+    // Sync'dan keyin oylik moliyaviy xulosani ham yangilaymiz — aks holda
+    // savdo tushsa ham /harajatlar dagi jadval eski raqamda qolardi.
+    // Savdosi yo'q oy/dorixonaga tegilmaydi (qo'lda kiritilgani saqlanadi).
+    let financeUpdated: string[] = [];
+    const branch = await db.branch.findFirst({ where: { isActive: true } });
+    if (branch) {
+      const updated = await recomputeRange({
+        branchId: branch.id,
+        from: new Date(dateFrom),
+        to: new Date(dateTo),
+      });
+      financeUpdated = updated.map((r) => `${r.unit} ${r.year}-${r.month}`);
+    }
+
     console.info("F-Apteka AUTO sync", {
       mode,
       days,
       saleRows: summary.saleRows,
       salesUpserted: summary.salesUpserted,
+      financeUpdated: financeUpdated.length,
       durationMs: Date.now() - startedAt,
       ok: summary.ok,
     });
-    return NextResponse.json({ ok: summary.ok, summary }, { status: summary.ok ? 200 : 207 });
+    return NextResponse.json(
+      { ok: summary.ok, summary, financeUpdated },
+      { status: summary.ok ? 200 : 207 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Sync bajarilmadi";
     console.error("F-Apteka AUTO sync xato", message);

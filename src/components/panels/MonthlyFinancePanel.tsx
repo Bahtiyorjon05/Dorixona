@@ -139,8 +139,8 @@ export function MonthlyFinancePanel({
         return;
       }
       setInfo(
-        res.salesCount === 0
-          ? `${unit}: bu oy uchun savdo topilmadi — F-Apteka sync hali bu dorixonaga ulanmagan bo'lishi mumkin.`
+        res.skipped
+          ? `${unit}: bu oy uchun chek topilmadi — F-Apteka sync hali bu dorixonaga ulanmagan bo'lishi mumkin. Qo'lda kiritilgan raqamlarga tegilmadi.`
           : `${unit}: ${res.salesCount} ta chek — savdo ${formatSom(res.turnover)}, foyda ${formatSom(res.profit)}`,
       );
       router.refresh();
