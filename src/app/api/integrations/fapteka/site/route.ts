@@ -61,11 +61,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "XML ichida F-Apteka qatorlari topilmadi" }, { status: 400 });
   }
 
+  // F-Apteka aynan qanday maydonlar yuborayotganini bilish uchun.
+  // Kod hozir faqat tovar qatorlarini oladi (I/N/K/P/UN); agar bu yerda
+  // chekka oid kalitlar ko'rinsa, demak savdo ham push bilan kelayotgan
+  // bo'ladi va uni tortib olish mumkin — cron kerak bo'lmaydi.
+  const keyCounts = new Map<string, number>();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      keyCounts.set(key, (keyCounts.get(key) ?? 0) + 1);
+    }
+  }
+  const keys = Array.from(keyCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, count]) => `${key}:${count}`);
+
   const summary = await syncFaptekaSiteRows(rows);
   console.info("F-Apteka SITE.exe push", {
     receivedRows: summary.receivedRows,
     productsUpserted: summary.productsUpserted,
     skippedRows: summary.skippedRows,
+    keys,
+    sampleRow: rows[0] ?? null,
     durationMs: Date.now() - startedAt,
     ok: summary.ok,
   });
