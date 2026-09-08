@@ -91,11 +91,17 @@ export default async function HarajatlarPage({
         month={d.period.getMonth() + 1}
         rows={d.monthlyUnits}
         allUnits={visibleUnits}
+        totalExpenses={d.total}
       />
 
       <div className="mb-5 grid gap-3 lg:grid-cols-2">
         <Card title="Dorixonalar bo'yicha harajat" icon="🏪">
           <div className="space-y-3">
+            {d.byUnit.length === 0 && (
+              <p className="py-4 text-center text-sm text-muted">
+                {label} uchun harajat yozuvi yo&apos;q. Pastdagi ro&apos;yxatdan qo&apos;shing.
+              </p>
+            )}
             {d.byUnit.map((u) => (
               <div key={u.unit}>
                 <div className="mb-1 flex items-center justify-between text-sm">
@@ -114,6 +120,11 @@ export default async function HarajatlarPage({
 
         <Card title="Toifalar bo'yicha" icon="📊">
           <div className="space-y-3">
+            {d.byCategory.length === 0 && (
+              <p className="py-4 text-center text-sm text-muted">
+                {label} uchun harajat yozuvi yo&apos;q.
+              </p>
+            )}
             {d.byCategory.map((c) => (
               <div key={c.category}>
                 <div className="mb-1 flex items-center justify-between text-sm">

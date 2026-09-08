@@ -26,8 +26,21 @@ type Props = {
   month: number;
   /** MonthlyFinance yozuvi bor birliklar */
   rows: MonthlyUnit[];
-  /** Barcha haqiqiy dorixonalar ("Umumiy" bundan mustasno) */
+  /** Ko'rsatiladigan birliklar (filial tanloviga qarab) */
   allUnits: string[];
+  /** Shu oydagi jami harajat — "Umumiy" kartochkasi uchun */
+  totalExpenses: number;
+};
+
+const EMPTY = {
+  turnover: 0,
+  profit: 0,
+  expenses: 0,
+  netProfit: 0,
+  stockValue: 0,
+  revaluation: 0,
+  bankBalance: null as number | null,
+  note: null as string | null,
 };
 
 const MLN = 1_000_000;
@@ -44,31 +57,50 @@ function Row({ label, value, muted = true }: { label: string; value: string; mut
   );
 }
 
-export function MonthlyFinancePanel({ label, year, month, rows, allUnits }: Props) {
+export function MonthlyFinancePanel({
+  label,
+  year,
+  month,
+  rows,
+  allUnits,
+  totalExpenses,
+}: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState<MonthlyUnit | null>(null);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [pending, start] = useTransition();
 
-  // Yozuvi yo'q dorixonalar ham ko'rinsin — aks holda ularga kiritib bo'lmaydi
+  // Bazadagi yozuvlar. Yozuvi yo'q dorixona ham kartochka bo'lib ko'rinishi
+  // kerak — aks holda unga birinchi ma'lumotni kiritib bo'lmaydi.
   const byUnit = new Map(rows.map((r) => [r.unit, r]));
-  const units: MonthlyUnit[] = allUnits.map(
-    (unit) =>
-      byUnit.get(unit) ?? {
-        unit,
-        turnover: 0,
-        profit: 0,
-        expenses: 0,
-        netProfit: 0,
-        stockValue: 0,
-        revaluation: 0,
-        bankBalance: null,
-        note: null,
-      },
-  );
+  const stored = (unit: string): MonthlyUnit => byUnit.get(unit) ?? { unit, ...EMPTY };
 
-  const totalTurnover = units.reduce((s, u) => s + u.turnover, 0);
+  /**
+   * "Umumiy" kartochkasi — barcha dorixonalar yig'indisi (taqsimlanmagan
+   * qator ham ichida). Tahrirlashda esa faqat taqsimlanmagan qator ochiladi,
+   * shuning uchun jami ko'rsatkich saqlanib qolmaydi.
+   */
+  const aggregate = (): MonthlyUnit => {
+    const sum = (get: (r: MonthlyUnit) => number) => rows.reduce((a, r) => a + get(r), 0);
+    const profit = sum((r) => r.profit);
+    return {
+      unit: "Umumiy",
+      turnover: sum((r) => r.turnover),
+      profit,
+      expenses: totalExpenses,
+      netProfit: profit - totalExpenses,
+      stockValue: sum((r) => r.stockValue),
+      revaluation: sum((r) => r.revaluation),
+      bankBalance: null,
+      note: null,
+    };
+  };
+
+  const showAggregate = allUnits.includes("Umumiy") && allUnits.length > 1;
+  const units: MonthlyUnit[] = allUnits.map((unit) =>
+    unit === "Umumiy" && showAggregate ? aggregate() : stored(unit),
+  );
 
   function save(formData: FormData) {
     if (!editing) return;
@@ -119,23 +151,37 @@ export function MonthlyFinancePanel({ label, year, month, rows, allUnits }: Prop
     <Card title={`${label} — dorixonalar kesimi`} icon="🏪" className="mb-5">
       <div className="grid gap-4 lg:grid-cols-3">
         {units.map((u) => {
-          const empty = u.turnover === 0 && u.profit === 0 && u.stockValue === 0;
+          const isTotal = u.unit === "Umumiy" && showAggregate;
+          const empty =
+            u.turnover === 0 && u.profit === 0 && u.stockValue === 0 && u.revaluation === 0;
           return (
             <div key={u.unit} className="rounded-lg border border-surface p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="font-medium">{u.unit}</span>
+                <span className="font-medium">
+                  {u.unit}
+                  {isTotal && <span className="ml-1.5 text-xs text-muted">jami</span>}
+                </span>
                 <div className="flex items-center gap-1">
+                  {!isTotal && (
+                    <button
+                      onClick={() => autofill(u.unit)}
+                      disabled={pending}
+                      title="Savdo va foydani bazadagi cheklardan hisoblab qo'yish"
+                      className="rounded-lg border border-edge px-2 py-1 text-xs hover:bg-surface disabled:opacity-50"
+                    >
+                      ⟳
+                    </button>
+                  )}
                   <button
-                    onClick={() => autofill(u.unit)}
+                    // Jami kartochka bo'lsa ham tahrirlashda taqsimlanmagan
+                    // qator ochiladi — yig'indi bazaga yozilib qolmasligi uchun
+                    onClick={() => setEditing(stored(u.unit))}
                     disabled={pending}
-                    title="Savdo va foydani bazadagi cheklardan hisoblab qo'yish"
-                    className="rounded-lg border border-edge px-2 py-1 text-xs hover:bg-surface disabled:opacity-50"
-                  >
-                    ⟳
-                  </button>
-                  <button
-                    onClick={() => setEditing(u)}
-                    disabled={pending}
+                    title={
+                      isTotal
+                        ? "Dorixonaga taqsimlanmagan summalarni kiritish"
+                        : "Qo'lda kiritish"
+                    }
                     className="rounded-lg border border-edge px-2 py-1 text-xs hover:bg-surface disabled:opacity-50"
                   >
                     ✎
@@ -171,10 +217,11 @@ export function MonthlyFinancePanel({ label, year, month, rows, allUnits }: Prop
         })}
       </div>
 
-      {totalTurnover > 0 && (
+      {/* Jami "Umumiy" kartochkasida ko'rinadi — takrorlamaymiz */}
+      {!showAggregate && rows.reduce((s, r) => s + r.turnover, 0) > 0 && (
         <div className="mt-4 flex justify-between border-t border-surface pt-3 text-sm font-medium">
           <span>Jami savdo</span>
-          <span>{formatSom(totalTurnover)}</span>
+          <span>{formatSom(rows.reduce((s, r) => s + r.turnover, 0))}</span>
         </div>
       )}
 
@@ -191,6 +238,13 @@ export function MonthlyFinancePanel({ label, year, month, rows, allUnits }: Prop
               Qiymatlar <b>mln so&apos;m</b>da kiritiladi (masalan 671 = 671 000 000 so&apos;m).
               Bo&apos;sh qoldirilgan maydon 0 sifatida saqlanadi.
             </p>
+            {editing.unit === "Umumiy" && (
+              <p className="rounded-lg bg-surface px-3 py-2 text-xs">
+                Bu — <b>dorixonaga taqsimlanmagan</b> summalar qatori (masalan umumiy
+                pereotsenka). Kartochkadagi jami ko&apos;rsatkich shu qator va
+                dorixonalar yig&apos;indisidan chiqadi, uni bu yerda o&apos;zgartirmaysiz.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Savdo (mln)">
                 <Input name="turnover" type="number" step="0.1" min={0} defaultValue={toMln(editing.turnover)} placeholder="671" />
