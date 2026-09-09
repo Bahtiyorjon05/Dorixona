@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { decodeXmlBuffer, parseFaptekaXml } from "@/lib/integrations/fapteka/client";
+import { syncOtdelStockValue } from "@/lib/integrations/fapteka/otdel-stock";
 import { syncFaptekaSiteRows } from "@/lib/integrations/fapteka/sync";
 
 export const runtime = "nodejs";
@@ -90,12 +91,25 @@ export async function POST(request: NextRequest) {
     .join(", ");
 
   const summary = await syncFaptekaSiteRows(rows);
+
+  // Otdel kesimida astatkani joriy oyning MonthlyFinance'iga yozamiz.
+  // FAPTEKA_OTDEL_UNITS sozlanmagan bo'lsa bu bosqich o'tkazib yuboriladi.
+  let stockByUnit: string[] = [];
+  try {
+    const stockResults = await syncOtdelStockValue(rows);
+    stockByUnit = stockResults.map(
+      (r) => `${r.unit}(O=${r.otdelId}): ${Math.round(r.stockValue / 1_000_000)} mln`,
+    );
+  } catch (error) {
+    console.error("Otdel astatkasi yozilmadi", error);
+  }
   console.info("F-Apteka SITE.exe push", {
     receivedRows: summary.receivedRows,
     productsUpserted: summary.productsUpserted,
     skippedRows: summary.skippedRows,
     keys,
     otdels,
+    stockByUnit,
     sampleRow: rows[0] ?? null,
     durationMs: Date.now() - startedAt,
     ok: summary.ok,
@@ -111,7 +125,8 @@ export async function POST(request: NextRequest) {
         keys: keys.join(", ").slice(0, 2000),
         sample: JSON.stringify(rows[0] ?? {}).slice(0, 2000),
         note: `upsert=${summary.productsUpserted}, skip=${summary.skippedRows}` +
-          (otdels ? ` | ${otdels}` : " | otdel yo'q"),
+          (otdels ? ` | ${otdels}` : " | otdel yo'q") +
+          (stockByUnit.length ? ` | astatka: ${stockByUnit.join(", ")}` : ""),
         ok: summary.ok,
       },
     });
