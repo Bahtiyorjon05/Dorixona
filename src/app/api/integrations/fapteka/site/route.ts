@@ -98,7 +98,9 @@ export async function POST(request: NextRequest) {
   try {
     const stockResults = await syncOtdelStockValue(rows);
     stockByUnit = stockResults.map(
-      (r) => `${r.unit}(O=${r.otdelId}): ${Math.round(r.stockValue / 1_000_000)} mln`,
+      (r) =>
+        `O=${r.otdelId}${r.unit ? ` (${r.unit})` : ""}: ` +
+        `${Math.round(r.stockValue / 1_000_000)} mln${r.saved ? "" : " [yozilmadi]"}`,
     );
   } catch (error) {
     console.error("Otdel astatkasi yozilmadi", error);

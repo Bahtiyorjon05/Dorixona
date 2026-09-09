@@ -11,10 +11,12 @@ const numberValue = (value: unknown) => {
 };
 
 export type OtdelStockResult = {
-  unit: Filial;
+  /** Mapping sozlanmagan bo'lsa null — faqat ko'rsatiladi, yozilmaydi */
+  unit: Filial | null;
   otdelId: string;
   rows: number;
   stockValue: number;
+  saved: boolean;
 };
 
 /**
@@ -33,45 +35,49 @@ export type OtdelStockResult = {
  */
 export async function syncOtdelStockValue(rows: Row[]): Promise<OtdelStockResult[]> {
   const map = otdelUnitMap();
-  if (map.size === 0) return [];
 
-  const branch = await db.branch.findFirst({ where: { isActive: true } });
-  if (!branch) return [];
-
-  const totals = new Map<string, { unit: Filial; rows: number; value: number }>();
+  // Qoldiq HAR DOIM otdel bo'yicha hisoblanadi — mapping sozlanmagan
+  // bo'lsa ham. Shunda jurnalda "O=2: 1290 mln, O=3: 1215 mln" ko'rinadi
+  // va qaysi otdel qaysi dorixona ekanini taxmin qilmasdan aniqlash mumkin.
+  const totals = new Map<string, { unit: Filial | null; rows: number; value: number }>();
   for (const row of rows) {
     const otdelId = (row.O ?? "").trim();
-    const unit = map.get(otdelId);
-    if (!unit) continue;
+    if (!otdelId) continue;
 
     const quantity = numberValue(row.K ?? row.Q);
     const price = numberValue(row.P);
     if (quantity <= 0) continue;
 
-    const current = totals.get(otdelId) ?? { unit, rows: 0, value: 0 };
+    const current = totals.get(otdelId) ?? { unit: map.get(otdelId) ?? null, rows: 0, value: 0 };
     current.rows += 1;
     current.value += quantity * price;
     totals.set(otdelId, current);
   }
+
+  const branch = map.size > 0 ? await db.branch.findFirst({ where: { isActive: true } }) : null;
 
   const now = new Date();
   const periodMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
 
   const results: OtdelStockResult[] = [];
   for (const [otdelId, entry] of totals) {
-    await db.monthlyFinance.upsert({
-      where: { unit_periodMonth: { unit: entry.unit, periodMonth } },
-      create: {
-        unit: entry.unit,
-        periodMonth,
-        branchId: branch.id,
-        stockValue: entry.value,
-      },
-      // Faqat astatka yangilanadi — savdo, foyda va pereotsenkaga tegilmaydi
-      update: { stockValue: entry.value },
-    });
-    results.push({ unit: entry.unit, otdelId, rows: entry.rows, stockValue: entry.value });
+    let saved = false;
+    if (entry.unit && branch) {
+      await db.monthlyFinance.upsert({
+        where: { unit_periodMonth: { unit: entry.unit, periodMonth } },
+        create: {
+          unit: entry.unit,
+          periodMonth,
+          branchId: branch.id,
+          stockValue: entry.value,
+        },
+        // Faqat astatka yangilanadi — savdo, foyda va pereotsenkaga tegilmaydi
+        update: { stockValue: entry.value },
+      });
+      saved = true;
+    }
+    results.push({ unit: entry.unit, otdelId, rows: entry.rows, stockValue: entry.value, saved });
   }
 
-  return results;
+  return results.sort((a, b) => b.stockValue - a.stockValue);
 }
