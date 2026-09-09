@@ -76,12 +76,26 @@ export async function POST(request: NextRequest) {
     .sort((a, b) => b[1] - a[1])
     .map(([key, count]) => `${key}:${count}`);
 
+  // "O" = otdel (filial) ID. F-Apteka'da: Sklad → FAPTEKA → Spravochnaya →
+  // Filialy. Qaysi dorixonalardan ma'lumot kelayotganini shundan bilamiz.
+  const otdelCounts = new Map<string, number>();
+  for (const row of rows) {
+    const otdel = (row.O ?? "").trim();
+    if (!otdel) continue;
+    otdelCounts.set(otdel, (otdelCounts.get(otdel) ?? 0) + 1);
+  }
+  const otdels = Array.from(otdelCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, count]) => `O=${id}:${count}`)
+    .join(", ");
+
   const summary = await syncFaptekaSiteRows(rows);
   console.info("F-Apteka SITE.exe push", {
     receivedRows: summary.receivedRows,
     productsUpserted: summary.productsUpserted,
     skippedRows: summary.skippedRows,
     keys,
+    otdels,
     sampleRow: rows[0] ?? null,
     durationMs: Date.now() - startedAt,
     ok: summary.ok,
@@ -96,7 +110,8 @@ export async function POST(request: NextRequest) {
         rowCount: summary.receivedRows,
         keys: keys.join(", ").slice(0, 2000),
         sample: JSON.stringify(rows[0] ?? {}).slice(0, 2000),
-        note: `upsert=${summary.productsUpserted}, skip=${summary.skippedRows}`,
+        note: `upsert=${summary.productsUpserted}, skip=${summary.skippedRows}` +
+          (otdels ? ` | ${otdels}` : " | otdel yo'q"),
         ok: summary.ok,
       },
     });
