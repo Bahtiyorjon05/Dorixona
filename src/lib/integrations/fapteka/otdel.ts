@@ -7,7 +7,7 @@ import { isFilial, type Filial } from "@/lib/filial";
  * Push faylida har qatorda O=1, O=2 ... bo'lib keladi.
  *
  * Vercel env'da shunday sozlanadi:
- *   FAPTEKA_OTDEL_UNITS="1:Yunusobod,2:Qoraqamish"
+ *   FAPTEKA_OTDEL_UNITS="2:Yunusobod,3:Shayxontohur"
  *
  * Sozlanmagan bo'lsa bo'sh Map qaytadi va otdelga bog'liq hisob
  * umuman ishlamaydi — noto'g'ri dorixonaga yozib qo'ymaslik uchun

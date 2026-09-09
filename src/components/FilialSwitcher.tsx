@@ -8,7 +8,7 @@ import { FILIALS, type Filial } from "@/lib/filial";
 const ICON: Record<Filial, string> = {
   Umumiy: "🏢",
   Yunusobod: "🏪",
-  Qoraqamish: "🏪",
+  Shayxontohur: "🏪",
 };
 
 export function FilialSwitcher({ current }: { current: Filial }) {

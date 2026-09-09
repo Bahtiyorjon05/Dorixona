@@ -24,7 +24,7 @@ const STATUS: Record<string, { label: string; color: "green" | "amber" | "red" }
   INACTIVE: { label: "Faol emas", color: "red" },
 };
 const AVATAR_COLORS = ["#1a7f5a", "#378add", "#f59e0b", "#e24b4a", "#7f77dd"];
-const UNITS = ["Umumiy", "Yunusobod", "Qoraqamish"];
+const UNITS = ["Umumiy", "Yunusobod", "Shayxontohur"];
 
 function kpiColor(kpi: number | null) {
   if (kpi == null) return "var(--c-muted)";

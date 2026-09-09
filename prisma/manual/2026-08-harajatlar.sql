@@ -21,7 +21,7 @@ SELECT
     now()
 FROM (VALUES
     -- ── Ijara (dorixonalarga ajratilgan) ──
-    ('Ijara — Qoraqamish',   'RENT',      19200000, true,  'Qoraqamish'),
+    ('Ijara — Shayxontohur',   'RENT',      19200000, true,  'Shayxontohur'),
     ('Ijara — Yunusobod',    'RENT',       7200000, true,  'Yunusobod'),
 
     -- ── Kommunal ──
@@ -46,10 +46,10 @@ FROM (VALUES
     ('Oylik — Umid',         'SALARY',     6500000, true,  'Yunusobod'),
     ('Oylik — Nurbek',       'SALARY',      400000, true,  'Yunusobod'),
 
-    -- ── Oyliklar: Qoraqamish ──
-    ('Oylik — Zafar',        'SALARY',     6000000, true,  'Qoraqamish'),
-    ('Oylik — Dilsora',      'SALARY',     4000000, true,  'Qoraqamish'),
-    ('Oylik — O''ktam',      'SALARY',    24000000, true,  'Qoraqamish')
+    -- ── Oyliklar: Shayxontohur ──
+    ('Oylik — Zafar',        'SALARY',     6000000, true,  'Shayxontohur'),
+    ('Oylik — Dilsora',      'SALARY',     4000000, true,  'Shayxontohur'),
+    ('Oylik — O''ktam',      'SALARY',    24000000, true,  'Shayxontohur')
 ) AS v("title", "category", "amount", "recurring", "unit")
 WHERE NOT EXISTS (
     SELECT 1 FROM "Expense" e

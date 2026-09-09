@@ -18,7 +18,7 @@
 --   • "createdAt" ustuni — hammasi bir xil vaqtda yaratilganmi?
 --     (tugmani bir marta bosgansiz, demak hammasi bir daqiqada)
 --   • ro'yxatda O'ZINGIZ kiritgan avgust yozuvlari YO'Qmi?
---     ("Ijara — Qoraqamish", "Oylik — Dilnoz", "QQS (NDS)" va h.k.
+--     ("Ijara — Shayxontohur", "Oylik — Dilnoz", "QQS (NDS)" va h.k.
 --      bo'lmasligi kerak)
 SELECT
     a."createdAt",

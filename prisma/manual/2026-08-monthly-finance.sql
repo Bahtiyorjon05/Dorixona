@@ -42,7 +42,7 @@ END $$;
 
 -- ─── 2. Avgust 2026 ───────────────────────────────────────────────────
 --  Yunusobod : savdo 671 mln · foyda 71 mln · astatka 1282 mln
---  Qoraqamish: savdo 610 mln · foyda 54 mln · astatka 1210 mln
+--  Shayxontohur: savdo 610 mln · foyda 54 mln · astatka 1210 mln
 --
 --  Pereotsenka 34 mln filialga taqsimlanmagani uchun 0 qoldirildi —
 --  taqsimot aniqlangach ilovadagi ✎ tugmasi orqali kiritiladi.
@@ -61,7 +61,7 @@ SELECT
     now(), now()
 FROM (VALUES
     ('Yunusobod',  671000000, 71000000, 1282000000),
-    ('Qoraqamish', 610000000, 54000000, 1210000000)
+    ('Shayxontohur', 610000000, 54000000, 1210000000)
 ) AS v("unit", "turnover", "profit", "stockValue")
 ON CONFLICT ("unit", "periodMonth") DO UPDATE SET
     "turnover"   = EXCLUDED."turnover",

@@ -3,7 +3,7 @@
  * shuning uchun client komponentlarda ham import qilsa bo'ladi.
  * Cookie o'qish uchun: `@/lib/filial-server`.
  */
-export const FILIALS = ["Umumiy", "Yunusobod", "Qoraqamish"] as const;
+export const FILIALS = ["Umumiy", "Yunusobod", "Shayxontohur"] as const;
 export type Filial = (typeof FILIALS)[number];
 
 export const FILIAL_COOKIE = "filial";
