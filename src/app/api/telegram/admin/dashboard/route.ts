@@ -169,12 +169,41 @@ async function getInventory() {
   const lowStock = products.filter((product) => product.stock < product.minStock);
   const expiring = products.filter((product) => product.expiryDate && product.expiryDate <= in30);
   const inventoryValue = products.reduce((sum, product) => sum + product.stock * Number(product.costPrice), 0);
+  const inStock = products.filter((product) => product.stock > 0);
+
+  // Toifa bo'yicha (qoldiq qiymati, chakana narxda)
+  const catMap = new Map<string, { value: number; qty: number; count: number }>();
+  for (const p of inStock) {
+    const cur = catMap.get(p.category) ?? { value: 0, qty: 0, count: 0 };
+    cur.value += p.stock * Number(p.salePrice);
+    cur.qty += p.stock;
+    cur.count += 1;
+    catMap.set(p.category, cur);
+  }
+  const categories = Array.from(catMap.entries())
+    .map(([category, v]) => ({ category, value: v.value, qty: v.qty, count: v.count }))
+    .sort((a, b) => b.value - a.value);
+
+  // Umumiy mahsulotlar ro'yxati — eng qimmat 60 pozitsiya (qoldiq qiymati bo'yicha)
+  const topProducts = [...inStock]
+    .sort((a, b) => b.stock * Number(b.salePrice) - a.stock * Number(a.salePrice))
+    .slice(0, 60)
+    .map((product) => ({
+      id: product.id,
+      name: product.name,
+      category: product.category,
+      stock: product.stock,
+      salePrice: Number(product.salePrice),
+    }));
 
   return {
     totalCount: products.length,
+    inStockCount: inStock.length,
     inventoryValue,
     lowStockCount: lowStock.length,
     expiringCount: expiring.length,
+    categories: categories.map((c) => ({ category: c.category, value: c.value, count: c.count })),
+    products: topProducts,
     lowStock: lowStock.slice(0, 8).map((product) => ({
       id: product.id,
       name: product.name,
@@ -514,9 +543,12 @@ function emptySales() {
 function emptyInventory() {
   return {
     totalCount: 0,
+    inStockCount: 0,
     inventoryValue: 0,
     lowStockCount: 0,
     expiringCount: 0,
+    categories: [],
+    products: [],
     lowStock: [],
     expiring: [],
   };

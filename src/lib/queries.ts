@@ -633,6 +633,7 @@ export async function getAnalyticsData(year?: number) {
     const m = i + 1;
     const a = monthAgg.get(m);
     return {
+      month: m,
       label: monthName(m).slice(0, 3),
       savdo: +(a?.savdo ?? 0).toFixed(1),
       foyda: +(a?.foyda ?? 0).toFixed(1),

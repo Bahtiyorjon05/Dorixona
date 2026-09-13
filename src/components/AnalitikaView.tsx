@@ -11,7 +11,7 @@ import {
   OmborToifaChart,
 } from "@/components/charts/AnalyticsCharts";
 
-type MonthPoint = { label: string; savdo: number; foyda: number; astatka: number; xarajat: number };
+type MonthPoint = { month: number; label: string; savdo: number; foyda: number; astatka: number; xarajat: number };
 type UnitPoint = { unit: string; savdo: number; foyda: number; astatka: number };
 type AssortItem = { name: string; category: string; stock: number; price: number; value: number };
 
@@ -81,6 +81,14 @@ export function AnalitikaView({
   // dan/gacha — F-Apteka "С / По". Standart: joriy yil.
   const [dan, setDan] = useState(`${year}-01-01`);
   const [gacha, setGacha] = useState(`${year}-12-31`);
+  // Grafik uchun alohida dan/gacha (F-Apteka'da har bo'limda o'z sanasi bor)
+  const [gDan, setGDan] = useState(`${year}-01-01`);
+  const [gGacha, setGGacha] = useState(`${year}-12-31`);
+
+  // Grafik sanasiga ko'ra oylarni filtrlash
+  const danMonth = Number(gDan.slice(5, 7)) || 1;
+  const gachaMonth = Number(gGacha.slice(5, 7)) || 12;
+  const monthlyRange = monthly.filter((m) => m.month >= danMonth && m.month <= gachaMonth);
 
   const now = new Date().getFullYear();
   const years = [now + 1, now, now - 1, now - 2];
@@ -196,15 +204,23 @@ export function AnalitikaView({
               ))}
             </select>
           </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            dan
+            <input type="date" value={gDan} onChange={(e) => setGDan(e.target.value)} className={dateClass} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            gacha
+            <input type="date" value={gGacha} onChange={(e) => setGGacha(e.target.value)} className={dateClass} />
+          </label>
         </div>
 
         {chart === "dinamika" && (
           <>
             <p className="mb-3 text-sm text-muted">{year}-yil oylik ko&apos;rsatkichlar (mln so&apos;m)</p>
-            <DinamikaChart data={monthly} />
+            <DinamikaChart data={monthlyRange} />
           </>
         )}
-        {chart === "astatka" && <AstatkaChart data={monthly} />}
+        {chart === "astatka" && <AstatkaChart data={monthlyRange} />}
         {chart === "filiallar" && (
           <>
             <p className="mb-3 text-sm text-muted">

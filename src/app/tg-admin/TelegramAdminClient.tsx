@@ -42,9 +42,12 @@ type DashboardData = {
   };
   inventory: {
     totalCount: number;
+    inStockCount?: number;
     inventoryValue: number;
     lowStockCount: number;
     expiringCount: number;
+    categories?: { category: string; value: number; count: number }[];
+    products?: { id: string; name: string; category: string; stock: number; salePrice: number }[];
     lowStock: { id: string; name: string; stock: number; minStock: number; category: string }[];
     expiring: { id: string; name: string; expiryDate: string | null }[];
   };
@@ -863,6 +866,29 @@ export function TelegramAdminClient() {
             </ActionCard>
             ) : (
               <ReadOnlyCard />
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Metric label="Jami mahsulot" value={`${formatNumber(data.inventory.totalCount)} ta`} sub={data.inventory.inStockCount != null ? `Qoldiqda: ${formatNumber(data.inventory.inStockCount)}` : undefined} />
+              <Metric label="Ombor qiymati" value={formatMoney(data.inventory.inventoryValue)} sub="Tan narxida" />
+            </div>
+            {data.inventory.categories && data.inventory.categories.length > 0 && (
+              <Card title="Toifalar bo'yicha (qoldiq qiymati)">
+                {data.inventory.categories.slice(0, 12).map((c) => (
+                  <Row key={c.category} left={c.category} right={formatMoney(c.value)} sub={`${c.count} pozitsiya`} />
+                ))}
+              </Card>
+            )}
+            {data.inventory.products && data.inventory.products.length > 0 && (
+              <Card title="Mahsulotlar (eng qimmat qoldiq)">
+                {data.inventory.products.map((product) => (
+                  <Row
+                    key={product.id}
+                    left={product.name}
+                    right={`${formatNumber(product.stock)} dona`}
+                    sub={`${product.category} · ${formatMoney(product.salePrice)}`}
+                  />
+                ))}
+              </Card>
             )}
             <Card title="Kam Qoldiq">
               {data.inventory.lowStock.length ? data.inventory.lowStock.map((product) => (
