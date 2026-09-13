@@ -27,6 +27,22 @@ function isAdmin(id?: number) {
   return id ? adminIds().has(id) : false;
 }
 
+/** Telegram'i akkauntga bog'langan faol xodimmi? */
+async function isLinkedStaff(id?: number) {
+  if (!id) return false;
+  try {
+    const user = await db.user.findUnique({ where: { telegramId: BigInt(id) } });
+    return Boolean(user && user.isActive);
+  } catch {
+    return false;
+  }
+}
+
+/** Panel ko'ra oladiganmi: admin yoki bog'langan xodim */
+async function isStaff(id?: number) {
+  return isAdmin(id) || (await isLinkedStaff(id));
+}
+
 async function requireAdmin(ctx: Context) {
   if (!ctx.from) return false;
   const admins = adminIds();
@@ -65,10 +81,22 @@ async function sendAdminPanel(ctx: Context) {
     return;
   }
 
-  const keyboard = new InlineKeyboard().webApp("Xodim Mini Appga kirish", url);
+  // Bog'langan xodim — to'g'ridan-to'g'ri panel
+  if (await isLinkedStaff(ctx.from?.id)) {
+    const keyboard = new InlineKeyboard().webApp("Xodim panelini ochish", url);
+    await ctx.reply("Xush kelibsiz! Panelni ochish uchun tugmani bosing.", {
+      reply_markup: keyboard,
+    });
+    return;
+  }
+
+  // Hali bog'lanmagan — bir marta email/parol bilan kirsa, Telegram'i bog'lanadi
+  const keyboard = new InlineKeyboard().webApp("Xodim sifatida kirish", url);
   await ctx.reply(
-    "Bu oynadan xodimlar email va parol bilan kiradi.\n\n" +
-      "Oddiy mijozlar uchun /balans va /tarix ishlaydi. Xodim ekaningiz login orqali tekshiriladi.",
+    "Bu bo'lim faqat xodimlar uchun.\n\n" +
+      "Agar xodim bo'lsangiz — email va parolingiz bilan kiring, Telegram'ingiz akkauntga bog'lanadi. " +
+      "Keyingi safar /start bosishning o'zi kifoya.\n\n" +
+      "Mijoz bo'lsangiz: /balans — bonus ballari, /tarix — xaridlar.",
     { reply_markup: keyboard },
   );
 }
@@ -76,7 +104,8 @@ async function sendAdminPanel(ctx: Context) {
 function registerBotHandlers(bot: Bot) {
   bot.command("start", async (ctx) => {
     if (!ctx.from) return;
-    if (isAdmin(ctx.from.id)) {
+    // Admin yoki bog'langan xodim — panel. Mijozlar bu tarmoqqa tushmaydi.
+    if (await isStaff(ctx.from.id)) {
       await sendAdminPanel(ctx);
       return;
     }

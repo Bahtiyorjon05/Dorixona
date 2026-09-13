@@ -525,6 +525,8 @@ export function TelegramAdminClient() {
         body: JSON.stringify({
           email: String(fd.get("email") ?? ""),
           password: String(fd.get("password") ?? ""),
+          // Mini App ichida bo'lsak — Telegram'ni akkauntga bog'lash uchun
+          initData: window.Telegram?.WebApp?.initData || undefined,
         }),
       });
       const body = (await res.json()) as LoginResponse;

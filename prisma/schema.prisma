@@ -29,6 +29,7 @@ model User {
   fullName     String
   role         Role      @default(MANAGER)
   isActive     Boolean   @default(true)
+  telegramId   BigInt?   @unique // xodim Telegram'i (Mini App'ga birinchi kirganda bog'lanadi)
   branchId     String?
   branch       Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   employee     Employee? // ixtiyoriy: kirish profili xodimga bog'lanishi mumkin

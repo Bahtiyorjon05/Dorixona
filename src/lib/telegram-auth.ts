@@ -27,7 +27,11 @@ function timingSafeEqualHex(a: string, b: string) {
   return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
 }
 
-export function verifyTelegramMiniApp(initData: string): TelegramAuthResult {
+/**
+ * Faqat imzoni tekshiradi (admin talab qilmaydi) — haqiqiy Telegram
+ * foydalanuvchini qaytaradi. Xodim Telegram'ini bog'lash uchun ishlatiladi.
+ */
+export function verifyTelegramSignature(initData: string): TelegramAuthResult {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) return { ok: false, error: "TELEGRAM_BOT_TOKEN sozlanmagan", status: 500 };
   if (!initData) return { ok: false, error: "Telegram initData topilmadi", status: 401 };
@@ -64,11 +68,16 @@ export function verifyTelegramMiniApp(initData: string): TelegramAuthResult {
     return { ok: false, error: "Telegram user JSON noto'g'ri", status: 401 };
   }
 
-  if (!adminIds().has(user.id)) {
+  return { ok: true, user };
+}
+
+export function verifyTelegramMiniApp(initData: string): TelegramAuthResult {
+  const verified = verifyTelegramSignature(initData);
+  if (!verified.ok) return verified;
+  if (!adminIds().has(verified.user.id)) {
     return { ok: false, error: "Bu panel faqat adminlar uchun", status: 403 };
   }
-
-  return { ok: true, user };
+  return verified;
 }
 
 export function getTelegramWebAppUrl() {
