@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
+import { utcMonthStart } from "@/lib/queries";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -190,20 +191,64 @@ async function getInventory() {
 }
 
 async function getExpenses() {
-  const monthStart = startOfMonth(0);
-  const nextMonth = startOfMonth(1);
-  const where = { spentAt: { gte: monthStart, lt: nextMonth } };
-  const [list, totalAgg, byCat] = await Promise.all([
-    db.expense.findMany({ where, orderBy: { spentAt: "desc" }, take: 8 }),
-    db.expense.aggregate({ _sum: { amount: true }, where }),
-    db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
+  // Joriy oyda yozuv bo'lmasa, ma'lumot bor oxirgi oyni ko'rsatamiz
+  // (web'dagi getExpensesData bilan bir xil mantiq — Mini App ham
+  //  bo'sh emas, avgust ma'lumotini ko'rsatishi uchun).
+  const current = startOfMonth(0);
+  const [curCount, curFin] = await Promise.all([
+    db.expense.count({ where: { spentAt: { gte: current, lt: startOfMonth(1) } } }),
+    db.monthlyFinance.count({ where: { periodMonth: utcMonthStart(current) } }),
   ]);
 
+  let monthStart = current;
+  if (curCount === 0 && curFin === 0) {
+    const [lastExp, lastFin] = await Promise.all([
+      db.expense.findFirst({ orderBy: { spentAt: "desc" }, select: { spentAt: true } }),
+      db.monthlyFinance.findFirst({ orderBy: { periodMonth: "desc" }, select: { periodMonth: true } }),
+    ]);
+    const cands = [
+      lastExp && new Date(lastExp.spentAt.getFullYear(), lastExp.spentAt.getMonth(), 1),
+      lastFin && new Date(lastFin.periodMonth.getUTCFullYear(), lastFin.periodMonth.getUTCMonth(), 1),
+    ].filter((x): x is Date => x != null);
+    if (cands.length) monthStart = new Date(Math.max(...cands.map((d) => d.getTime())));
+  }
+  const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+  const where = { spentAt: { gte: monthStart, lt: nextMonth } };
+
+  const [list, totalAgg, byCat, byUnitRows, finRows, debtRows] = await Promise.all([
+    db.expense.findMany({ where, orderBy: { spentAt: "desc" }, take: 12 }),
+    db.expense.aggregate({ _sum: { amount: true }, where }),
+    db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
+    db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, where }),
+    db.monthlyFinance.findMany({ where: { periodMonth: utcMonthStart(monthStart) }, orderBy: { unit: "asc" } }),
+    db.debt.findMany({ orderBy: { createdAt: "asc" } }),
+  ]);
+
+  const unitSpent = new Map(byUnitRows.map((r) => [r.unit ?? "Umumiy", num(r._sum.amount)]));
+
   return {
+    period: monthStart.toISOString(),
     total: num(totalAgg._sum.amount),
-    categories: byCat.map((row) => ({
-      category: row.category,
-      amount: num(row._sum.amount),
+    categories: byCat.map((row) => ({ category: row.category, amount: num(row._sum.amount) })),
+    // Dorixonalar kesimi — MonthlyFinance dan (savdo/foyda/astatka/pereotsenka)
+    monthlyUnits: finRows.map((f) => {
+      const spent = unitSpent.get(f.unit) ?? 0;
+      const profit = num(f.profit);
+      return {
+        unit: f.unit,
+        turnover: num(f.turnover),
+        profit,
+        expenses: spent,
+        netProfit: profit - spent,
+        stockValue: num(f.stockValue),
+        revaluation: num(f.revaluation),
+      };
+    }),
+    debts: debtRows.map((q) => ({
+      id: q.id,
+      counterparty: q.counterparty,
+      direction: q.direction as string,
+      remaining: num(q.totalAmount) - num(q.paidAmount),
     })),
     recent: list.map((expense) => ({
       id: expense.id,
@@ -479,8 +524,11 @@ function emptyInventory() {
 
 function emptyExpenses() {
   return {
+    period: new Date().toISOString(),
     total: 0,
     categories: [],
+    monthlyUnits: [],
+    debts: [],
     recent: [],
   };
 }

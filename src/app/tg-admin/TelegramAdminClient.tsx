@@ -49,8 +49,19 @@ type DashboardData = {
     expiring: { id: string; name: string; expiryDate: string | null }[];
   };
   expenses: {
+    period?: string;
     total: number;
     categories: { category: string; amount: number }[];
+    monthlyUnits?: {
+      unit: string;
+      turnover: number;
+      profit: number;
+      expenses: number;
+      netProfit: number;
+      stockValue: number;
+      revaluation: number;
+    }[];
+    debts?: { id: string; counterparty: string; direction: string; remaining: number }[];
     recent: { id: string; title: string; category: string; amount: number; spentAt: string; isRecurring: boolean }[];
   };
   customers: {
@@ -911,6 +922,34 @@ export function TelegramAdminClient() {
             </ActionCard>
             ) : (
               <ReadOnlyCard />
+            )}
+            {data.expenses.monthlyUnits && data.expenses.monthlyUnits.length > 0 && (
+              <Card title="Dorixonalar kesimi (oylik)">
+                {data.expenses.monthlyUnits.map((u) => (
+                  <div key={u.unit} className="border-b border-edge py-2 last:border-0">
+                    <div className="mb-1 text-sm font-semibold">{u.unit}</div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-muted">
+                      {u.turnover > 0 && <span>Savdo: {formatMoney(u.turnover)}</span>}
+                      {u.profit > 0 && <span>Foyda: {formatMoney(u.profit)}</span>}
+                      {u.stockValue > 0 && <span>Astatka: {formatMoney(u.stockValue)}</span>}
+                      {u.revaluation > 0 && <span>Pereotsenka: {formatMoney(u.revaluation)}</span>}
+                      {u.expenses > 0 && <span>Harajat: {formatMoney(u.expenses)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </Card>
+            )}
+            {data.expenses.debts && data.expenses.debts.length > 0 && (
+              <Card title="Qarzlar">
+                {data.expenses.debts.map((q) => (
+                  <Row
+                    key={q.id}
+                    left={q.counterparty}
+                    right={formatMoney(q.remaining)}
+                    sub={q.direction === "PAYABLE" ? "To'lashimiz kerak" : "Olishimiz kerak"}
+                  />
+                ))}
+              </Card>
             )}
             <Card title="Kategoriya Bo'yicha">
               {data.expenses.categories.map((row) => (
