@@ -572,3 +572,104 @@ export async function getReportsData() {
 
   return { correlation, critical: critical?.name ?? null };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  ANALITIKA — F-Apteka uslubidagi grafiklar
+//  Manba: MonthlyFinance (savdo/foyda/astatka), Product (ombor),
+//  Expense (harajat). Hammasi bor ma'lumotdan hisoblanadi.
+// ─────────────────────────────────────────────────────────────
+export async function getAnalyticsData(year?: number) {
+  const branchId = await getBranchId();
+  const y = year ?? new Date().getFullYear();
+  const yearStart = new Date(Date.UTC(y, 0, 1));
+  const yearEnd = new Date(Date.UTC(y + 1, 0, 1));
+
+  const [finRows, catRows, expRows] = await Promise.all([
+    // Oylik moliya — filial kesimida (Umumiy'ni chiqarib tashlaymiz, u taqsimlanmagan)
+    db.monthlyFinance.findMany({
+      where: { branchId, periodMonth: { gte: yearStart, lt: yearEnd } },
+      orderBy: { periodMonth: "asc" },
+    }),
+    // Ombor qiymati — toifa bo'yicha (chakana narxda, jonli)
+    db.$queryRaw<{ category: string; value: number; qty: number }[]>`
+      SELECT p.category,
+        COALESCE(SUM(p.stock * p."salePrice"), 0)::float8 AS value,
+        COALESCE(SUM(p.stock), 0)::float8 AS qty
+      FROM "Product" p
+      WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0
+      GROUP BY p.category ORDER BY value DESC`,
+    // Harajat — oy bo'yicha
+    db.$queryRaw<{ m: Date; exp: number }[]>`
+      SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount), 0)::float8 AS exp
+      FROM "Expense" e WHERE e."branchId" = ${branchId}
+        AND e."spentAt" >= ${yearStart} AND e."spentAt" < ${yearEnd}
+      GROUP BY 1 ORDER BY 1`,
+  ]);
+
+  // Oy raqami -> harajat
+  const expMap = new Map(expRows.map((r) => [new Date(r.m).getUTCMonth() + 1, M(r.exp)]));
+
+  // Har oy uchun barcha filiallar yig'indisi (Umumiy'dan tashqari)
+  const monthAgg = new Map<number, { savdo: number; foyda: number; astatka: number }>();
+  for (const row of finRows) {
+    if (row.unit === "Umumiy") continue;
+    const m = new Date(row.periodMonth).getUTCMonth() + 1;
+    const cur = monthAgg.get(m) ?? { savdo: 0, foyda: 0, astatka: 0 };
+    cur.savdo += num(row.turnover) / 1_000_000;
+    cur.foyda += num(row.profit) / 1_000_000;
+    cur.astatka += num(row.stockValue) / 1_000_000;
+    monthAgg.set(m, cur);
+  }
+
+  // 12 oylik dinamika — ma'lumot bor oylargacha
+  const monthly = Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1;
+    const a = monthAgg.get(m);
+    return {
+      label: monthName(m).slice(0, 3),
+      savdo: +(a?.savdo ?? 0).toFixed(1),
+      foyda: +(a?.foyda ?? 0).toFixed(1),
+      astatka: +(a?.astatka ?? 0).toFixed(1),
+      xarajat: +(expMap.get(m) ?? 0).toFixed(1),
+    };
+  }).filter((r) => r.savdo > 0 || r.foyda > 0 || r.astatka > 0 || r.xarajat > 0);
+
+  // Eng oxirgi ma'lumot bor oy — filiallar taqqoslashi uchun
+  const lastMonth = finRows
+    .filter((r) => r.unit !== "Umumiy")
+    .reduce((max, r) => {
+      const m = new Date(r.periodMonth).getUTCMonth() + 1;
+      return m > max ? m : max;
+    }, 0);
+
+  const byUnit = finRows
+    .filter((r) => r.unit !== "Umumiy" && new Date(r.periodMonth).getUTCMonth() + 1 === lastMonth)
+    .map((r) => ({
+      unit: r.unit,
+      savdo: +(num(r.turnover) / 1_000_000).toFixed(1),
+      foyda: +(num(r.profit) / 1_000_000).toFixed(1),
+      astatka: +(num(r.stockValue) / 1_000_000).toFixed(1),
+    }))
+    .sort((a, b) => b.savdo - a.savdo);
+
+  // Ombor qiymati toifa bo'yicha (top 6 + boshqa), mln so'm
+  const totalCat = catRows.reduce((s, r) => s + r.value, 0);
+  const topCats = catRows.slice(0, 6).map((r) => ({
+    name: r.category,
+    value: +M(r.value).toFixed(1),
+  }));
+  const restCat = catRows.slice(6).reduce((s, r) => s + r.value, 0);
+  const inventoryByCategory =
+    restCat > 0 ? [...topCats, { name: "Boshqa", value: +M(restCat).toFixed(1) }] : topCats;
+
+  return {
+    year: y,
+    monthly, // { label, savdo, foyda, astatka, xarajat }[]
+    byUnit, // oxirgi oy filiallar kesimi
+    lastMonthName: lastMonth ? monthName(lastMonth) : null,
+    inventoryByCategory, // ombor qiymati toifa bo'yicha (mln)
+    inventoryTotal: +M(totalCat).toFixed(1),
+    hasFinance: monthly.length > 0,
+    hasInventory: inventoryByCategory.length > 0,
+  };
+}

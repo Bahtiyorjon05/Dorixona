@@ -27,6 +27,7 @@ const NAV: { section?: string; items: { href: string; label: string; icon: strin
     section: "Hisobotlar",
     items: [
       { href: "/hisobotlar", label: "Hisobotlar", icon: "📊", permission: "hisobotlar" },
+      { href: "/analitika", label: "Analitika", icon: "📉", permission: "analitika" },
       { href: "/sozlamalar", label: "Sozlamalar", icon: "⚙️", permission: "sozlamalar" },
     ],
   },

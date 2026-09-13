@@ -8,6 +8,7 @@ export const PERMISSION_DEFS = [
   { key: "kpi", label: "KPI", path: "/kpi" },
   { key: "davomat", label: "Davomat", path: "/davomat" },
   { key: "hisobotlar", label: "Hisobotlar", path: "/hisobotlar" },
+  { key: "analitika", label: "Analitika", path: "/analitika" },
   { key: "sozlamalar", label: "Sozlamalar", path: "/sozlamalar" },
 ] as const;
 
