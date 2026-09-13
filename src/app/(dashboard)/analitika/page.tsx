@@ -55,6 +55,7 @@ export default async function AnalitikaPage({
         lastMonthName={d.lastMonthName}
         inventoryByCategory={d.inventoryByCategory}
         inventoryTotal={d.inventoryTotal}
+        assortment={d.assortment}
       />
 
       {!d.hasFinance && !d.hasInventory && (

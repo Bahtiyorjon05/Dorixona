@@ -584,7 +584,7 @@ export async function getAnalyticsData(year?: number) {
   const yearStart = new Date(Date.UTC(y, 0, 1));
   const yearEnd = new Date(Date.UTC(y + 1, 0, 1));
 
-  const [finRows, catRows, expRows] = await Promise.all([
+  const [finRows, catRows, expRows, assortRows] = await Promise.all([
     // Oylik moliya — filial kesimida (Umumiy'ni chiqarib tashlaymiz, u taqsimlanmagan)
     db.monthlyFinance.findMany({
       where: { branchId, periodMonth: { gte: yearStart, lt: yearEnd } },
@@ -604,6 +604,13 @@ export async function getAnalyticsData(year?: number) {
       FROM "Expense" e WHERE e."branchId" = ${branchId}
         AND e."spentAt" >= ${yearStart} AND e."spentAt" < ${yearEnd}
       GROUP BY 1 ORDER BY 1`,
+    // Assortiment — hozirgi qoldiq (eng qimmat 50 ta pozitsiya)
+    db.$queryRaw<{ name: string; category: string; stock: number; price: number; value: number }[]>`
+      SELECT p.name, p.category, p.stock::float8 AS stock, p."salePrice"::float8 AS price,
+        (p.stock * p."salePrice")::float8 AS value
+      FROM "Product" p
+      WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0
+      ORDER BY value DESC LIMIT 50`,
   ]);
 
   // Oy raqami -> harajat
@@ -671,5 +678,13 @@ export async function getAnalyticsData(year?: number) {
     inventoryTotal: +M(totalCat).toFixed(1),
     hasFinance: monthly.length > 0,
     hasInventory: inventoryByCategory.length > 0,
+    // Assortiment (sana holatiga) — hozirgi qoldiq
+    assortment: assortRows.map((r) => ({
+      name: r.name,
+      category: r.category,
+      stock: Math.round(r.stock),
+      price: Math.round(r.price),
+      value: +M(r.value).toFixed(2),
+    })),
   };
 }
