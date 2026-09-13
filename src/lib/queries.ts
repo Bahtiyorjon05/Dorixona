@@ -29,14 +29,16 @@ const M = (v: unknown) => num(v) / 1_000_000; // mln so'm
 // ─────────────────────────────────────────────────────────────
 //  MOLIYA
 // ─────────────────────────────────────────────────────────────
-export async function getFinanceData() {
+export async function getFinanceData(period?: Date) {
   const branchId = await getBranchId();
   const today = startOfDay();
   const tomorrow = new Date(today.getTime() + 864e5);
   const yesterday = new Date(today.getTime() - 864e5);
-  const monthStart = startOfMonth(0);
-  const nextMonth = startOfMonth(1);
-  const lastMonthStart = startOfMonth(-1);
+  // Oy tanlansa oylik agregatlar o'sha oyga tayanadi; bugun/hafta jonli qoladi.
+  const base = period ?? new Date();
+  const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+  const nextMonth = new Date(base.getFullYear(), base.getMonth() + 1, 1);
+  const lastMonthStart = new Date(base.getFullYear(), base.getMonth() - 1, 1);
   const weekAgo = new Date(today.getTime() - 6 * 864e5);
   const sixMonthsAgo = startOfMonth(-5);
 

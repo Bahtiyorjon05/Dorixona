@@ -310,13 +310,49 @@ function trend(value: number) {
   return <span className={up ? "text-primary" : "text-danger"}>{up ? "+" : "-"}{Math.abs(value).toFixed(1)}%</span>;
 }
 
-async function fetchDashboard(authHeader: string) {
-  const res = await fetch("/api/telegram/admin/dashboard", {
+async function fetchDashboard(authHeader: string, oy?: string) {
+  const url = oy ? `/api/telegram/admin/dashboard?oy=${oy}` : "/api/telegram/admin/dashboard";
+  const res = await fetch(url, {
     headers: { Authorization: authHeader },
   });
   const body = (await res.json()) as MiniAppResponse;
   if (!res.ok || !body.ok) throw new Error(body.error || "Ma'lumot yuklanmadi");
   return body;
+}
+
+const UZ_MONTHS_FULL = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
+
+function PeriodSelect({
+  value,
+  loading,
+  onChange,
+}: {
+  value: string;
+  loading: boolean;
+  onChange: (oy: string) => void;
+}) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const cur = value || `${y}-${now.getMonth() + 1}`;
+  const [cy, cm] = cur.split("-").map(Number);
+  const years = [y + 1, y, y - 1, y - 2];
+  const cls = "rounded-lg border border-edge bg-surface px-2 py-1.5 text-xs";
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <span className="text-xs text-muted">Oy:</span>
+      <select value={cm} onChange={(e) => onChange(`${cy}-${e.target.value}`)} className={cls} disabled={loading}>
+        {UZ_MONTHS_FULL.map((mn, i) => (
+          <option key={i + 1} value={i + 1}>{mn}</option>
+        ))}
+      </select>
+      <select value={cy} onChange={(e) => onChange(`${e.target.value}-${cm}`)} className={cls} disabled={loading}>
+        {years.map((yy) => (
+          <option key={yy} value={yy}>{yy}</option>
+        ))}
+      </select>
+      {loading && <span className="text-xs text-muted">yuklanmoqda...</span>}
+    </div>
+  );
 }
 
 function Card({ title, children }: { title?: string; children: React.ReactNode }) {
@@ -397,6 +433,8 @@ function Bars({ data }: { data: { label: string; value: number }[] }) {
 
 export function TelegramAdminClient() {
   const [payload, setPayload] = useState<MiniAppResponse | null>(null);
+  const [period, setPeriod] = useState<string>("");
+  const [periodLoading, setPeriodLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
@@ -461,6 +499,19 @@ export function TelegramAdminClient() {
       cancelled = true;
     };
   }, []);
+
+  async function changePeriod(oy: string) {
+    setPeriod(oy);
+    if (!authHeader) return;
+    setPeriodLoading(true);
+    try {
+      setPayload(await fetchDashboard(authHeader, oy || undefined));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ma'lumot yuklanmadi");
+    } finally {
+      setPeriodLoading(false);
+    }
+  }
 
   async function login(form: HTMLFormElement) {
     const fd = new FormData(form);
@@ -703,6 +754,7 @@ export function TelegramAdminClient() {
 
         {activeTab === "finance" && (
           <div className="space-y-3">
+            <PeriodSelect value={period} loading={periodLoading} onChange={changePeriod} />
             <Card title="7 Kunlik Savdo"><Bars data={data.finance.weekSales} /></Card>
             <Card title="Toifalar Ulushi">
               {data.finance.categories.map((category) => (
@@ -905,6 +957,7 @@ export function TelegramAdminClient() {
 
         {activeTab === "expenses" && (
           <div className="space-y-3">
+            <PeriodSelect value={period} loading={periodLoading} onChange={changePeriod} />
             {canEditSection("harajatlar") ? (
             <ActionCard title="Yangi Xarajat">
               <form

@@ -3,6 +3,7 @@ import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Badge, Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
 import { FoydaXarajatChart, SavdoChart, ToifalarChart } from "@/components/charts/FinanceCharts";
 import { currentFilial } from "@/lib/filial-server";
+import { MonthPicker } from "@/components/MonthPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -56,8 +57,26 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default async function MoliyaPage() {
-  const [d, ex, filial] = await Promise.all([getFinanceData(), getExpensesData(), currentFilial()]);
+function parseMonth(raw: string | string[] | undefined): Date | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const m = /^(\d{4})-(\d{1,2})$/.exec(value ?? "");
+  if (!m) return undefined;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return undefined;
+  return new Date(Number(m[1]), month - 1, 1);
+}
+
+export default async function MoliyaPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const selected = parseMonth((await searchParams).oy);
+  const [d, ex, filial] = await Promise.all([
+    getFinanceData(selected),
+    getExpensesData(selected),
+    currentFilial(),
+  ]);
 
   const units = ex.monthlyUnits;
   const totalTurnover = units.reduce((s, u) => s + u.turnover, 0);
@@ -80,6 +99,13 @@ export default async function MoliyaPage() {
       <PageHeader
         title="Moliyaviy ko'rsatkichlar"
         subtitle={`${period}${filial === "Umumiy" ? "" : ` — ${filial} filiali`}`}
+        action={
+          <MonthPicker
+            current={`${ex.period.getFullYear()}-${ex.period.getMonth() + 1}`}
+            available={ex.availableMonths.map((m: Date) => `${m.getFullYear()}-${m.getMonth() + 1}`)}
+            basePath="/moliya"
+          />
+        }
       />
 
       {/* Kassa ko'rsatkichlari */}

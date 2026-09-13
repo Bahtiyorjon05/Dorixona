@@ -18,13 +18,14 @@ function startOfMonth(offset = 0, base = new Date()) {
   return new Date(base.getFullYear(), base.getMonth() + offset, 1);
 }
 
-async function getFinance() {
+async function getFinance(period?: Date) {
   const today = startOfDay();
   const tomorrow = new Date(today.getTime() + 864e5);
   const yesterday = new Date(today.getTime() - 864e5);
-  const monthStart = startOfMonth(0);
-  const nextMonth = startOfMonth(1);
-  const lastMonthStart = startOfMonth(-1);
+  const base = period ?? new Date();
+  const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+  const nextMonth = new Date(base.getFullYear(), base.getMonth() + 1, 1);
+  const lastMonthStart = new Date(base.getFullYear(), base.getMonth() - 1, 1);
   const weekAgo = new Date(today.getTime() - 6 * 864e5);
   const sixMonthsAgo = startOfMonth(-5);
 
@@ -219,7 +220,7 @@ async function getInventory() {
   };
 }
 
-async function getExpenses() {
+async function getExpenses(period?: Date) {
   // Joriy oyda yozuv bo'lmasa, ma'lumot bor oxirgi oyni ko'rsatamiz
   // (web'dagi getExpensesData bilan bir xil mantiq — Mini App ham
   //  bo'sh emas, avgust ma'lumotini ko'rsatishi uchun).
@@ -229,8 +230,8 @@ async function getExpenses() {
     db.monthlyFinance.count({ where: { periodMonth: utcMonthStart(current) } }),
   ]);
 
-  let monthStart = current;
-  if (curCount === 0 && curFin === 0) {
+  let monthStart = period ? new Date(period.getFullYear(), period.getMonth(), 1) : current;
+  if (!period && curCount === 0 && curFin === 0) {
     const [lastExp, lastFin] = await Promise.all([
       db.expense.findFirst({ orderBy: { spentAt: "desc" }, select: { spentAt: true } }),
       db.monthlyFinance.findFirst({ orderBy: { periodMonth: "desc" }, select: { periodMonth: true } }),
@@ -702,7 +703,17 @@ function emptyOptions() {
   };
 }
 
+function parsePeriod(req: NextRequest): Date | undefined {
+  const raw = req.nextUrl.searchParams.get("oy");
+  const m = raw && /^(\d{4})-(\d{1,2})$/.exec(raw);
+  if (!m) return undefined;
+  const mo = Number(m[2]);
+  if (mo < 1 || mo > 12) return undefined;
+  return new Date(Number(m[1]), mo - 1, 1);
+}
+
 export async function GET(req: NextRequest) {
+  const period = parsePeriod(req);
   const access = await verifyRequestAccess(req);
   if (!access.ok) {
     return Response.json({ ok: false, error: access.error }, { status: access.status });
@@ -725,10 +736,10 @@ export async function GET(req: NextRequest) {
 
   const [finance, sales, inventory, expenses, customers, employees, kpi, attendance, reports, analytics, options] =
     await Promise.all([
-      allowed.finance ? getFinance() : emptyFinance(),
+      allowed.finance ? getFinance(period) : emptyFinance(),
       allowed.sales ? getSales() : emptySales(),
       allowed.inventory ? getInventory() : emptyInventory(),
-      allowed.expenses ? getExpenses() : emptyExpenses(),
+      allowed.expenses ? getExpenses(period) : emptyExpenses(),
       allowed.customers ? getCustomers() : emptyCustomers(),
       allowed.employees ? getEmployees() : emptyEmployees(),
       allowed.kpi ? getKpi() : emptyKpi(),
