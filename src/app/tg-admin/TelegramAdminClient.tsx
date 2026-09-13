@@ -124,6 +124,14 @@ type DashboardData = {
     correlation: { employee: string; label: string; margin: number; marginMln: number; kpi: number }[];
     critical: { id: string; name: string; stock: number; minStock: number } | null;
   };
+  analytics?: {
+    year: number;
+    monthly: { label: string; savdo: number; foyda: number; astatka: number; xarajat: number }[];
+    byUnit: { unit: string; savdo: number; foyda: number; astatka: number }[];
+    lastMonthName: string | null;
+    inventoryByCategory: { name: string; value: number }[];
+    inventoryTotal: number;
+  };
   options: {
     products: { id: string; name: string; stock: number; salePrice: number; category: string }[];
     employees: { id: string; name: string; position: string }[];
@@ -212,6 +220,7 @@ const tabs = [
   ["kpi", "KPI", "🎯"],
   ["attendance", "Davomat", "🕐"],
   ["reports", "Hisobot", "📑"],
+  ["analitika", "Analitika", "📉"],
   ["settings", "Sozlamalar", "⚙️"],
 ] as const;
 type TabKey = (typeof tabs)[number][0];
@@ -226,6 +235,7 @@ const tabPermission: Partial<Record<TabKey, string>> = {
   kpi: "kpi",
   attendance: "davomat",
   reports: "hisobotlar",
+  analitika: "analitika",
   settings: "sozlamalar",
 };
 
@@ -240,6 +250,7 @@ const pageMeta: Record<TabKey, { title: string; subtitle: string }> = {
   kpi: { title: "KPI", subtitle: "Xodimlar reytingi va bonus hisoblari" },
   attendance: { title: "Davomat", subtitle: "Kelish vaqti, kechikish va penalti nazorati" },
   reports: { title: "Hisobotlar va tahlil", subtitle: "KPI va moliya integratsiyasi" },
+  analitika: { title: "Analitika", subtitle: "Savdo, foyda va ombor grafiklari" },
   settings: { title: "Sozlamalar", subtitle: "Xodim loginlari va ruxsatlar holati" },
 };
 
@@ -1200,6 +1211,80 @@ export function TelegramAdminClient() {
               <Row left={data.reports.critical ? `${data.reports.critical.name} ombori kritik darajada` : "Ombor qoldiqlari normal"} />
               <Row left="KPI va moliya birlashgan tahlil yangi insight beradi" />
             </Card>
+          </div>
+        )}
+
+        {activeTab === "analitika" && (
+          <div className="space-y-3">
+            {(() => {
+              const a = data.analytics;
+              if (!a || (a.monthly.length === 0 && a.inventoryByCategory.length === 0)) {
+                return (
+                  <Card title="Analitika">
+                    <p className="text-sm text-muted">
+                      Hali ma&apos;lumot yig&apos;ilmagan. Oylik moliya kiritilgach grafiklar to&apos;ladi.
+                    </p>
+                  </Card>
+                );
+              }
+              const jamiSavdo = a.monthly.reduce((s, m) => s + m.savdo, 0);
+              const jamiFoyda = a.monthly.reduce((s, m) => s + m.foyda, 0);
+              const maxSavdo = Math.max(...a.monthly.map((m) => m.savdo), 1);
+              return (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Metric label={`${a.year} savdo`} value={`${formatNumber(jamiSavdo)}M`} />
+                    <Metric label={`${a.year} foyda`} value={`${formatNumber(jamiFoyda)}M`} />
+                    <Metric label="Ombor qiymati" value={`${formatNumber(a.inventoryTotal)}M`} sub="chakana" />
+                    <Metric
+                      label="Oxirgi oy"
+                      value={a.monthly.at(-1) ? `${formatNumber(a.monthly.at(-1)!.savdo)}M` : "—"}
+                      sub={a.lastMonthName ?? undefined}
+                    />
+                  </div>
+
+                  <Card title="Savdo dinamikasi (oylik, mln)">
+                    {a.monthly.map((m) => (
+                      <div key={m.label} className="mb-2 last:mb-0">
+                        <div className="mb-0.5 flex items-center justify-between text-xs">
+                          <span className="text-muted">{m.label}</span>
+                          <span>
+                            {m.savdo}M{m.foyda > 0 ? ` · foyda ${m.foyda}M` : ""}
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-surface">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${Math.max(3, (m.savdo / maxSavdo) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </Card>
+
+                  {a.byUnit.length > 0 && (
+                    <Card title={`Dorixonalar${a.lastMonthName ? ` — ${a.lastMonthName}` : ""} (mln)`}>
+                      {a.byUnit.map((u) => (
+                        <Row
+                          key={u.unit}
+                          left={u.unit}
+                          right={`${u.savdo}M`}
+                          sub={`Foyda ${u.foyda}M · Astatka ${u.astatka}M`}
+                        />
+                      ))}
+                    </Card>
+                  )}
+
+                  {a.inventoryByCategory.length > 0 && (
+                    <Card title="Ombor qiymati — toifalar (mln)">
+                      {a.inventoryByCategory.map((c) => (
+                        <Row key={c.name} left={c.name} right={`${c.value}M`} />
+                      ))}
+                    </Card>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
 

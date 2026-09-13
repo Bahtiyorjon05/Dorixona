@@ -522,6 +522,82 @@ function emptyInventory() {
   };
 }
 
+async function getAnalytics() {
+  const y = new Date().getFullYear();
+  const yearStart = new Date(Date.UTC(y, 0, 1));
+  const yearEnd = new Date(Date.UTC(y + 1, 0, 1));
+
+  const [finRows, catRows, expRows] = await Promise.all([
+    db.monthlyFinance.findMany({
+      where: { periodMonth: { gte: yearStart, lt: yearEnd } },
+      orderBy: { periodMonth: "asc" },
+    }),
+    db.$queryRaw<{ category: string; value: number }[]>`
+      SELECT p.category, COALESCE(SUM(p.stock * p."salePrice"), 0)::float8 AS value
+      FROM "Product" p WHERE p."isActive" = true AND p.stock > 0
+      GROUP BY p.category ORDER BY value DESC`,
+    db.$queryRaw<{ m: Date; exp: number }[]>`
+      SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount), 0)::float8 AS exp
+      FROM "Expense" e WHERE e."spentAt" >= ${yearStart} AND e."spentAt" < ${yearEnd}
+      GROUP BY 1 ORDER BY 1`,
+  ]);
+
+  const uzMonths = ["Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek"];
+  const expMap = new Map(expRows.map((r) => [new Date(r.m).getUTCMonth() + 1, M(r.exp)]));
+  const monthAgg = new Map<number, { savdo: number; foyda: number; astatka: number }>();
+  for (const row of finRows) {
+    if (row.unit === "Umumiy") continue;
+    const mo = new Date(row.periodMonth).getUTCMonth() + 1;
+    const cur = monthAgg.get(mo) ?? { savdo: 0, foyda: 0, astatka: 0 };
+    cur.savdo += num(row.turnover) / 1_000_000;
+    cur.foyda += num(row.profit) / 1_000_000;
+    cur.astatka += num(row.stockValue) / 1_000_000;
+    monthAgg.set(mo, cur);
+  }
+  const monthly = Array.from({ length: 12 }, (_, i) => {
+    const mo = i + 1;
+    const a = monthAgg.get(mo);
+    return {
+      label: uzMonths[i],
+      savdo: +(a?.savdo ?? 0).toFixed(1),
+      foyda: +(a?.foyda ?? 0).toFixed(1),
+      astatka: +(a?.astatka ?? 0).toFixed(1),
+      xarajat: +(expMap.get(mo) ?? 0).toFixed(1),
+    };
+  }).filter((r) => r.savdo > 0 || r.foyda > 0 || r.astatka > 0 || r.xarajat > 0);
+
+  const lastMonth = finRows
+    .filter((r) => r.unit !== "Umumiy")
+    .reduce((mx, r) => Math.max(mx, new Date(r.periodMonth).getUTCMonth() + 1), 0);
+  const byUnit = finRows
+    .filter((r) => r.unit !== "Umumiy" && new Date(r.periodMonth).getUTCMonth() + 1 === lastMonth)
+    .map((r) => ({
+      unit: r.unit,
+      savdo: +(num(r.turnover) / 1_000_000).toFixed(1),
+      foyda: +(num(r.profit) / 1_000_000).toFixed(1),
+      astatka: +(num(r.stockValue) / 1_000_000).toFixed(1),
+    }))
+    .sort((a, b) => b.savdo - a.savdo);
+
+  const total = catRows.reduce((s, r) => s + r.value, 0);
+  const top = catRows.slice(0, 6).map((r) => ({ name: r.category, value: +M(r.value).toFixed(1) }));
+  const rest = catRows.slice(6).reduce((s, r) => s + r.value, 0);
+  const inventoryByCategory = rest > 0 ? [...top, { name: "Boshqa", value: +M(rest).toFixed(1) }] : top;
+
+  return {
+    year: y,
+    monthly,
+    byUnit,
+    lastMonthName: lastMonth ? uzMonths[lastMonth - 1] : null,
+    inventoryByCategory,
+    inventoryTotal: +M(total).toFixed(1),
+  };
+}
+
+function emptyAnalytics() {
+  return { year: new Date().getFullYear(), monthly: [], byUnit: [], lastMonthName: null, inventoryByCategory: [], inventoryTotal: 0 };
+}
+
 function emptyExpenses() {
   return {
     period: new Date().toISOString(),
@@ -610,11 +686,12 @@ export async function GET(req: NextRequest) {
     kpi: has(access, "kpi"),
     attendance: has(access, "davomat"),
     reports: has(access, "hisobotlar"),
+    analytics: has(access, "analitika") || has(access, "hisobotlar"),
   };
   const needsOptions =
     allowed.sales || allowed.inventory || allowed.customers || allowed.employees || allowed.kpi || allowed.attendance;
 
-  const [finance, sales, inventory, expenses, customers, employees, kpi, attendance, reports, options] =
+  const [finance, sales, inventory, expenses, customers, employees, kpi, attendance, reports, analytics, options] =
     await Promise.all([
       allowed.finance ? getFinance() : emptyFinance(),
       allowed.sales ? getSales() : emptySales(),
@@ -625,6 +702,7 @@ export async function GET(req: NextRequest) {
       allowed.kpi ? getKpi() : emptyKpi(),
       allowed.attendance ? getAttendance() : emptyAttendance(),
       allowed.reports ? getReports() : emptyReports(),
+      allowed.analytics ? getAnalytics() : emptyAnalytics(),
       needsOptions ? getOptions() : emptyOptions(),
     ]);
   const filteredOptions = {
@@ -653,6 +731,7 @@ export async function GET(req: NextRequest) {
       kpi,
       attendance,
       reports,
+      analytics,
       options: filteredOptions,
     },
   });
