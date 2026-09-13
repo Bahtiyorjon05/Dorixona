@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { Badge, Card, PageHeader } from "@/components/ui";
+import { Badge, PageHeader } from "@/components/ui";
 import { FaptekaSyncPanel } from "@/components/panels/FaptekaSyncPanel";
 import { saveEmployeeAccess } from "@/lib/actions/settings";
 import { db } from "@/lib/db";
@@ -58,19 +58,22 @@ export default async function SettingsPage() {
       <Badge color="amber">.env kerak</Badge>
     );
 
+  const loginCount = rows.filter((r) => r.employee.user?.isActive).length;
+
   return (
     <div>
       <PageHeader
         title="Sozlamalar"
-        subtitle="Xodim loginlari va bo'limlarga kirish/o'zgartirish ruxsatlari"
+        subtitle="Xodim loginlari va bo'limlarga kirish ruxsatlari"
       />
 
       <div className="space-y-4">
-        <Card
-          title="F-Apteka integratsiyasi"
-          icon="🔄"
-          action={faptekaBadge}
-        >
+        <details className="card overflow-hidden">
+          <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-medium">
+            <span className="flex items-center gap-2">🔄 F-Apteka integratsiyasi</span>
+            {faptekaBadge}
+          </summary>
+          <div className="border-t border-edge p-4">
           <div className="mb-4 grid gap-2 text-sm md:grid-cols-3">
             <div className="rounded-lg bg-surface p-3">
               <div className="text-xs text-muted">Tushgan mahsulot</div>
@@ -127,7 +130,7 @@ export default async function SettingsPage() {
           />
 
           <div className="mt-4 overflow-x-auto">
-            <table>
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Report</th>
@@ -146,18 +149,32 @@ export default async function SettingsPage() {
               </tbody>
             </table>
           </div>
-        </Card>
+          </div>
+        </details>
+
+        <div className="flex items-center justify-between px-1 pt-2">
+          <h2 className="text-sm font-semibold">Xodim loginlari</h2>
+          <span className="text-xs text-muted">
+            {loginCount} / {rows.length} ta login aktiv
+          </span>
+        </div>
 
         {rows.map(({ employee, access }) => (
-          <Card
-            key={employee.id}
-            title={employee.fullName}
-            icon="⚙️"
-            action={
-              employee.user?.isActive ? <Badge color="green">Login aktiv</Badge> : <Badge color="amber">Login yo'q</Badge>
-            }
-          >
-            <form action={saveEmployeeAccess} className="space-y-4">
+          <details key={employee.id} className="card overflow-hidden">
+            <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3">
+              <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                <span className="truncate">{employee.fullName}</span>
+                <span className="shrink-0 text-xs font-normal text-muted">
+                  {roleLabel[employee.user?.role ?? ""] ?? employee.position}
+                </span>
+              </span>
+              {employee.user?.isActive ? (
+                <Badge color="green">Login aktiv</Badge>
+              ) : (
+                <Badge color="amber">Login yo'q</Badge>
+              )}
+            </summary>
+            <form action={saveEmployeeAccess} className="space-y-4 border-t border-edge p-4">
               <input type="hidden" name="employeeId" value={employee.id} />
               <div className="grid gap-3 md:grid-cols-4">
                 <label className="text-xs font-medium text-muted">
@@ -199,7 +216,7 @@ export default async function SettingsPage() {
               </div>
 
               <div className="overflow-x-auto">
-                <table>
+                <table className="data-table">
                   <thead>
                     <tr>
                       <th>Bo'lim</th>
@@ -237,7 +254,7 @@ export default async function SettingsPage() {
                 Saqlash
               </button>
             </form>
-          </Card>
+          </details>
         ))}
       </div>
     </div>

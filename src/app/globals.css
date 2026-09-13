@@ -120,6 +120,30 @@ body {
   .badge-amber { background: var(--c-accent-light); color: var(--badge-amber-fg); }
   .badge-red { background: var(--c-danger-light); color: var(--badge-red-fg); }
   .badge-blue { background: var(--c-info-light); color: var(--badge-blue-fg); }
+
+  /* Tartibli jadval — sozlamalar va boshqa ro'yxatlar uchun */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .data-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--c-muted);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--c-border);
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--c-border);
+    vertical-align: middle;
+  }
+  .data-table tbody tr:last-child td { border-bottom: 0; }
+  .data-table tbody tr:hover { background: var(--c-surface); }
+  .data-table th:not(:first-child),
+  .data-table td:not(:first-child) { text-align: center; }
 }
 
 /* Chop etish (PDF) — har doim yorug' */
