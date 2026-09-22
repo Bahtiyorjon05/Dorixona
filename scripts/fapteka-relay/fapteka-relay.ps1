@@ -17,7 +17,7 @@ param(
   [int]$Days,                # nechta kun ortga: bugun + oldingi kunlar
   [string]$Only,             # faqat bitta hisobot, masalan: incoming
   [switch]$CostOnly,         # kirimdan faqat tan narx olinadi
-  [switch]$WithExpenses      # kirimni harajat sifatida ham yozish
+  [switch]$WithExpenses      # (eskirgan: kirim endi doim harajat sifatida yoziladi)
 )
 
 # ---- Sozlamalar ------------------------------------------------------------
@@ -58,11 +58,10 @@ if ($Only) {
   $single[$Only] = $Reports[$Only]
   $Reports = $single
 }
-# Kirim odatda faqat tan narx uchun olinadi: harajatlar ERP ga qo'lda
-# kiritilgani uchun avtomatik yozilsa ikki marta hisoblanib ketardi.
-# Kerak bo'lsa -WithExpenses bilan yoqiladi.
-$CostOnlyReports = @("incoming")
-if ($WithExpenses) { $CostOnlyReports = @() }
+# Kirim hujjatlari harajat sifatida ham yoziladi ("F-Apteka kirim #..."),
+# shu bilan birga tovarlarning tan narxi yangilanadi.
+# Eski kunlarni faqat tan narx uchun tortmoqchi bo'lsangiz: -CostOnly
+$CostOnlyReports = @()
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 # Ulanishlarni qayta ishlatish - har so'rovda yangi TLS qo'l berishuvi bo'lmasin
@@ -98,7 +97,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v5 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
+Write-Log "relay v6 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)

@@ -301,6 +301,9 @@ async function syncMovementReport(
   }
 }
 
+/** F-Apteka kirimidan yaratilgan harajat yozuvlari shu nom bilan boshlanadi */
+export const FAPTEKA_EXPENSE_PREFIX = "F-Apteka kirim #";
+
 async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKey }) {
   const rows = await input.source(input.report);
   input.summary.expenseRows += rows.length;
@@ -309,12 +312,14 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
     rows.map((row) => ({
       docId: row.ID || row.N || `${row.D ?? input.dateFrom}-${rowId(row, "G") || ""}`,
       quantity: stockCount(row.Q || 1),
-      price: numberValue(row.P),
+      price: costPerUnit(row),
       spentAt: dateValue(row.D) ?? new Date(input.dateFrom),
     })),
   );
 
-  const titlePrefix = input.scope ? `FA:EXP:F${input.scope.filialId}:` : "FA:EXP:";
+  // Nom odam o'qiy oladigan bo'lsin: Harajatlar sahifasida shu ko'rinadi.
+  // Prefiks o'zgarmas - qayta yuborilganda eski yozuvlar shu bo'yicha topiladi.
+  const titlePrefix = FAPTEKA_EXPENSE_PREFIX;
   await db.$transaction([
     db.expense.deleteMany({
       where: {
