@@ -301,8 +301,8 @@ async function syncMovementReport(
   }
 }
 
-async function syncIncomingExpenses(input: StepInput) {
-  const rows = await input.source("incomingV2");
+async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKey }) {
+  const rows = await input.source(input.report);
   input.summary.expenseRows += rows.length;
 
   const entries = buildIncomingExpenseEntries(
@@ -338,7 +338,7 @@ async function syncIncomingExpenses(input: StepInput) {
 }
 
 async function syncMovements(input: StepInput) {
-  await syncIncomingExpenses(input);
+  await syncIncomingExpenses({ ...input, report: "incomingV2" });
   await syncMovementReport({ ...input, report: "incomingV2", movementType: "IN" });
   await syncMovementReport({ ...input, report: "supplierReturnV2", movementType: "OUT" });
   await syncMovementReport({ ...input, report: "writeOff", movementType: "ADJUST" });
@@ -535,11 +535,22 @@ export async function syncFaptekaSiteRows(rows: FaptekaRow[]): Promise<FaptekaSi
   return summary;
 }
 
-/** Ko'prik skript yuboradigan hisobotlar (savdo va tovar harakati) */
+/**
+ * Ko'prik skript yuboradigan hisobotlar (savdo va tovar harakati).
+ *
+ * Dorixonadagi API'da Ver.2 hisobotlari (14, 15, 11, 12) bo'sh qaytaradi —
+ * faqat eski raqamlar (4, 5, 1, 2, 3) ma'lumot beradi. Ikkalasi ham qabul
+ * qilinadi: API yangilansa, skriptdagi ro'yxatni almashtirish kifoya.
+ * Bitta xil ma'lumotni ikkala raqamda yubormang — savdo ikki marta yozilmasin.
+ */
 export const FAPTEKA_PUSH_REPORTS = [
+  "retailSale",
   "retailSaleV2",
+  "insuranceSale",
   "insuranceSaleV2",
+  "incoming",
   "incomingV2",
+  "supplierReturn",
   "supplierReturnV2",
   "writeOff",
 ] as const;
@@ -562,7 +573,7 @@ export async function syncFaptekaPushedReport(input: {
 }): Promise<FaptekaSyncSummary> {
   const dateFrom = isoDate(input.dateFrom);
   const dateTo = isoDate(input.dateTo);
-  const isSale = input.report === "retailSaleV2" || input.report === "insuranceSaleV2";
+  const isSale = input.report.startsWith("retailSale") || input.report.startsWith("insuranceSale");
   const summary = makeSummary(isSale ? "sales" : "movements", dateFrom, dateTo);
 
   const branch = await db.branch.findFirst({ where: { isActive: true } });
@@ -579,16 +590,20 @@ export async function syncFaptekaPushedReport(input: {
 
   try {
     switch (input.report) {
+      case "retailSale":
       case "retailSaleV2":
         await syncSalesReport({ ...step, report: input.report, receiptPrefix: "FA-" });
         break;
+      case "insuranceSale":
       case "insuranceSaleV2":
         await syncSalesReport({ ...step, report: input.report, receiptPrefix: "FA-INS-" });
         break;
+      case "incoming":
       case "incomingV2":
-        await syncIncomingExpenses(step);
+        await syncIncomingExpenses({ ...step, report: input.report });
         await syncMovementReport({ ...step, report: input.report, movementType: "IN" });
         break;
+      case "supplierReturn":
       case "supplierReturnV2":
         await syncMovementReport({ ...step, report: input.report, movementType: "OUT" });
         break;

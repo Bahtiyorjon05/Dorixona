@@ -16,12 +16,16 @@ $ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
 $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
 $Days    = 2                           # bugun + kecha
+# Bu dorixonadagi API'da Ver.2 hisobotlari (14, 15, 11, 12) bo'sh qaytaradi,
+# shuning uchun eski raqamlar ishlatiladi. API yangilansa, chap ustundagi
+# nomni V2 ga (masalan retailSaleV2 = 14) o'zgartirish kifoya — ikkalasini
+# birga qoldirmang, savdo ikki marta yozilib qoladi.
 $Reports = [ordered]@{
-  retailSaleV2     = 14                # Roznichnaya prodazha Ver.2
-  insuranceSaleV2  = 15                # Strahovka prodazha Ver.2
-  incomingV2       = 11                # Prihody na sklad Ver.2
-  supplierReturnV2 = 12                # Vozvrat postavshchiku Ver.2
-  writeOff         = 3                 # Spisanie
+  retailSale     = 4                   # Roznichnaya prodazha
+  insuranceSale  = 5                   # Strahovka prodazha
+  incoming       = 1                   # Prihody na sklad
+  supplierReturn = 2                   # Vozvrat postavshchiku
+  writeOff       = 3                   # Spisanie
 }
 # ----------------------------------------------------------------------------
 
