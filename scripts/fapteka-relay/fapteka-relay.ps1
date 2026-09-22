@@ -1,11 +1,23 @@
 # F-Apteka -> ERP ko'prigi
 #
+# Oddiy ishlatish (bugun + kecha, hamma hisobot):
+#   powershell -NoProfile -ExecutionPolicy Bypass -File fapteka-relay.ps1
+#
+# Eski kirimlardan tan narxni tortish (bir martalik, harajat yozilmaydi):
+#   ... -File fapteka-relay.ps1 -Days 120 -Only incoming -CostOnly
+#
 # F-Apteka hisobot API'si (P_GetReport_XML) dorixonaning ichki tarmog'ida
 # turadi, internetdan unga kirib bo'lmaydi. Bu skript dorixona kompyuterida
 # ishlaydi: har safar bugun va kechagi savdo, kirim, qaytarish va
 # spisanieni API'dan oladi va ERP saytiga yuboradi.
 #
 # O'rnatish: shu papkadagi README.md
+
+param(
+  [int]$Days,                # nechta kun ortga: bugun + oldingi kunlar
+  [string]$Only,             # faqat bitta hisobot, masalan: incoming
+  [switch]$CostOnly          # kirimdan faqat tan narx olinadi
+)
 
 # ---- Sozlamalar ------------------------------------------------------------
 # API shu kompyuterning o'zida ishlaydi (127.0.0.1:8081 LISTENING), shuning
@@ -15,7 +27,7 @@ $ApiUrl  = "http://localhost:8081/P_GetReport_XML"
 $ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
 $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
-$Days    = 2                           # bugun + kecha
+$DaysDefault = 2                       # bugun + kecha
 # Bu dorixonadagi API'da Ver.2 hisobotlari (14, 15, 11, 12) bo'sh qaytaradi,
 # shuning uchun eski raqamlar ishlatiladi. API yangilansa, chap ustundagi
 # nomni V2 ga (masalan retailSaleV2 = 14) o'zgartirish kifoya - ikkalasini
@@ -28,6 +40,19 @@ $Reports = [ordered]@{
   writeOff       = 3                   # Spisanie
 }
 # ----------------------------------------------------------------------------
+
+if (-not $Days) { $Days = $DaysDefault }
+if ($Only) {
+  if (-not $Reports.Contains($Only)) {
+    Write-Output "XATO  Bunday hisobot yo'q: $Only"
+    exit 1
+  }
+  $single = [ordered]@{}
+  $single[$Only] = $Reports[$Only]
+  $Reports = $single
+}
+$CostSuffix = ""
+if ($CostOnly) { $CostSuffix = "&costOnly=1" }
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $LogFile = Join-Path $PSScriptRoot "relay.log"
@@ -79,7 +104,7 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
         $erp = New-Object System.Net.WebClient
         $erp.Headers.Add("Authorization", "Bearer $Token")
         $erp.Headers.Add("Content-Type", $contentType)
-        $target = "{0}?report={1}&filial={2}&dateFrom={3}&dateTo={3}" -f $ErpUrl, $report, $filial, $erpDate
+        $target = "{0}?report={1}&filial={2}&dateFrom={3}&dateTo={3}{4}" -f $ErpUrl, $report, $filial, $erpDate, $CostSuffix
         $answer = [System.Text.Encoding]::UTF8.GetString($erp.UploadData($target, "POST", $xml))
         Write-Log ("OK    {0}  {1} bayt  {2}" -f $label, $xml.Length, $answer)
       } catch {

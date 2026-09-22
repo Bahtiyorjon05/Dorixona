@@ -2,7 +2,11 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { decodeXmlBuffer, parseFaptekaXml, type FaptekaRow } from "@/lib/integrations/fapteka/client";
-import { isFaptekaPushReport, syncFaptekaPushedReport } from "@/lib/integrations/fapteka/sync";
+import {
+  isFaptekaPushReport,
+  syncFaptekaCostPrices,
+  syncFaptekaPushedReport,
+} from "@/lib/integrations/fapteka/sync";
 import { recomputeRange } from "@/lib/monthly-finance";
 
 export const runtime = "nodejs";
@@ -87,6 +91,19 @@ export async function POST(request: NextRequest) {
     // Bo'sh kun (hali savdo yo'q) yoki API xatosi — ikkala holatda ham tegmaymiz
     await writeLog({ rowCount: 0, sample: text.slice(0, 500), note: `${label} | qator yo'q`, ok: true });
     return NextResponse.json({ ok: true, rows: 0 });
+  }
+
+  // costOnly: eski kirimlardan faqat tan narx olinadi (harajat yozilmaydi)
+  if (params.get("costOnly") === "1") {
+    const cost = await syncFaptekaCostPrices(rows);
+    await writeLog({
+      rowCount: rows.length,
+      keys: fieldKeys(rows).slice(0, 2000),
+      note: `${label} | faqat tan narx: ${cost.productsUpdated} ta tovar, ${Date.now() - startedAt}ms`,
+      ok: true,
+    });
+    revalidatePath("/ombor");
+    return NextResponse.json({ ok: true, cost });
   }
 
   const summary = await syncFaptekaPushedReport({ report, rows, filialId, dateFrom, dateTo });

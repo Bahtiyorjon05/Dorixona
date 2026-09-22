@@ -536,6 +536,36 @@ export async function syncFaptekaSiteRows(rows: FaptekaRow[]): Promise<FaptekaSi
 }
 
 /**
+ * Kirim hisobotidan faqat tan narxni oladi: harajat ham, ombor harakati ham
+ * yozilmaydi. Eski kirimlarni ortga qarab tortib, foyda hisobini to'g'rilash
+ * uchun - aks holda o'tgan oylarga qayta harajat yozilib ketardi.
+ */
+export async function syncFaptekaCostPrices(rows: FaptekaRow[]) {
+  const branch = await db.branch.findFirst({ where: { isActive: true } });
+  if (!branch) throw new Error("Aktiv filial topilmadi");
+
+  const products = await loadFaptekaProducts(branch.id, rows);
+  const costs = new Map<string, number>();
+  for (const row of rows) {
+    const faptekaId = rowId(row, "G");
+    const product = faptekaId ? products.get(faptekaSku(faptekaId)) : undefined;
+    const price = numberValue(row.P);
+    // Bir tovar bir necha marta kelgan bo'lsa, oxirgi narx qoladi
+    if (product && price > 0) costs.set(product.id, price);
+  }
+
+  const updates = [...costs.entries()];
+  for (let index = 0; index < updates.length; index += 25) {
+    await Promise.all(
+      updates
+        .slice(index, index + 25)
+        .map(([id, costPrice]) => db.product.update({ where: { id }, data: { costPrice } })),
+    );
+  }
+  return { ok: true, receivedRows: rows.length, productsUpdated: updates.length };
+}
+
+/**
  * Ko'prik skript yuboradigan hisobotlar (savdo va tovar harakati).
  *
  * Dorixonadagi API'da Ver.2 hisobotlari (14, 15, 11, 12) bo'sh qaytaradi —
