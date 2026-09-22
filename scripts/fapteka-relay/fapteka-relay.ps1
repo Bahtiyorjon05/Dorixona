@@ -65,6 +65,9 @@ $CostOnlyReports = @("incoming")
 if ($WithExpenses) { $CostOnlyReports = @() }
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# Ulanishlarni qayta ishlatish - har so'rovda yangi TLS qo'l berishuvi bo'lmasin
+[Net.ServicePointManager]::DefaultConnectionLimit = 8
+[Net.ServicePointManager]::Expect100Continue = $false
 $LogFile = Join-Path $PSScriptRoot "relay.log"
 if ((Test-Path $LogFile) -and (Get-Item $LogFile).Length -gt 5MB) { Remove-Item $LogFile }
 
@@ -95,7 +98,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v4 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
+Write-Log "relay v5 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
@@ -119,6 +122,13 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
         $xml = $api.DownloadData($source)
         $contentType = $api.ResponseHeaders["Content-Type"]
         if (-not $contentType) { $contentType = "text/xml" }
+
+        # Bo'sh javobni (o'sha kuni hujjat yo'q) serverga yubormaymiz -
+        # 120 kunlik tortishda shu keraksiz so'rovlar butun vaqtni yeb qo'yadi.
+        if ($xml.Length -lt 40) {
+          Write-Log ("BOSH  {0}" -f $label)
+          continue
+        }
 
         $erp = New-Object System.Net.WebClient
         $erp.Headers.Add("Authorization", "Bearer $Token")
