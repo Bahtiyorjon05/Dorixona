@@ -1,6 +1,6 @@
 # F-Apteka → ERP ko'prigi
 
-F-Apteka hisobot API'si (`192.168.0.104:8081`) dorixonaning ichki tarmog'ida
+F-Apteka hisobot API'si (`localhost:8081`) dorixona kompyuterining o'zida
 turadi. ERP sayti (Vercel) unga internetdan yetolmaydi. Shuning uchun bu skript
 dorixona kompyuterida ishlaydi: har 15 daqiqada bugun va kechagi savdo, kirim,
 qaytarish va spisanieni API'dan oladi va ERP'ga yuboradi.
@@ -12,11 +12,11 @@ Qoldiq bu skript orqali emas, SITE.exe orqali keladi. Unga tegilmaydi.
 **1. API ishlayotganini tekshirish.** Shu kompyuterdagi brauzerda oching:
 
 ```
-http://192.168.0.104:8081/P_GetReport_XML?pDateFrom=21.09.2026&pDateTo=21.09.2026&pFilial_id=2&pReport_id=14
+http://localhost:8081/P_GetReport_XML?pDateFrom=21.09.2026&pDateTo=21.09.2026&pFilial_id=2&pReport_id=14
 ```
 
-XML chiqishi kerak (`<...>` belgilari bilan). Chiqmasa, texnik bo'limdan
-to'g'ri manzilni so'rang.
+XML chiqishi kerak (`<...>` belgilari bilan). Chiqmasa, API ishlayotganini
+tekshiring: `netstat -ano | findstr :8081` — `LISTENING` bo'lishi kerak.
 
 **2. Papkani ko'chirish.** `fapteka-relay.ps1` faylini `D:\FAptekaRelay\` ga qo'ying.
 
