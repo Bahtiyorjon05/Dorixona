@@ -95,6 +95,8 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
+Write-Log "relay v3 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
+
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
   $apiDate = $day.ToString("dd.MM.yyyy")
