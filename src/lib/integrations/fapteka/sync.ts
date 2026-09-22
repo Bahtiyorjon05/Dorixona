@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { fetchFaptekaReport, getFaptekaConfig, numberValue, dateValue, type FaptekaRow } from "./client";
+import type { Filial } from "@/lib/filial";
 import { buildIncomingExpenseEntries } from "./expense-helpers";
 import { FAPTEKA_REPORTS, faptekaReceipt, faptekaSku, type FaptekaReportKey } from "./mapping";
+import { otdelUnitMap } from "./otdel";
 
 export type FaptekaSyncMode = "catalog" | "movements" | "sales" | "all";
 
@@ -37,7 +39,6 @@ type StockInfo = {
   salePrice: number;
   expiryDate: Date | null;
 };
-type ProductClient = Pick<typeof db, "product">;
 
 type FaptekaSiteProductInput = {
   name: string;
@@ -178,101 +179,134 @@ async function syncCatalogAndStock(input: {
   }
 }
 
-async function ensureFaptekaProduct(input: {
-  branchId: string;
-  faptekaId: string;
-  fallbackPrice?: number;
-  tx?: ProductClient;
-}) {
-  const client = input.tx ?? db;
-  const sku = faptekaSku(input.faptekaId);
-  const existing = await client.product.findUnique({
-    where: { branchId_sku: { branchId: input.branchId, sku } },
-  });
-  if (existing) return existing;
+/**
+ * Hisobot qatorlari qayerdan olinadi:
+ * - pull: Vercel o'zi F-Apteka API'sidan so'raydi (API internetda bo'lsa)
+ * - push: dorixona kompyuteridagi ko'prik skript API'dan olib, bizga yuboradi
+ */
+type ReportSource = (report: FaptekaReportKey) => Promise<FaptekaRow[]>;
 
-  return client.product.create({
-    data: {
-      name: `F-Apteka #${input.faptekaId}`,
-      sku,
-      category: "F-Apteka",
-      unit: "dona",
-      costPrice: 0,
-      salePrice: input.fallbackPrice ?? 0,
-      stock: 0,
-      minStock: 0,
-      branchId: input.branchId,
-    },
-  });
-}
+/** Push paytida qaysi filial (otdel) ma'lumoti kelgani */
+type PushScope = { filialId: string; unit: Filial | null };
 
-async function syncMovementReport(input: {
+type StepInput = {
   branchId: string;
-  report: FaptekaReportKey;
-  movementType: "IN" | "OUT" | "ADJUST";
   dateFrom: string;
   dateTo: string;
   summary: FaptekaSyncSummary;
-}) {
+  source: ReportSource;
+  scope?: PushScope;
+};
+
+function pullSource(dateFrom: string, dateTo: string): ReportSource {
+  return async (report) => (await fetchFaptekaReport({ report, dateFrom, dateTo })).rows;
+}
+
+/**
+ * Qatorlardagi F-Apteka tovarlarini bitta so'rovda topadi, yo'qlarini
+ * yaratadi. Har qator uchun alohida so'rov yuborilsa, bir kunlik savdo
+ * Vercel'ning 60 soniyasiga sig'masdi.
+ */
+async function loadFaptekaProducts(branchId: string, rows: FaptekaRow[]) {
+  const prices = new Map<string, number>();
+  for (const row of rows) {
+    const id = rowId(row, "G");
+    if (id && !prices.has(id)) prices.set(id, numberValue(row.P));
+  }
+  const skus = [...prices.keys()].map(faptekaSku);
+  if (!skus.length) return new Map<string, { id: string; salePrice: Prisma.Decimal; costPrice: Prisma.Decimal }>();
+
+  const find = () =>
+    db.product.findMany({
+      where: { branchId, sku: { in: skus } },
+      select: { id: true, sku: true, salePrice: true, costPrice: true },
+    });
+
+  let products = await find();
+  const have = new Set(products.map((product) => product.sku));
+  const missing = [...prices.entries()].filter(([id]) => !have.has(faptekaSku(id)));
+  if (missing.length) {
+    await db.product.createMany({
+      data: missing.map(([id, price]) => ({
+        name: `F-Apteka #${id}`,
+        sku: faptekaSku(id),
+        category: "F-Apteka",
+        unit: "dona",
+        costPrice: 0,
+        salePrice: price,
+        stock: 0,
+        minStock: 0,
+        branchId,
+      })),
+      skipDuplicates: true,
+    });
+    products = await find();
+  }
+
+  return new Map(products.map(({ sku, ...product }) => [sku, product]));
+}
+
+async function syncMovementReport(
+  input: StepInput & { report: FaptekaReportKey; movementType: "IN" | "OUT" | "ADJUST" },
+) {
   const report = FAPTEKA_REPORTS[input.report];
-  const response = await fetchFaptekaReport({
-    report: input.report,
-    dateFrom: input.dateFrom,
-    dateTo: input.dateTo,
-  });
-  input.summary.movementRows += response.rows.length;
+  const rows = await input.source(input.report);
+  input.summary.movementRows += rows.length;
 
-  await db.stockMovement.deleteMany({
-    where: {
-      note: { startsWith: `FA:${report.id}:` },
-      createdAt: { gte: new Date(input.dateFrom), lt: endExclusive(input.dateTo) },
-    },
-  });
+  // Filial bo'yicha push'da har filial faqat o'z yozuvlarini almashtiradi
+  const notePrefix = input.scope
+    ? `FA:${report.id}:F${input.scope.filialId}:`
+    : `FA:${report.id}:`;
+  const products = await loadFaptekaProducts(input.branchId, rows);
 
-  for (const row of response.rows) {
+  const data: Prisma.StockMovementCreateManyInput[] = [];
+  const costUpdates = new Map<string, number>();
+  for (const row of rows) {
     const faptekaId = rowId(row, "G");
     const quantity = stockCount(row.Q);
-    if (!faptekaId || quantity <= 0) continue;
+    const product = faptekaId ? products.get(faptekaSku(faptekaId)) : undefined;
+    if (!faptekaId || !product || quantity <= 0) continue;
 
-    const product = await ensureFaptekaProduct({
-      branchId: input.branchId,
-      faptekaId,
-      fallbackPrice: numberValue(row.P),
-    });
     const price = numberValue(row.P);
-    if (input.movementType === "IN" && price > 0) {
-      await db.product.update({ where: { id: product.id }, data: { costPrice: price } });
-    }
+    if (input.movementType === "IN" && price > 0) costUpdates.set(product.id, price);
 
     const docId = row.ID || row.N || `${row.D ?? input.dateFrom}-${faptekaId}`;
-    await db.stockMovement.create({
-      data: {
-        productId: product.id,
-        type: input.movementType,
-        quantity,
-        note: `FA:${report.id}:${docId}; series=${row.S ?? "-"}; product=${faptekaId}`,
-        createdAt: dateValue(row.D) ?? new Date(input.dateFrom),
-      },
+    data.push({
+      productId: product.id,
+      type: input.movementType,
+      quantity,
+      note: `${notePrefix}${docId}; series=${row.S ?? "-"}; product=${faptekaId}`,
+      createdAt: dateValue(row.D) ?? new Date(input.dateFrom),
     });
-    input.summary.movementsCreated += 1;
+  }
+
+  await db.$transaction([
+    db.stockMovement.deleteMany({
+      where: {
+        note: { startsWith: notePrefix },
+        createdAt: { gte: new Date(input.dateFrom), lt: endExclusive(input.dateTo) },
+      },
+    }),
+    db.stockMovement.createMany({ data }),
+  ]);
+  input.summary.movementsCreated += data.length;
+
+  const updates = [...costUpdates.entries()];
+  for (let index = 0; index < updates.length; index += 25) {
+    await Promise.all(
+      updates
+        .slice(index, index + 25)
+        .map(([id, costPrice]) => db.product.update({ where: { id }, data: { costPrice } })),
+    );
   }
 }
 
-async function syncIncomingExpenses(input: {
-  branchId: string;
-  dateFrom: string;
-  dateTo: string;
-  summary: FaptekaSyncSummary;
-}) {
-  const response = await fetchFaptekaReport({
-    report: "incomingV2",
-    dateFrom: input.dateFrom,
-    dateTo: input.dateTo,
-  });
-  input.summary.expenseRows += response.rows.length;
+async function syncIncomingExpenses(input: StepInput) {
+  const rows = await input.source("incomingV2");
+  input.summary.expenseRows += rows.length;
 
   const entries = buildIncomingExpenseEntries(
-    response.rows.map((row) => ({
+    rows.map((row) => ({
       docId: row.ID || row.N || `${row.D ?? input.dateFrom}-${rowId(row, "G") || ""}`,
       quantity: stockCount(row.Q || 1),
       price: numberValue(row.P),
@@ -280,36 +314,30 @@ async function syncIncomingExpenses(input: {
     })),
   );
 
-  const from = new Date(input.dateFrom);
-  const to = endExclusive(input.dateTo);
-  await db.expense.deleteMany({
-    where: {
-      title: { startsWith: "FA:EXP:" },
-      spentAt: { gte: from, lt: to },
-    },
-  });
-
-  for (const entry of entries) {
-    await db.expense.create({
-      data: {
-        title: `FA:EXP:${entry.docId}`,
-        category: "GOODS",
+  const titlePrefix = input.scope ? `FA:EXP:F${input.scope.filialId}:` : "FA:EXP:";
+  await db.$transaction([
+    db.expense.deleteMany({
+      where: {
+        title: { startsWith: titlePrefix },
+        spentAt: { gte: new Date(input.dateFrom), lt: endExclusive(input.dateTo) },
+      },
+    }),
+    db.expense.createMany({
+      data: entries.map((entry) => ({
+        title: `${titlePrefix}${entry.docId}`,
+        category: "GOODS" as const,
         amount: entry.amount,
         spentAt: entry.spentAt,
         isRecurring: false,
+        unit: input.scope?.unit ?? null,
         branchId: input.branchId,
-      },
-    });
-    input.summary.expensesCreated += 1;
-  }
+      })),
+    }),
+  ]);
+  input.summary.expensesCreated += entries.length;
 }
 
-async function syncMovements(input: {
-  branchId: string;
-  dateFrom: string;
-  dateTo: string;
-  summary: FaptekaSyncSummary;
-}) {
+async function syncMovements(input: StepInput) {
   await syncIncomingExpenses(input);
   await syncMovementReport({ ...input, report: "incomingV2", movementType: "IN" });
   await syncMovementReport({ ...input, report: "supplierReturnV2", movementType: "OUT" });
@@ -324,23 +352,12 @@ function saleLineTotal(row: Record<string, string>, quantity: number, fallbackPr
   return rowPrice * quantity;
 }
 
-async function syncSalesReport(input: {
-  branchId: string;
-  report: FaptekaReportKey;
-  receiptPrefix: string;
-  dateFrom: string;
-  dateTo: string;
-  summary: FaptekaSyncSummary;
-}) {
-  const response = await fetchFaptekaReport({
-    report: input.report,
-    dateFrom: input.dateFrom,
-    dateTo: input.dateTo,
-  });
-  input.summary.saleRows += response.rows.length;
+async function syncSalesReport(input: StepInput & { report: FaptekaReportKey; receiptPrefix: string }) {
+  const rows = await input.source(input.report);
+  input.summary.saleRows += rows.length;
 
-  const groups = new Map<string, Record<string, string>[]>();
-  for (const row of response.rows) {
+  const groups = new Map<string, FaptekaRow[]>();
+  for (const row of rows) {
     const faptekaId = rowId(row, "G");
     if (!faptekaId) continue;
     const docId = row.ID || `${row.D ?? input.dateFrom}-${faptekaId}-${row.S ?? ""}`;
@@ -348,79 +365,61 @@ async function syncSalesReport(input: {
     group.push(row);
     groups.set(docId, group);
   }
+  if (!groups.size) return;
 
-  for (const [docId, rows] of groups) {
-    await db.$transaction(async (tx) => {
-      const saleItemsData: {
-        productId: string;
-        quantity: number;
-        unitPrice: number;
-        costPrice: number;
-        lineTotal: number;
-      }[] = [];
+  // Filial bo'yicha push'da chek raqamiga filial qo'shiladi: FA-2-123
+  const receiptPrefix = input.scope
+    ? `${input.receiptPrefix}${input.scope.filialId}-`
+    : input.receiptPrefix;
+  const products = await loadFaptekaProducts(input.branchId, rows);
 
-      for (const row of rows) {
-        const faptekaId = rowId(row, "G");
-        if (!faptekaId) continue;
-        const quantity = Math.max(1, stockCount(row.Q || 1));
-        const fallbackPrice = numberValue(row.P);
-        const product = await ensureFaptekaProduct({
-          branchId: input.branchId,
-          faptekaId,
-          fallbackPrice,
-          tx,
-        });
-        const lineTotal = saleLineTotal(row, quantity, Number(product.salePrice ?? fallbackPrice));
-        saleItemsData.push({
-          productId: product.id,
-          quantity,
-          unitPrice: lineTotal / quantity,
-          costPrice: Number(product.costPrice ?? 0),
-          lineTotal,
-        });
-      }
+  const sales: Prisma.SaleCreateManyInput[] = [];
+  const items: Prisma.SaleItemCreateManyInput[] = [];
+  for (const [docId, groupRows] of groups) {
+    const saleId = randomUUID();
+    const lines: Prisma.SaleItemCreateManyInput[] = [];
+    for (const row of groupRows) {
+      const product = products.get(faptekaSku(rowId(row, "G")));
+      if (!product) continue;
+      const quantity = Math.max(1, stockCount(row.Q || 1));
+      const lineTotal = saleLineTotal(row, quantity, Number(product.salePrice ?? numberValue(row.P)));
+      lines.push({
+        saleId,
+        productId: product.id,
+        quantity,
+        unitPrice: lineTotal / quantity,
+        costPrice: Number(product.costPrice ?? 0),
+        lineTotal,
+      });
+    }
+    if (!lines.length) continue;
 
-      if (!saleItemsData.length) return;
-      const receiptNo = faptekaReceipt(docId, input.receiptPrefix);
-      const total = saleItemsData.reduce((sum, item) => sum + item.lineTotal, 0);
-      const createdAt = dateValue(rows[0]?.D) ?? new Date(input.dateFrom);
-
-      const existing = await tx.sale.findUnique({ where: { receiptNo } });
-      if (existing) {
-        await tx.saleItem.deleteMany({ where: { saleId: existing.id } });
-        await tx.sale.update({
-          where: { id: existing.id },
-          data: { total, discount: 0, pointsEarned: 0, pointsRedeemed: 0, createdAt },
-        });
-        await tx.saleItem.createMany({
-          data: saleItemsData.map((item) => ({ ...item, saleId: existing.id })),
-        });
-      } else {
-        await tx.sale.create({
-          data: {
-            receiptNo,
-            total,
-            discount: 0,
-            pointsEarned: 0,
-            pointsRedeemed: 0,
-            paymentMethod: "CASH",
-            branchId: input.branchId,
-            createdAt,
-            items: { create: saleItemsData },
-          },
-        });
-      }
+    sales.push({
+      id: saleId,
+      receiptNo: faptekaReceipt(docId, receiptPrefix),
+      total: lines.reduce((sum, line) => sum + Number(line.lineTotal), 0),
+      discount: 0,
+      pointsEarned: 0,
+      pointsRedeemed: 0,
+      paymentMethod: "CASH",
+      unit: input.scope?.unit ?? null,
+      branchId: input.branchId,
+      createdAt: dateValue(groupRows[0]?.D) ?? new Date(input.dateFrom),
     });
-    input.summary.salesUpserted += 1;
+    items.push(...lines);
   }
+
+  // Har push bugun va kechani qayta yuboradi — cheklarni o'chirib qayta
+  // yozamiz (bandlari cascade bilan o'chadi). Takror chek paydo bo'lmaydi.
+  await db.$transaction([
+    db.sale.deleteMany({ where: { receiptNo: { in: sales.map((sale) => sale.receiptNo) } } }),
+    db.sale.createMany({ data: sales }),
+    db.saleItem.createMany({ data: items }),
+  ]);
+  input.summary.salesUpserted += sales.length;
 }
 
-async function syncSales(input: {
-  branchId: string;
-  dateFrom: string;
-  dateTo: string;
-  summary: FaptekaSyncSummary;
-}) {
+async function syncSales(input: StepInput) {
   await syncSalesReport({ ...input, report: "retailSaleV2", receiptPrefix: "FA-" });
   await syncSalesReport({ ...input, report: "insuranceSaleV2", receiptPrefix: "FA-INS-" });
 }
@@ -436,6 +435,7 @@ export async function syncFapteka(input: {
 
   const branch = await db.branch.findFirst({ where: { isActive: true } });
   if (!branch) throw new Error("Aktiv filial topilmadi");
+  const source = pullSource(dateFrom, dateTo);
 
   try {
     if (input.mode === "catalog" || input.mode === "all") {
@@ -447,7 +447,7 @@ export async function syncFapteka(input: {
 
   try {
     if (input.mode === "movements" || input.mode === "all") {
-      await syncMovements({ branchId: branch.id, dateFrom, dateTo, summary });
+      await syncMovements({ branchId: branch.id, dateFrom, dateTo, summary, source });
     }
   } catch (error) {
     addError(summary, error);
@@ -455,7 +455,7 @@ export async function syncFapteka(input: {
 
   try {
     if (input.mode === "sales" || input.mode === "all") {
-      await syncSales({ branchId: branch.id, dateFrom, dateTo, summary });
+      await syncSales({ branchId: branch.id, dateFrom, dateTo, summary, source });
     }
   } catch (error) {
     addError(summary, error);
@@ -530,6 +530,74 @@ export async function syncFaptekaSiteRows(rows: FaptekaRow[]): Promise<FaptekaSi
       summary.ok = false;
       summary.errors.push(error instanceof Error ? error.message : "F-Apteka mahsulotlari batch saqlanmadi");
     }
+  }
+
+  return summary;
+}
+
+/** Ko'prik skript yuboradigan hisobotlar (savdo va tovar harakati) */
+export const FAPTEKA_PUSH_REPORTS = [
+  "retailSaleV2",
+  "insuranceSaleV2",
+  "incomingV2",
+  "supplierReturnV2",
+  "writeOff",
+] as const;
+export type FaptekaPushReport = (typeof FAPTEKA_PUSH_REPORTS)[number];
+
+export function isFaptekaPushReport(value: unknown): value is FaptekaPushReport {
+  return (FAPTEKA_PUSH_REPORTS as readonly unknown[]).includes(value);
+}
+
+/**
+ * Dorixona kompyuteridagi ko'prik skript yuborgan bitta hisobotni yozadi.
+ * Bitta so'rov = bitta hisobot × bitta filial × sana oralig'i.
+ */
+export async function syncFaptekaPushedReport(input: {
+  report: FaptekaPushReport;
+  rows: FaptekaRow[];
+  filialId: string;
+  dateFrom: string;
+  dateTo: string;
+}): Promise<FaptekaSyncSummary> {
+  const dateFrom = isoDate(input.dateFrom);
+  const dateTo = isoDate(input.dateTo);
+  const isSale = input.report === "retailSaleV2" || input.report === "insuranceSaleV2";
+  const summary = makeSummary(isSale ? "sales" : "movements", dateFrom, dateTo);
+
+  const branch = await db.branch.findFirst({ where: { isActive: true } });
+  if (!branch) throw new Error("Aktiv filial topilmadi");
+
+  const step: StepInput = {
+    branchId: branch.id,
+    dateFrom,
+    dateTo,
+    summary,
+    source: async () => input.rows,
+    scope: { filialId: input.filialId, unit: otdelUnitMap().get(input.filialId) ?? null },
+  };
+
+  try {
+    switch (input.report) {
+      case "retailSaleV2":
+        await syncSalesReport({ ...step, report: input.report, receiptPrefix: "FA-" });
+        break;
+      case "insuranceSaleV2":
+        await syncSalesReport({ ...step, report: input.report, receiptPrefix: "FA-INS-" });
+        break;
+      case "incomingV2":
+        await syncIncomingExpenses(step);
+        await syncMovementReport({ ...step, report: input.report, movementType: "IN" });
+        break;
+      case "supplierReturnV2":
+        await syncMovementReport({ ...step, report: input.report, movementType: "OUT" });
+        break;
+      case "writeOff":
+        await syncMovementReport({ ...step, report: input.report, movementType: "ADJUST" });
+        break;
+    }
+  } catch (error) {
+    addError(summary, error);
   }
 
   return summary;

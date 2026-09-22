@@ -1,0 +1,78 @@
+# F-Apteka -> ERP ko'prigi
+#
+# F-Apteka hisobot API'si (P_GetReport_XML) dorixonaning ichki tarmog'ida
+# turadi, internetdan unga kirib bo'lmaydi. Bu skript dorixona kompyuterida
+# ishlaydi: har safar bugun va kechagi savdo, kirim, qaytarish va
+# spisanieni API'dan oladi va ERP saytiga yuboradi.
+#
+# O'rnatish: shu papkadagi README.md
+
+# ---- Sozlamalar ------------------------------------------------------------
+$ApiUrl  = "http://192.168.0.104:8081/P_GetReport_XML"
+$ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
+$Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
+$Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
+$Days    = 2                           # bugun + kecha
+$Reports = [ordered]@{
+  retailSaleV2     = 14                # Roznichnaya prodazha Ver.2
+  insuranceSaleV2  = 15                # Strahovka prodazha Ver.2
+  incomingV2       = 11                # Prihody na sklad Ver.2
+  supplierReturnV2 = 12                # Vozvrat postavshchiku Ver.2
+  writeOff         = 3                 # Spisanie
+}
+# ----------------------------------------------------------------------------
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$LogFile = Join-Path $PSScriptRoot "relay.log"
+if ((Test-Path $LogFile) -and (Get-Item $LogFile).Length -gt 5MB) { Remove-Item $LogFile }
+
+function Write-Log([string]$Text) {
+  $line = "{0:yyyy-MM-dd HH:mm:ss}  {1}" -f (Get-Date), $Text
+  Add-Content -Path $LogFile -Value $line -Encoding UTF8
+  Write-Output $line
+}
+
+# Xato bo'lsa, server javobining matnini ham ko'rsatadi
+function Get-ErrorText($ErrorRecord) {
+  $err = $ErrorRecord.Exception
+  while ($err -and -not ($err -is [System.Net.WebException])) { $err = $err.InnerException }
+  if ($err -and $err.Response) {
+    $reader = New-Object System.IO.StreamReader($err.Response.GetResponseStream())
+    return "$($err.Message) $($reader.ReadToEnd())"
+  }
+  return $ErrorRecord.Exception.Message
+}
+
+if ($Token -eq "BU_YERGA_TOKEN") {
+  Write-Log "XATO  Token qo'yilmagan: skriptdagi `$Token qatoriga tokenni yozing"
+  exit 1
+}
+
+for ($i = $Days - 1; $i -ge 0; $i--) {
+  $day = (Get-Date).Date.AddDays(-$i)
+  $apiDate = $day.ToString("dd.MM.yyyy")
+  $erpDate = $day.ToString("yyyy-MM-dd")
+
+  foreach ($filial in $Filials) {
+    foreach ($report in $Reports.Keys) {
+      $reportId = $Reports[$report]
+      $label = "$erpDate F=$filial $report (#$reportId)"
+      try {
+        $api = New-Object System.Net.WebClient
+        $source = "{0}?pDateFrom={1}&pDateTo={1}&pFilial_id={2}&pReport_id={3}" -f $ApiUrl, $apiDate, $filial, $reportId
+        $xml = $api.DownloadData($source)
+        $contentType = $api.ResponseHeaders["Content-Type"]
+        if (-not $contentType) { $contentType = "text/xml" }
+
+        $erp = New-Object System.Net.WebClient
+        $erp.Headers.Add("Authorization", "Bearer $Token")
+        $erp.Headers.Add("Content-Type", $contentType)
+        $target = "{0}?report={1}&filial={2}&dateFrom={3}&dateTo={3}" -f $ErpUrl, $report, $filial, $erpDate
+        $answer = [System.Text.Encoding]::UTF8.GetString($erp.UploadData($target, "POST", $xml))
+        Write-Log ("OK    {0}  {1} bayt  {2}" -f $label, $xml.Length, $answer)
+      } catch {
+        Write-Log ("XATO  {0}  {1}" -f $label, (Get-ErrorText $_))
+      }
+    }
+  }
+}
