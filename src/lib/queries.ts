@@ -691,3 +691,84 @@ export async function getAnalyticsData(year?: number) {
     })),
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  SAVDO — F-Apteka'dan kelgan sotuvlar
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Sana oralig'idagi savdo: kunlik jadval, dorixona kesimi va eng ko'p
+ * sotilgan tovarlar.
+ *
+ * F-Apteka 4-hisoboti chekma-chek emas, kunlik jamlanma beradi — shuning
+ * uchun "chek soni" ko'rsatilmaydi, faqat tushum, foyda va marja.
+ */
+export async function getSalesData(input: { from: Date; to: Date }) {
+  const branchId = await getBranchId();
+  const filial = await currentFilial();
+  const unit = filial === "Umumiy" ? null : filial;
+  // `to` — tanlangan kunning o'zi ham kirsin
+  const toExclusive = new Date(input.to.getFullYear(), input.to.getMonth(), input.to.getDate() + 1);
+
+  const [dailyRows, unitRows, productRows] = await Promise.all([
+    db.$queryRaw<{ day: Date; turnover: number; profit: number }[]>`
+      SELECT date_trunc('day', s."createdAt") AS day,
+             SUM(si."lineTotal")::float8 AS turnover,
+             SUM(si."lineTotal" - si."costPrice" * si.quantity)::float8 AS profit
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId}
+        AND s."createdAt" >= ${input.from} AND s."createdAt" < ${toExclusive}
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})
+      GROUP BY 1 ORDER BY 1 DESC`,
+    db.$queryRaw<{ unit: string | null; turnover: number; profit: number }[]>`
+      SELECT s."unit" AS unit,
+             SUM(si."lineTotal")::float8 AS turnover,
+             SUM(si."lineTotal" - si."costPrice" * si.quantity)::float8 AS profit
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId}
+        AND s."createdAt" >= ${input.from} AND s."createdAt" < ${toExclusive}
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})
+      GROUP BY 1 ORDER BY 2 DESC`,
+    db.$queryRaw<{ name: string; quantity: number; turnover: number; profit: number }[]>`
+      SELECT p.name AS name,
+             SUM(si.quantity)::float8 AS quantity,
+             SUM(si."lineTotal")::float8 AS turnover,
+             SUM(si."lineTotal" - si."costPrice" * si.quantity)::float8 AS profit
+      FROM "SaleItem" si
+      JOIN "Sale" s ON s.id = si."saleId"
+      JOIN "Product" p ON p.id = si."productId"
+      WHERE s."branchId" = ${branchId}
+        AND s."createdAt" >= ${input.from} AND s."createdAt" < ${toExclusive}
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})
+      GROUP BY 1 ORDER BY 3 DESC LIMIT 25`,
+  ]);
+
+  const daily = dailyRows.map((row) => ({
+    day: new Date(row.day),
+    turnover: num(row.turnover),
+    profit: num(row.profit),
+  }));
+  const turnover = daily.reduce((sum, row) => sum + row.turnover, 0);
+  const profit = daily.reduce((sum, row) => sum + row.profit, 0);
+
+  return {
+    filial,
+    daily,
+    turnover,
+    profit,
+    // Tan narx hali kelmagan bo'lsa foyda tushumga teng bo'lib qoladi —
+    // sahifa shunda ogohlantirish ko'rsatadi.
+    costMissing: turnover > 0 && profit >= turnover - 0.5,
+    byUnit: unitRows.map((row) => ({
+      unit: row.unit ?? "Ajratilmagan",
+      turnover: num(row.turnover),
+      profit: num(row.profit),
+    })),
+    products: productRows.map((row) => ({
+      name: row.name,
+      quantity: num(row.quantity),
+      turnover: num(row.turnover),
+      profit: num(row.profit),
+    })),
+  };
+}

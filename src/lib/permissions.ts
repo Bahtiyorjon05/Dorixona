@@ -2,6 +2,7 @@ export const PERMISSION_DEFS = [
   { key: "moliya", label: "Moliya", path: "/moliya" },
   { key: "harajatlar", label: "Harajatlar", path: "/harajatlar" },
   { key: "ombor", label: "Ombor", path: "/ombor" },
+  { key: "savdo", label: "Savdo", path: "/savdo" },
   { key: "pos", label: "Kassa (POS)", path: "/pos" },
   { key: "mijozlar", label: "Mijozlar", path: "/mijozlar" },
   { key: "xodimlar", label: "Xodimlar", path: "/xodimlar" },
@@ -28,7 +29,7 @@ export function normalizePermissions(values: unknown): AppPermission[] {
 export function defaultPermissionsForRole(role?: string | null): AppPermission[] {
   if (role === "OWNER") return [...ALL_PERMISSIONS];
   if (role === "MANAGER") return ALL_PERMISSIONS.filter((permission) => permission !== "sozlamalar");
-  if (role === "PHARMACIST") return ["ombor", "pos", "mijozlar"];
+  if (role === "PHARMACIST") return ["ombor", "savdo", "pos", "mijozlar"];
   if (role === "CASHIER") return ["pos", "mijozlar"];
   return [];
 }
