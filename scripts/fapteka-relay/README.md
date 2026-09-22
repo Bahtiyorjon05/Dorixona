@@ -18,7 +18,7 @@ http://192.168.0.104:8081/P_GetReport_XML?pDateFrom=21.09.2026&pDateTo=21.09.202
 XML chiqishi kerak (`<...>` belgilari bilan). Chiqmasa, texnik bo'limdan
 to'g'ri manzilni so'rang.
 
-**2. Papkani ko'chirish.** `fapteka-relay.ps1` faylini `C:\FAptekaRelay\` ga qo'ying.
+**2. Papkani ko'chirish.** `fapteka-relay.ps1` faylini `D:\FAptekaRelay\` ga qo'ying.
 
 **3. Tokenni qo'yish.** Faylni Bloknot bilan oching va
 `$Token = "BU_YERGA_TOKEN"` qatoriga SITE.exe'dagi TOCING tokenini yozing.
@@ -26,16 +26,16 @@ to'g'ri manzilni so'rang.
 **4. Qo'lda sinash.** `cmd` ni oching va yozing:
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File C:\FAptekaRelay\fapteka-relay.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-relay.ps1
 ```
 
 Har hisobot uchun `OK` yoki `XATO` qatori chiqadi. Hammasi
-`C:\FAptekaRelay\relay.log` ga ham yoziladi.
+`D:\FAptekaRelay\relay.log` ga ham yoziladi.
 
 **5. Avtomatik ishga tushirish.** `cmd` ni **administrator sifatida** oching:
 
 ```
-schtasks /Create /TN "FApteka ERP" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File C:\FAptekaRelay\fapteka-relay.ps1" /SC MINUTE /MO 15 /RU SYSTEM /F
+schtasks /Create /TN "FApteka ERP" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-relay.ps1" /SC MINUTE /MO 15 /RU SYSTEM /F
 ```
 
 O'chirish kerak bo'lsa: `schtasks /Delete /TN "FApteka ERP" /F`
