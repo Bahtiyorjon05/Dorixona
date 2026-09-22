@@ -10,7 +10,7 @@
 # ---- Sozlamalar ------------------------------------------------------------
 # API shu kompyuterning o'zida ishlaydi (127.0.0.1:8081 LISTENING), shuning
 # uchun localhost. Tarmoq manzili (192.168.0.x) router qayta yonganda
-# o'zgarib qoladi — localhost esa hech qachon o'zgarmaydi.
+# o'zgarib qoladi - localhost esa hech qachon o'zgarmaydi.
 $ApiUrl  = "http://localhost:8081/P_GetReport_XML"
 $ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
@@ -18,7 +18,7 @@ $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
 $Days    = 2                           # bugun + kecha
 # Bu dorixonadagi API'da Ver.2 hisobotlari (14, 15, 11, 12) bo'sh qaytaradi,
 # shuning uchun eski raqamlar ishlatiladi. API yangilansa, chap ustundagi
-# nomni V2 ga (masalan retailSaleV2 = 14) o'zgartirish kifoya — ikkalasini
+# nomni V2 ga (masalan retailSaleV2 = 14) o'zgartirish kifoya - ikkalasini
 # birga qoldirmang, savdo ikki marta yozilib qoladi.
 $Reports = [ordered]@{
   retailSale     = 4                   # Roznichnaya prodazha
