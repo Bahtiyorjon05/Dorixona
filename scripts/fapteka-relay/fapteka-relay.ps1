@@ -95,7 +95,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v3 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
+Write-Log "relay v4 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
@@ -104,10 +104,12 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
 
   foreach ($report in $Reports.Keys) {
     $reportId = $Reports[$report]
-    $reportFilials = $Filials
-    if ($ReportFilials.ContainsKey($report)) { $reportFilials = $ReportFilials[$report] }
+    # Nom $ReportFilials dan farq qilishi shart: PowerShell'da o'zgaruvchi
+    # nomlari katta-kichik harfni ajratmaydi, aks holda jadval buziladi.
+    $useFilials = $Filials
+    if ($ReportFilials.ContainsKey($report)) { $useFilials = $ReportFilials[$report] }
 
-    foreach ($filial in $reportFilials) {
+    foreach ($filial in $useFilials) {
       $label = "$erpDate F=$filial $report (#$reportId)"
       $CostSuffix = ""
       if ($CostOnly -or $CostOnlyReports -contains $report) { $CostSuffix = "&costOnly=1" }
