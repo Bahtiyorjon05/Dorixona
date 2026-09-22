@@ -267,8 +267,8 @@ async function syncMovementReport(
     const product = faptekaId ? products.get(faptekaSku(faptekaId)) : undefined;
     if (!faptekaId || !product || quantity <= 0) continue;
 
-    const price = numberValue(row.P);
-    if (input.movementType === "IN" && price > 0) costUpdates.set(product.id, price);
+    const cost = costPerUnit(row);
+    if (input.movementType === "IN" && cost > 0) costUpdates.set(product.id, cost);
 
     const docId = row.ID || row.N || `${row.D ?? input.dateFrom}-${faptekaId}`;
     data.push({
@@ -342,6 +342,18 @@ async function syncMovements(input: StepInput) {
   await syncMovementReport({ ...input, report: "incomingV2", movementType: "IN" });
   await syncMovementReport({ ...input, report: "supplierReturnV2", movementType: "OUT" });
   await syncMovementReport({ ...input, report: "writeOff", movementType: "ADJUST" });
+}
+
+/**
+ * Bir dona tovarning tan narxi, QQS bilan: (SP + SN) / Q.
+ * Savdo summasi ham QQS bilan keladi, shuning uchun taqqoslash bir xil
+ * bo'lishi kerak. SP/SN bo'lmasa, P (QQSsiz narx) ishlatiladi.
+ */
+function costPerUnit(row: FaptekaRow) {
+  const quantity = numberValue(row.Q);
+  const withVat = numberValue(row.SP) + numberValue(row.SN);
+  if (quantity > 0 && withVat > 0) return withVat / quantity;
+  return numberValue(row.P);
 }
 
 function saleLineTotal(row: Record<string, string>, quantity: number, fallbackPrice: number) {
@@ -549,9 +561,9 @@ export async function syncFaptekaCostPrices(rows: FaptekaRow[]) {
   for (const row of rows) {
     const faptekaId = rowId(row, "G");
     const product = faptekaId ? products.get(faptekaSku(faptekaId)) : undefined;
-    const price = numberValue(row.P);
+    const cost = costPerUnit(row);
     // Bir tovar bir necha marta kelgan bo'lsa, oxirgi narx qoladi
-    if (product && price > 0) costs.set(product.id, price);
+    if (product && cost > 0) costs.set(product.id, cost);
   }
 
   const updates = [...costs.entries()];

@@ -16,7 +16,8 @@
 param(
   [int]$Days,                # nechta kun ortga: bugun + oldingi kunlar
   [string]$Only,             # faqat bitta hisobot, masalan: incoming
-  [switch]$CostOnly          # kirimdan faqat tan narx olinadi
+  [switch]$CostOnly,         # kirimdan faqat tan narx olinadi
+  [switch]$WithExpenses      # kirimni harajat sifatida ham yozish
 )
 
 # ---- Sozlamalar ------------------------------------------------------------
@@ -27,6 +28,12 @@ $ApiUrl  = "http://localhost:8081/P_GetReport_XML"
 $ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
 $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
+# Kirim va yetkazib beruvchiga qaytarish omborga (filial 1) yoziladi,
+# dorixonalarga emas - shuning uchun ular boshqa filialdan so'raladi.
+$ReportFilials = @{
+  incoming       = @("1")
+  supplierReturn = @("1")
+}
 $DaysDefault = 2                       # bugun + kecha
 # Bu dorixonadagi API'da Ver.2 hisobotlari (14, 15, 11, 12) bo'sh qaytaradi,
 # shuning uchun eski raqamlar ishlatiladi. API yangilansa, chap ustundagi
@@ -51,8 +58,11 @@ if ($Only) {
   $single[$Only] = $Reports[$Only]
   $Reports = $single
 }
-$CostSuffix = ""
-if ($CostOnly) { $CostSuffix = "&costOnly=1" }
+# Kirim odatda faqat tan narx uchun olinadi: harajatlar ERP ga qo'lda
+# kiritilgani uchun avtomatik yozilsa ikki marta hisoblanib ketardi.
+# Kerak bo'lsa -WithExpenses bilan yoqiladi.
+$CostOnlyReports = @("incoming")
+if ($WithExpenses) { $CostOnlyReports = @() }
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $LogFile = Join-Path $PSScriptRoot "relay.log"
@@ -90,10 +100,15 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
   $apiDate = $day.ToString("dd.MM.yyyy")
   $erpDate = $day.ToString("yyyy-MM-dd")
 
-  foreach ($filial in $Filials) {
-    foreach ($report in $Reports.Keys) {
-      $reportId = $Reports[$report]
+  foreach ($report in $Reports.Keys) {
+    $reportId = $Reports[$report]
+    $reportFilials = $Filials
+    if ($ReportFilials.ContainsKey($report)) { $reportFilials = $ReportFilials[$report] }
+
+    foreach ($filial in $reportFilials) {
       $label = "$erpDate F=$filial $report (#$reportId)"
+      $CostSuffix = ""
+      if ($CostOnly -or $CostOnlyReports -contains $report) { $CostSuffix = "&costOnly=1" }
       try {
         $api = New-Object System.Net.WebClient
         $source = "{0}?pDateFrom={1}&pDateTo={1}&pFilial_id={2}&pReport_id={3}" -f $ApiUrl, $apiDate, $filial, $reportId
