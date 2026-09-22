@@ -50,8 +50,13 @@ function Get-ErrorText($ErrorRecord) {
   return $ErrorRecord.Exception.Message
 }
 
+# Token skript ichida yozilmagan bo'lsa, yonidagi token.txt dan olinadi
 if ($Token -eq "BU_YERGA_TOKEN") {
-  Write-Log "XATO  Token qo'yilmagan: skriptdagi `$Token qatoriga tokenni yozing"
+  $TokenFile = Join-Path $PSScriptRoot "token.txt"
+  if (Test-Path $TokenFile) { $Token = (Get-Content $TokenFile -Raw).Trim() }
+}
+if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
+  Write-Log "XATO  Token yo'q: skriptdagi `$Token qatoriga yozing yoki token.txt fayl qiling"
   exit 1
 }
 
