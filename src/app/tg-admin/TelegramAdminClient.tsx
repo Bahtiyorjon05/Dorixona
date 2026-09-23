@@ -29,6 +29,8 @@ type DashboardData = {
   sales: {
     todayTotal: number;
     todayCount: number;
+    daily?: { day: string; turnover: number; profit: number }[];
+    byUnit?: { unit: string; turnover: number; profit: number }[];
     recent: {
       id: string;
       receiptNo: string;
@@ -844,6 +846,36 @@ export function TelegramAdminClient() {
             ) : (
               <ReadOnlyCard />
             )}
+            <Card title="Kunlik savdo (14 kun)">
+              {(data.sales.daily ?? []).length === 0 ? (
+                <Row left="Savdo hali kelmagan" />
+              ) : (
+                (data.sales.daily ?? []).map((day) => (
+                  <Row
+                    key={day.day}
+                    left={formatDate(day.day)}
+                    right={formatMoney(day.turnover)}
+                    sub={`Foyda ${formatMoney(day.profit)}`}
+                  />
+                ))
+              )}
+            </Card>
+
+            <Card title="Dorixonalar bo'yicha (shu oy)">
+              {(data.sales.byUnit ?? []).length === 0 ? (
+                <Row left="Ma'lumot yo'q" />
+              ) : (
+                (data.sales.byUnit ?? []).map((unit) => (
+                  <Row
+                    key={unit.unit}
+                    left={unit.unit}
+                    right={formatMoney(unit.turnover)}
+                    sub={`Foyda ${formatMoney(unit.profit)}`}
+                  />
+                ))
+              )}
+            </Card>
+
             <Card title="Oxirgi Cheklar">
               {data.sales.recent.map((sale) => (
                 <Row

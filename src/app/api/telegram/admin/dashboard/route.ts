@@ -130,7 +130,9 @@ async function getFinance(period?: Date) {
 async function getSales() {
   const today = startOfDay();
   const tomorrow = new Date(today.getTime() + 864e5);
-  const [todayAgg, todayCount, recent] = await Promise.all([
+  const twoWeeksAgo = new Date(today.getTime() - 13 * 864e5);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const [todayAgg, todayCount, recent, dailyRows, unitRows] = await Promise.all([
     db.sale.aggregate({ _sum: { total: true }, where: { createdAt: { gte: today, lt: tomorrow } } }),
     db.sale.count({ where: { createdAt: { gte: today, lt: tomorrow } } }),
     db.sale.findMany({
@@ -142,11 +144,37 @@ async function getSales() {
         items: { select: { id: true } },
       },
     }),
+    // Kunlik savdo - F-Apteka kunlik jamlanma beradi, shuning uchun
+    // chek emas, kun bo'yicha tushum va foyda ko'rsatiladi
+    db.$queryRaw<{ day: Date; turnover: number; profit: number }[]>`
+      SELECT date_trunc('day', s."createdAt") AS day,
+             SUM(si."lineTotal")::float8 AS turnover,
+             SUM(si."lineTotal" - si."costPrice" * si.quantity)::float8 AS profit
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."createdAt" >= ${twoWeeksAgo}
+      GROUP BY 1 ORDER BY 1 DESC`,
+    db.$queryRaw<{ unit: string | null; turnover: number; profit: number }[]>`
+      SELECT s."unit" AS unit,
+             SUM(si."lineTotal")::float8 AS turnover,
+             SUM(si."lineTotal" - si."costPrice" * si.quantity)::float8 AS profit
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."createdAt" >= ${monthStart}
+      GROUP BY 1 ORDER BY 2 DESC`,
   ]);
 
   return {
     todayTotal: num(todayAgg._sum.total),
     todayCount,
+    daily: dailyRows.map((row) => ({
+      day: new Date(row.day).toISOString(),
+      turnover: num(row.turnover),
+      profit: num(row.profit),
+    })),
+    byUnit: unitRows.map((row) => ({
+      unit: row.unit ?? "Ajratilmagan",
+      turnover: num(row.turnover),
+      profit: num(row.profit),
+    })),
     recent: recent.map((sale) => ({
       id: sale.id,
       receiptNo: sale.receiptNo,
