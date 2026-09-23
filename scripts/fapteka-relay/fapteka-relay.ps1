@@ -6,6 +6,11 @@
 # Eski kirimlardan tan narxni tortish (bir martalik, harajat yozilmaydi):
 #   ... -File fapteka-relay.ps1 -Days 120 -Only incoming -CostOnly
 #
+# Ikkita Windows vazifasi bo'ladi (README ga qarang):
+#   "FApteka ERP"        - har 15 daqiqada, bugun + kecha
+#   "FApteka ERP kunlik" - kuniga bir marta, oxirgi 30 kunni qayta yozadi
+#   (ikkinchisi eski yozuvlarni o'zi tuzatib turadi)
+#
 # F-Apteka hisobot API'si (P_GetReport_XML) dorixonaning ichki tarmog'ida
 # turadi, internetdan unga kirib bo'lmaydi. Bu skript dorixona kompyuterida
 # ishlaydi: har safar bugun va kechagi savdo, kirim, qaytarish va

@@ -38,7 +38,20 @@ Har hisobot uchun `OK` yoki `XATO` qatori chiqadi. Hammasi
 schtasks /Create /TN "FApteka ERP" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-relay.ps1" /SC MINUTE /MO 15 /RU SYSTEM /F
 ```
 
-O'chirish kerak bo'lsa: `schtasks /Delete /TN "FApteka ERP" /F`
+**6. Kunlik tuzatish vazifasi.** Har 15 daqiqalik vazifa faqat bugun va
+kechani yangilaydi. Undan eski yozuvlar (masalan yetkazib beruvchi nomi
+keyinroq ma'lum bo'lsa) o'zi tuzalishi uchun kuniga bir marta oxirgi 30 kun
+qayta tortiladi:
+
+```
+schtasks /Create /TN "FApteka ERP kunlik" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-relay.ps1 -Days 30" /SC DAILY /ST 03:30 /F
+```
+
+Kechasi ishlaydi, hujjat bo'lmagan kunlar o'tkazib yuboriladi, shuning uchun
+bir necha daqiqada tugaydi.
+
+O'chirish kerak bo'lsa:
+`schtasks /Delete /TN "FApteka ERP" /F` va `schtasks /Delete /TN "FApteka ERP kunlik" /F`
 
 ## ERP'da tekshirish
 
