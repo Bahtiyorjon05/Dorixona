@@ -8,6 +8,7 @@ import { buildIncomingExpenseEntries } from "./expense-helpers";
 import {
   FAPTEKA_EXPENSE_MARK,
   FAPTEKA_EXPENSE_PREFIX_OLD,
+  FAPTEKA_RECEIPT_PREFIX,
   FAPTEKA_REPORTS,
   faptekaExpenseTitle,
   faptekaReceipt,
@@ -630,6 +631,110 @@ export async function syncFaptekaSiteRows(rows: FaptekaRow[]): Promise<FaptekaSi
 }
 
 /**
+ * 22-hisobot (tuzatilgan savdo): kun kesimida sotuv va **tan narx** summasi.
+ *
+ * 4-hisobotda tan narx yo'q, shuning uchun foyda kirim narxidan taxminiy
+ * hisoblanardi. Bu yerda F-Apteka o'zi hisoblagan tan narx keladi — o'sha
+ * kunning bandlariga ulush bo'yicha tarqatamiz. Shunda kunlik foyda aniq
+ * bo'ladi, tovar kesimi esa 4-hisobotdan saqlanib qoladi.
+ */
+export async function syncFaptekaSalesTotals(input: {
+  rows: FaptekaRow[];
+  filialId: string;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const dateFrom = isoDate(input.dateFrom);
+  const dateTo = isoDate(input.dateTo);
+  const unit = otdelUnitMap().get(input.filialId) ?? null;
+
+  // F maydoni bo'lsa, boshqa filial qatorlarini olmaymiz
+  const rows = input.rows.filter((row) => !row.F || row.F.trim() === input.filialId);
+  const reported = rows.reduce((sum, row) => sum + numberValue(row.SS || row.SP), 0);
+  const reportedCost = rows.reduce((sum, row) => sum + numberValue(row.SI), 0);
+
+  const from = new Date(dateFrom);
+  const to = endExclusive(dateTo);
+  const [current] = await db.$queryRaw<{ turnover: number }[]>`
+    SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
+    FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+    WHERE s."createdAt" >= ${from} AND s."createdAt" < ${to}
+      AND s."receiptNo" LIKE ${`${FAPTEKA_RECEIPT_PREFIX}%`}
+      AND (${unit}::text IS NULL OR s."unit" = ${unit})`;
+
+  const erpTurnover = numberValue(current?.turnover);
+  if (reportedCost <= 0 || erpTurnover <= 0) {
+    return { ok: true, reported, reportedCost, erpTurnover, updated: 0, applied: false };
+  }
+
+  // Tan narxni tushum ulushiga qarab tarqatamiz
+  const factor = reportedCost / erpTurnover;
+  const updated = await db.$executeRaw`
+    UPDATE "SaleItem" si
+    SET "costPrice" = ROUND((si."lineTotal" * ${factor}::numeric) / GREATEST(si.quantity, 1), 2)
+    FROM "Sale" s
+    WHERE s.id = si."saleId"
+      AND s."createdAt" >= ${from} AND s."createdAt" < ${to}
+      AND s."receiptNo" LIKE ${`${FAPTEKA_RECEIPT_PREFIX}%`}
+      AND (${unit}::text IS NULL OR s."unit" = ${unit})`;
+
+  return { ok: true, reported, reportedCost, erpTurnover, updated, applied: true };
+}
+
+/**
+ * 20-hisobot (tuzatilgan kirim): hujjat raqami va yetkazib beruvchi ID'si.
+ *
+ * 1-hisobotda yetkazib beruvchi maydoni bo'sh kelgan. Bu yerda u bor, hujjat
+ * raqami esa ikkalasida bir xil — shu orqali harajat nomiga nom qo'shamiz.
+ */
+export async function syncFaptekaIncomingSuppliers(input: {
+  rows: FaptekaRow[];
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const orgIds = [...new Set(input.rows.map((row) => (row.O ?? "").trim()).filter(Boolean))];
+  if (!orgIds.length) return { ok: true, updated: 0, unknownOrgs: 0 };
+
+  const orgs = await db.faptekaOrg.findMany({
+    where: { id: { in: orgIds } },
+    select: { id: true, name: true },
+  });
+  const names = new Map(orgs.map((org) => [org.id, org.name]));
+
+  const from = new Date(isoDate(input.dateFrom));
+  const to = endExclusive(isoDate(input.dateTo));
+  const expenses = await db.expense.findMany({
+    where: { title: { contains: FAPTEKA_EXPENSE_MARK }, spentAt: { gte: from, lt: to } },
+    select: { id: true, title: true },
+  });
+
+  let updated = 0;
+  let unknownOrgs = 0;
+  for (const row of input.rows) {
+    const docId = (row.N ?? "").trim();
+    const supplier = names.get((row.O ?? "").trim());
+    if (!docId) continue;
+    if (!supplier) {
+      unknownOrgs += 1;
+      continue;
+    }
+
+    const mark = `${FAPTEKA_EXPENSE_MARK}${docId})`;
+    for (const expense of expenses) {
+      // Nomi shu hujjatga tegishli va yetkazib beruvchi hali yozilmagan bo'lsa
+      if (!expense.title.endsWith(mark) || expense.title.includes(" — ")) continue;
+      await db.expense.update({
+        where: { id: expense.id },
+        data: { title: expense.title.replace(mark, `— ${supplier} ${mark}`) },
+      });
+      updated += 1;
+    }
+  }
+
+  return { ok: true, updated, unknownOrgs };
+}
+
+/**
  * F-Apteka tashkilotlari (189-hisobot): yetkazib beruvchi, filial,
  * sug'urta kompaniyasi. Kirim harajatida nomni yozish uchun kerak.
  */
@@ -703,6 +808,8 @@ export const FAPTEKA_PUSH_REPORTS = [
   "supplierReturnV2",
   "writeOff",
   "organizations",
+  "salesTotals",
+  "incomingTotals",
 ] as const;
 export type FaptekaPushReport = (typeof FAPTEKA_PUSH_REPORTS)[number];
 
@@ -761,7 +868,9 @@ export async function syncFaptekaPushedReport(input: {
         await syncMovementReport({ ...step, report: input.report, movementType: "ADJUST" });
         break;
       case "organizations":
-        // Route alohida ishlaydi (sana/filialga bog'liq emas)
+      case "salesTotals":
+      case "incomingTotals":
+        // Bularni route alohida bajaradi
         break;
     }
   } catch (error) {

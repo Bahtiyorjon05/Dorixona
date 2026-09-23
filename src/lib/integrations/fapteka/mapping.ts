@@ -53,7 +53,9 @@ export type FaptekaReportKey =
   | "retailSaleV2"
   | "insuranceSale"
   | "insuranceSaleV2"
-  | "organizations";
+  | "organizations"
+  | "salesTotals"
+  | "incomingTotals";
 
 export type FaptekaReport = {
   key: FaptekaReportKey;
@@ -230,6 +232,35 @@ export const FAPTEKA_REPORTS: Record<FaptekaReportKey, FaptekaReport> = {
       { key: "I", meaning: "Sug'urta kontragent ID", erpField: "Organization mapping" },
       { key: "G", meaning: "F-Apteka tovar ID", erpField: "Product.sku lookup" },
       { key: "L", meaning: "Markirovka kodi", erpField: "SaleItem metadata note" },
+    ],
+  },
+  salesTotals: {
+    key: "salesTotals",
+    id: 22,
+    title: "Prodazhi (tuzatilgan)",
+    direction: "F_APTEKA_TO_ERP",
+    erpTarget: "SaleItem.costPrice (haqiqiy tan narx)",
+    preferred: true,
+    fields: [
+      { key: "F", meaning: "Filial ID", erpField: "Branch mapping / filter" },
+      { key: "D", meaning: "Sana", erpField: "Sale.createdAt" },
+      { key: "SP", meaning: "Sotuv summasi", erpField: "Tekshirish uchun" },
+      { key: "SS", meaning: "Sotuv summasi (QQS bilan)", erpField: "Tekshirish uchun" },
+      { key: "SI", meaning: "Tan narx summasi", erpField: "SaleItem.costPrice" },
+    ],
+  },
+  incomingTotals: {
+    key: "incomingTotals",
+    id: 20,
+    title: "Prihody (tuzatilgan)",
+    direction: "F_APTEKA_TO_ERP",
+    erpTarget: "Expense.title — yetkazib beruvchi nomi",
+    preferred: true,
+    fields: [
+      { key: "D", meaning: "Sana", erpField: "Expense.spentAt" },
+      { key: "N", meaning: "Hujjat raqami", erpField: "Expense.title ichidagi #raqam" },
+      { key: "O", meaning: "Yetkazib beruvchi ID", erpField: "FaptekaOrg.id" },
+      { key: "SS", meaning: "Summa (QQS bilan)", erpField: "Tekshirish uchun" },
     ],
   },
   organizations: {

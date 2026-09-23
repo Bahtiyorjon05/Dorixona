@@ -5,8 +5,10 @@ import { decodeXmlBuffer, parseFaptekaXml, type FaptekaRow } from "@/lib/integra
 import {
   isFaptekaPushReport,
   syncFaptekaCostPrices,
+  syncFaptekaIncomingSuppliers,
   syncFaptekaOrganizations,
   syncFaptekaPushedReport,
+  syncFaptekaSalesTotals,
 } from "@/lib/integrations/fapteka/sync";
 import { recomputeRange } from "@/lib/monthly-finance";
 
@@ -50,6 +52,18 @@ async function writeLog(data: { rowCount: number; keys?: string; sample?: string
     await db.integrationLog.create({ data: { source: "fapteka-report", ...data } });
   } catch {
     // Jurnalga yozilmasa ham asosiy ish buzilmasin
+  }
+}
+
+/** Oylik moliyaviy xulosani yangilaydi; xato bo'lsa asosiy ishni buzmaydi */
+async function recomputeSafely(dateFrom: string, dateTo: string) {
+  try {
+    const branch = await db.branch.findFirst({ where: { isActive: true } });
+    if (!branch) return 0;
+    const updated = await recomputeRange({ branchId: branch.id, from: new Date(dateFrom), to: new Date(dateTo) });
+    return updated.length;
+  } catch {
+    return 0;
   }
 }
 
@@ -104,6 +118,39 @@ export async function POST(request: NextRequest) {
       ok: true,
     });
     return NextResponse.json({ ok: true, orgs });
+  }
+
+  // 22-hisobot: kun bo'yicha haqiqiy tan narx — savdo bandlariga tarqatiladi
+  if (report === "salesTotals") {
+    const totals = await syncFaptekaSalesTotals({ rows, filialId, dateFrom, dateTo });
+    // F-Apteka aytgan tushum bilan bizdagisi solishtiriladi: farq katta
+    // bo'lsa, savdo hisoboti to'liq tushmagan bo'ladi
+    const diff = totals.reported > 0 ? Math.round((1 - totals.erpTurnover / totals.reported) * 100) : 0;
+    await writeLog({
+      rowCount: rows.length,
+      keys: fieldKeys(rows).slice(0, 2000),
+      note:
+        `${label} | tan narx: ${Math.round(totals.reportedCost)}, ERP tushum: ${Math.round(totals.erpTurnover)}, ` +
+        `F-Apteka tushum: ${Math.round(totals.reported)} (farq ${diff}%), ${totals.updated} band`,
+      ok: true,
+    });
+    await recomputeSafely(dateFrom, dateTo);
+    revalidatePath("/savdo");
+    revalidatePath("/moliya");
+    return NextResponse.json({ ok: true, totals });
+  }
+
+  // 20-hisobot: harajat nomiga yetkazib beruvchini qo'shadi
+  if (report === "incomingTotals") {
+    const result = await syncFaptekaIncomingSuppliers({ rows, dateFrom, dateTo });
+    await writeLog({
+      rowCount: rows.length,
+      keys: fieldKeys(rows).slice(0, 2000),
+      note: `${label} | yetkazib beruvchi yozildi: ${result.updated} ta, noma'lum: ${result.unknownOrgs}`,
+      ok: true,
+    });
+    revalidatePath("/harajatlar");
+    return NextResponse.json({ ok: true, result });
   }
 
   // costOnly: eski kirimlardan faqat tan narx olinadi (harajat yozilmaydi)

@@ -37,6 +37,7 @@ $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
 # dorixonalarga emas - shuning uchun ular boshqa filialdan so'raladi.
 $ReportFilials = @{
   incoming       = @("1")
+  incomingTotals = @("1")
   supplierReturn = @("1")
   organizations  = @("1")
 }
@@ -48,13 +49,18 @@ $DaysDefault = 2                       # bugun + kecha
 # shuning uchun eski raqamlar ishlatiladi. API yangilansa, chap ustundagi
 # nomni V2 ga (masalan retailSaleV2 = 14) o'zgartirish kifoya - ikkalasini
 # birga qoldirmang, savdo ikki marta yozilib qoladi.
+# Tartib muhim: avval tovar kesimidagi hisobot, keyin tuzatuvchisi.
+# 22 savdodagi tan narxni, 20 esa harajatdagi yetkazib beruvchi nomini
+# to'g'rilaydi - shuning uchun ular 4 va 1 dan keyin turadi.
 $Reports = [ordered]@{
-  retailSale     = 4                   # Roznichnaya prodazha
+  retailSale     = 4                   # Roznichnaya prodazha (tovar kesimida)
+  salesTotals    = 22                  # Prodazhi - tan narx bilan (tuzatilgan)
   insuranceSale  = 5                   # Strahovka prodazha
-  incoming       = 1                   # Prihody na sklad
+  incoming       = 1                   # Prihody na sklad (tovar kesimida)
+  incomingTotals = 20                  # Prihody - yetkazib beruvchi bilan (tuzatilgan)
   supplierReturn = 2                   # Vozvrat postavshchiku
   writeOff       = 3                   # Spisanie
-  organizations  = 189                 # Spravochnik organizatsiy (yetkazib beruvchi nomlari)
+  organizations  = 189                 # Spravochnik organizatsiy
 }
 # ----------------------------------------------------------------------------
 
@@ -107,7 +113,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v7 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
+Write-Log "relay v8 boshlandi (22 va 20-hisobotlar: haqiqiy tan narx va yetkazib beruvchi)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
