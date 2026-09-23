@@ -2,22 +2,43 @@ export const FAPTEKA_SKU_PREFIX = "FA:";
 export const FAPTEKA_RECEIPT_PREFIX = "FA-";
 /**
  * F-Apteka kirimidan yaratilgan harajat nomi:
- *   Tovar xaridi (F-Apteka #1107) - OOO FARM SAVDO
- * Boshi o'zgarmas: qayta yuborilganda eski yozuvlar shu bo'yicha topiladi.
+ *   Tovar xaridi: PARATSETAMOL TAB, AMOKSIKLAV +10 ta - OOO FARM (F-Apteka #1107)
+ *
+ * Nom erkin yoziladi, lekin ichida doim shu belgi bo'ladi - qayta
+ * yuborilganda eski yozuvlar shu bo'yicha topiladi va almashtiriladi.
  */
-export const FAPTEKA_EXPENSE_PREFIX = "Tovar xaridi (F-Apteka #";
-/** Avvalgi ko'rinish - eski yozuvlarni topish va tozalash uchun */
+export const FAPTEKA_EXPENSE_MARK = "(F-Apteka #";
+/** Avvalgi ko'rinishlar - eski yozuvlarni tozalash uchun */
 export const FAPTEKA_EXPENSE_PREFIX_OLD = "F-Apteka kirim #";
 
 export function isFaptekaExpenseTitle(title?: string | null) {
-  return Boolean(
-    title?.startsWith(FAPTEKA_EXPENSE_PREFIX) || title?.startsWith(FAPTEKA_EXPENSE_PREFIX_OLD),
-  );
+  return Boolean(title?.includes(FAPTEKA_EXPENSE_MARK) || title?.startsWith(FAPTEKA_EXPENSE_PREFIX_OLD));
 }
 
-export function faptekaExpenseTitle(docId: string, supplier?: string) {
-  const base = `${FAPTEKA_EXPENSE_PREFIX}${docId})`;
-  return supplier ? `${base} — ${supplier}` : base;
+/** Uzun dori nomini qisqartiradi: "PARATSETAMOL TABLETKA 500MG N20" -> "PARATSETAMOL TABLETKA 500MG" */
+function shortName(name: string, limit = 28) {
+  const text = name.trim();
+  return text.length <= limit ? text : `${text.slice(0, limit - 1).trimEnd()}…`;
+}
+
+/**
+ * @param items  tovar nomi -> summa (eng kattasi birinchi ko'rsatiladi)
+ */
+export function faptekaExpenseTitle(input: {
+  docId: string;
+  supplier?: string;
+  items?: Map<string, number>;
+}) {
+  const names = [...(input.items ?? new Map())]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => shortName(name))
+    .filter(Boolean);
+
+  const shown = names.slice(0, 2).join(", ");
+  const rest = names.length - 2;
+  const what = shown ? `Tovar xaridi: ${shown}${rest > 0 ? ` +${rest} ta` : ""}` : "Tovar xaridi";
+  const from = input.supplier ? ` — ${input.supplier}` : "";
+  return `${what}${from} ${FAPTEKA_EXPENSE_MARK}${input.docId})`;
 }
 
 export type FaptekaReportKey =

@@ -90,8 +90,7 @@ export default async function HarajatlarPage({
           <b>Tovar puli ikki manbadan yozilgan.</b> F-Apteka kirimidan{" "}
           {formatNumber(d.goodsAuto)} so&apos;m, qo&apos;lda kiritilgani {formatNumber(d.goodsManual)} so&apos;m.
           Bu bir xil xarid bo&apos;lsa, ikki marta hisoblanyapti — pastdagi ro&apos;yxatdan qo&apos;lda
-          kiritilganini o&apos;chiring. F-Apteka yozuvlari &laquo;Tovar xaridi (F-Apteka #…)&raquo; deb
-          boshlanadi.
+          kiritilganini o&apos;chiring. F-Apteka yozuvlari nomida &laquo;(F-Apteka #…)&raquo; belgisi bo&apos;ladi.
         </div>
       )}
 

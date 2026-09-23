@@ -6,7 +6,7 @@ import type { Filial } from "@/lib/filial";
 import { categoryFromName, FAPTEKA_DEFAULT_CATEGORY } from "./category";
 import { buildIncomingExpenseEntries } from "./expense-helpers";
 import {
-  FAPTEKA_EXPENSE_PREFIX,
+  FAPTEKA_EXPENSE_MARK,
   FAPTEKA_EXPENSE_PREFIX_OLD,
   FAPTEKA_REPORTS,
   faptekaExpenseTitle,
@@ -331,14 +331,48 @@ async function supplierNames(rows: FaptekaRow[]) {
   return map;
 }
 
+/** Ombordagi nomlar: FA:<G> -> tovar nomi */
+async function productNames(branchId: string, rows: FaptekaRow[]) {
+  const skus = [...new Set(rows.map((row) => rowId(row, "G")).filter(Boolean))].map((id) =>
+    faptekaSku(id as string),
+  );
+  if (!skus.length) return new Map<string, string>();
+
+  const products = await db.product.findMany({
+    where: { branchId, sku: { in: skus } },
+    select: { sku: true, name: true },
+  });
+  return new Map(products.map((product) => [product.sku, product.name]));
+}
+
 async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKey }) {
   const rows = await input.source(input.report);
   input.summary.expenseRows += rows.length;
 
-  const suppliers = await supplierNames(rows);
+  const docIdOf = (row: FaptekaRow) =>
+    row.ID || row.N || `${row.D ?? input.dateFrom}-${rowId(row, "G") || ""}`;
+
+  const [suppliers, names] = await Promise.all([
+    supplierNames(rows),
+    productNames(input.branchId, rows),
+  ]);
+
+  // Hujjat ichida nima kelgani: nom -> summa. Harajat nomida eng kattalari
+  // ko'rsatiladi, shunda ro'yxatga qaraboq nima olinganini bilish mumkin.
+  const itemsByDoc = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    const faptekaId = rowId(row, "G");
+    const name = faptekaId ? names.get(faptekaSku(faptekaId)) : undefined;
+    if (!name) continue;
+    const docId = docIdOf(row);
+    const items = itemsByDoc.get(docId) ?? new Map<string, number>();
+    items.set(name, (items.get(name) ?? 0) + stockCount(row.Q || 1) * costPerUnit(row));
+    itemsByDoc.set(docId, items);
+  }
+
   const entries = buildIncomingExpenseEntries(
     rows.map((row) => ({
-      docId: row.ID || row.N || `${row.D ?? input.dateFrom}-${rowId(row, "G") || ""}`,
+      docId: docIdOf(row),
       quantity: stockCount(row.Q || 1),
       price: costPerUnit(row),
       spentAt: dateValue(row.D) ?? new Date(input.dateFrom),
@@ -349,7 +383,7 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
   // Eski ko'rinishdagi yozuvlar ham tozalansin, aks holda nom o'zgargach
   // bir xil kirim ikki marta turib qolardi.
   const titleFilters = [
-    { title: { startsWith: FAPTEKA_EXPENSE_PREFIX } },
+    { title: { contains: FAPTEKA_EXPENSE_MARK } },
     { title: { startsWith: FAPTEKA_EXPENSE_PREFIX_OLD } },
   ];
   await db.$transaction([
@@ -361,7 +395,11 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
     }),
     db.expense.createMany({
       data: entries.map((entry) => ({
-        title: faptekaExpenseTitle(entry.docId, entry.supplier),
+        title: faptekaExpenseTitle({
+          docId: entry.docId,
+          supplier: entry.supplier,
+          items: itemsByDoc.get(entry.docId),
+        }),
         category: "GOODS" as const,
         amount: entry.amount,
         spentAt: entry.spentAt,
