@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { activeBranch } from "@/lib/actions/_shared";
 import { monthName } from "@/lib/format";
-import { isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
+import { FAPTEKA_EXPENSE_PREFIX, isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 import { unitWhere } from "@/lib/filial";
 import { currentFilial } from "@/lib/filial-server";
 
@@ -292,6 +292,12 @@ export async function getExpensesData(period?: Date) {
 
   const catSum = (c: string) => num(byCat.find((b) => b.category === c)?._sum.amount);
 
+  // Tovar puli ikki manbadan kelishi mumkin: F-Apteka kirimi (avtomatik) va
+  // qo'lda kiritilgani. Ikkalasi bir oyda bo'lsa - ikki marta hisoblangan.
+  const goodsAuto = list
+    .filter((e) => e.category === "GOODS" && e.title.startsWith(FAPTEKA_EXPENSE_PREFIX))
+    .reduce((sum, e) => sum + num(e.amount), 0);
+
   const byUnit = byUnitRows
     .map((r) => ({ unit: r.unit ?? "Umumiy", amount: num(r._sum.amount), count: r._count }))
     .sort((a, b) => b.amount - a.amount);
@@ -327,6 +333,8 @@ export async function getExpensesData(period?: Date) {
     rent: catSum("RENT") + catSum("UTILITIES"),
     salary: catSum("SALARY"),
     goods: catSum("GOODS"),
+    goodsAuto,
+    goodsManual: catSum("GOODS") - goodsAuto,
     byCategory: byCat
       .map((c) => ({ category: c.category as string, amount: num(c._sum.amount) }))
       .sort((a, b) => b.amount - a.amount),

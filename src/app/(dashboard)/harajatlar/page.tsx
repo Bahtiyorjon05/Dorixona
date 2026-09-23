@@ -85,6 +85,15 @@ export default async function HarajatlarPage({
         )}
       </div>
 
+      {d.goodsAuto > 0 && d.goodsManual > 0 && (
+        <div className="mb-5 rounded-lg border border-edge bg-accent-light p-3 text-sm">
+          <b>Tovar puli ikki manbadan yozilgan.</b> F-Apteka kirimidan{" "}
+          {formatNumber(d.goodsAuto)} so&apos;m, qo&apos;lda kiritilgani {formatNumber(d.goodsManual)} so&apos;m.
+          Bu bir xil xarid bo&apos;lsa, ikki marta hisoblanyapti — pastdagi ro&apos;yxatdan qo&apos;lda
+          kiritilganini o&apos;chiring. F-Apteka yozuvlari &laquo;F-Apteka kirim #&raquo; deb boshlanadi.
+        </div>
+      )}
+
       <MonthlyFinancePanel
         label={label}
         year={d.period.getFullYear()}

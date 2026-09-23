@@ -4,7 +4,13 @@ import { db } from "@/lib/db";
 import { fetchFaptekaReport, getFaptekaConfig, numberValue, dateValue, type FaptekaRow } from "./client";
 import type { Filial } from "@/lib/filial";
 import { buildIncomingExpenseEntries } from "./expense-helpers";
-import { FAPTEKA_REPORTS, faptekaReceipt, faptekaSku, type FaptekaReportKey } from "./mapping";
+import {
+  FAPTEKA_EXPENSE_PREFIX,
+  FAPTEKA_REPORTS,
+  faptekaReceipt,
+  faptekaSku,
+  type FaptekaReportKey,
+} from "./mapping";
 import { otdelUnitMap } from "./otdel";
 
 export type FaptekaSyncMode = "catalog" | "movements" | "sales" | "all";
@@ -300,9 +306,6 @@ async function syncMovementReport(
     );
   }
 }
-
-/** F-Apteka kirimidan yaratilgan harajat yozuvlari shu nom bilan boshlanadi */
-export const FAPTEKA_EXPENSE_PREFIX = "F-Apteka kirim #";
 
 async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKey }) {
   const rows = await input.source(input.report);

@@ -1,5 +1,7 @@
 export const FAPTEKA_SKU_PREFIX = "FA:";
 export const FAPTEKA_RECEIPT_PREFIX = "FA-";
+/** F-Apteka kirimidan yaratilgan harajat yozuvlari shu nom bilan boshlanadi */
+export const FAPTEKA_EXPENSE_PREFIX = "F-Apteka kirim #";
 
 export type FaptekaReportKey =
   | "catalog"
