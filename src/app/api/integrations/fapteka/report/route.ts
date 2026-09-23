@@ -5,6 +5,7 @@ import { decodeXmlBuffer, parseFaptekaXml, type FaptekaRow } from "@/lib/integra
 import {
   isFaptekaPushReport,
   syncFaptekaCostPrices,
+  syncFaptekaOrganizations,
   syncFaptekaPushedReport,
 } from "@/lib/integrations/fapteka/sync";
 import { recomputeRange } from "@/lib/monthly-finance";
@@ -91,6 +92,18 @@ export async function POST(request: NextRequest) {
     // Bo'sh kun (hali savdo yo'q) yoki API xatosi — ikkala holatda ham tegmaymiz
     await writeLog({ rowCount: 0, sample: text.slice(0, 500), note: `${label} | qator yo'q`, ok: true });
     return NextResponse.json({ ok: true, rows: 0 });
+  }
+
+  // Tashkilotlar ro'yxati sana va filialga bog'liq emas
+  if (report === "organizations") {
+    const orgs = await syncFaptekaOrganizations(rows);
+    await writeLog({
+      rowCount: rows.length,
+      keys: fieldKeys(rows).slice(0, 2000),
+      note: `${label} | tashkilot: ${orgs.saved} ta, ${Date.now() - startedAt}ms`,
+      ok: true,
+    });
+    return NextResponse.json({ ok: true, orgs });
   }
 
   // costOnly: eski kirimlardan faqat tan narx olinadi (harajat yozilmaydi)

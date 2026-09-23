@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { fetchFaptekaReport, getFaptekaConfig, numberValue, dateValue, type FaptekaRow } from "./client";
 import type { Filial } from "@/lib/filial";
+import { categoryFromName, FAPTEKA_DEFAULT_CATEGORY } from "./category";
 import { buildIncomingExpenseEntries } from "./expense-helpers";
 import {
   FAPTEKA_EXPENSE_PREFIX,
@@ -236,7 +237,7 @@ async function loadFaptekaProducts(branchId: string, rows: FaptekaRow[]) {
       data: missing.map(([id, price]) => ({
         name: `F-Apteka #${id}`,
         sku: faptekaSku(id),
-        category: "F-Apteka",
+        category: FAPTEKA_DEFAULT_CATEGORY,
         unit: "dona",
         costPrice: 0,
         salePrice: price,
@@ -307,16 +308,39 @@ async function syncMovementReport(
   }
 }
 
+/**
+ * Kirim qatorlaridagi "I" (1-hisobotda INN, 11-hisobotda kontragent ID)
+ * bo'yicha tashkilot nomlarini topadi. Ro'yxat 189-hisobotdan to'ladi.
+ */
+async function supplierNames(rows: FaptekaRow[]) {
+  const keys = [...new Set(rows.map((row) => (row.I ?? "").trim()).filter(Boolean))];
+  if (!keys.length) return new Map<string, string>();
+
+  const orgs = await db.faptekaOrg.findMany({
+    where: { OR: [{ id: { in: keys } }, { inn: { in: keys } }] },
+    select: { id: true, inn: true, name: true },
+  });
+
+  const map = new Map<string, string>();
+  for (const org of orgs) {
+    map.set(org.id, org.name);
+    if (org.inn) map.set(org.inn, org.name);
+  }
+  return map;
+}
+
 async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKey }) {
   const rows = await input.source(input.report);
   input.summary.expenseRows += rows.length;
 
+  const suppliers = await supplierNames(rows);
   const entries = buildIncomingExpenseEntries(
     rows.map((row) => ({
       docId: row.ID || row.N || `${row.D ?? input.dateFrom}-${rowId(row, "G") || ""}`,
       quantity: stockCount(row.Q || 1),
       price: costPerUnit(row),
       spentAt: dateValue(row.D) ?? new Date(input.dateFrom),
+      supplier: suppliers.get((row.I ?? "").trim()),
     })),
   );
 
@@ -332,7 +356,9 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
     }),
     db.expense.createMany({
       data: entries.map((entry) => ({
-        title: `${titlePrefix}${entry.docId}`,
+        title: entry.supplier
+          ? `${titlePrefix}${entry.docId} — ${entry.supplier}`
+          : `${titlePrefix}${entry.docId}`,
         category: "GOODS" as const,
         amount: entry.amount,
         spentAt: entry.spentAt,
@@ -533,12 +559,19 @@ export async function syncFaptekaSiteRows(rows: FaptekaRow[]): Promise<FaptekaSi
         )
         VALUES ${Prisma.join(
           chunk.map((product) => Prisma.sql`(
-            ${randomUUID()}, ${product.name}, ${product.sku}, ${"F-Apteka"}, ${product.unit},
+            ${randomUUID()}, ${product.name}, ${product.sku}, ${categoryFromName(product.name)}, ${product.unit},
             ${0}, ${product.salePrice}, ${product.stock}, ${0}, ${true}, ${product.branchId}, NOW(), NOW()
           )`),
         )}
         ON CONFLICT ("branchId", "sku") DO UPDATE SET
           "name" = EXCLUDED."name",
+          -- Toifani faqat kod qo'ygan bo'lsa yangilaymiz: odam o'zgartirgan
+          -- toifaga tegmaymiz
+          "category" = CASE
+            WHEN "Product"."category" IS NULL OR "Product"."category" = '' OR "Product"."category" = 'F-Apteka'
+              THEN EXCLUDED."category"
+            ELSE "Product"."category"
+          END,
           "unit" = EXCLUDED."unit",
           "salePrice" = EXCLUDED."salePrice",
           "stock" = EXCLUDED."stock",
@@ -553,6 +586,31 @@ export async function syncFaptekaSiteRows(rows: FaptekaRow[]): Promise<FaptekaSi
   }
 
   return summary;
+}
+
+/**
+ * F-Apteka tashkilotlari (189-hisobot): yetkazib beruvchi, filial,
+ * sug'urta kompaniyasi. Kirim harajatida nomni yozish uchun kerak.
+ */
+export async function syncFaptekaOrganizations(rows: FaptekaRow[]) {
+  let saved = 0;
+  for (const row of rows) {
+    const id = (row.I ?? "").trim();
+    const name = (row.N ?? "").trim();
+    if (!id || !name) continue;
+    const data = {
+      name,
+      inn: (row.INN ?? "").trim() || null,
+      isSupplier: (row.INC ?? "") === "1",
+    };
+    try {
+      await db.faptekaOrg.upsert({ where: { id }, update: data, create: { id, ...data } });
+      saved += 1;
+    } catch {
+      // Bitta yozuv tushmasa ham qolganlari saqlansin
+    }
+  }
+  return { ok: true, receivedRows: rows.length, saved };
 }
 
 /**
@@ -603,6 +661,7 @@ export const FAPTEKA_PUSH_REPORTS = [
   "supplierReturn",
   "supplierReturnV2",
   "writeOff",
+  "organizations",
 ] as const;
 export type FaptekaPushReport = (typeof FAPTEKA_PUSH_REPORTS)[number];
 
@@ -659,6 +718,9 @@ export async function syncFaptekaPushedReport(input: {
         break;
       case "writeOff":
         await syncMovementReport({ ...step, report: input.report, movementType: "ADJUST" });
+        break;
+      case "organizations":
+        // Route alohida ishlaydi (sana/filialga bog'liq emas)
         break;
     }
   } catch (error) {

@@ -33,7 +33,11 @@ $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
 $ReportFilials = @{
   incoming       = @("1")
   supplierReturn = @("1")
+  organizations  = @("1")
 }
+
+# Tashkilotlar ro'yxati sanaga bog'liq emas - har kun emas, run boshiga bir marta
+$OnceReports = @("organizations")
 $DaysDefault = 2                       # bugun + kecha
 # Bu dorixonadagi API'da Ver.2 hisobotlari (14, 15, 11, 12) bo'sh qaytaradi,
 # shuning uchun eski raqamlar ishlatiladi. API yangilansa, chap ustundagi
@@ -45,6 +49,7 @@ $Reports = [ordered]@{
   incoming       = 1                   # Prihody na sklad
   supplierReturn = 2                   # Vozvrat postavshchiku
   writeOff       = 3                   # Spisanie
+  organizations  = 189                 # Spravochnik organizatsiy (yetkazib beruvchi nomlari)
 }
 # ----------------------------------------------------------------------------
 
@@ -97,7 +102,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v6 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
+Write-Log "relay v7 boshlandi (kirim ombordan: F=1, tan narx QQS bilan)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
@@ -105,6 +110,8 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
   $erpDate = $day.ToString("yyyy-MM-dd")
 
   foreach ($report in $Reports.Keys) {
+    # Bir martalik hisobotlar faqat oxirgi kun aylanishida yuboriladi
+    if (($OnceReports -contains $report) -and ($i -ne 0)) { continue }
     $reportId = $Reports[$report]
     # Nom $ReportFilials dan farq qilishi shart: PowerShell'da o'zgaruvchi
     # nomlari katta-kichik harfni ajratmaydi, aks holda jadval buziladi.

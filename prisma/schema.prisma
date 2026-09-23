@@ -419,3 +419,15 @@ model Debt {
   @@index([branchId])
   @@index([direction])
 }
+
+/// F-Apteka tashkilotlari (189-hisobot): yetkazib beruvchi, filial,
+/// sug'urta kompaniyasi. Kirim harajatida kimdan kelganini yozish uchun.
+model FaptekaOrg {
+  id        String   @id // F-Apteka tashkilot ID
+  name      String
+  inn       String?
+  isSupplier Boolean @default(false)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([inn])
+}
