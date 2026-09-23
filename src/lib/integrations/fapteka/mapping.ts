@@ -1,7 +1,24 @@
 export const FAPTEKA_SKU_PREFIX = "FA:";
 export const FAPTEKA_RECEIPT_PREFIX = "FA-";
-/** F-Apteka kirimidan yaratilgan harajat yozuvlari shu nom bilan boshlanadi */
-export const FAPTEKA_EXPENSE_PREFIX = "F-Apteka kirim #";
+/**
+ * F-Apteka kirimidan yaratilgan harajat nomi:
+ *   Tovar xaridi (F-Apteka #1107) - OOO FARM SAVDO
+ * Boshi o'zgarmas: qayta yuborilganda eski yozuvlar shu bo'yicha topiladi.
+ */
+export const FAPTEKA_EXPENSE_PREFIX = "Tovar xaridi (F-Apteka #";
+/** Avvalgi ko'rinish - eski yozuvlarni topish va tozalash uchun */
+export const FAPTEKA_EXPENSE_PREFIX_OLD = "F-Apteka kirim #";
+
+export function isFaptekaExpenseTitle(title?: string | null) {
+  return Boolean(
+    title?.startsWith(FAPTEKA_EXPENSE_PREFIX) || title?.startsWith(FAPTEKA_EXPENSE_PREFIX_OLD),
+  );
+}
+
+export function faptekaExpenseTitle(docId: string, supplier?: string) {
+  const base = `${FAPTEKA_EXPENSE_PREFIX}${docId})`;
+  return supplier ? `${base} — ${supplier}` : base;
+}
 
 export type FaptekaReportKey =
   | "catalog"

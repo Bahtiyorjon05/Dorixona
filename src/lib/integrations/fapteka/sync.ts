@@ -7,7 +7,9 @@ import { categoryFromName, FAPTEKA_DEFAULT_CATEGORY } from "./category";
 import { buildIncomingExpenseEntries } from "./expense-helpers";
 import {
   FAPTEKA_EXPENSE_PREFIX,
+  FAPTEKA_EXPENSE_PREFIX_OLD,
   FAPTEKA_REPORTS,
+  faptekaExpenseTitle,
   faptekaReceipt,
   faptekaSku,
   type FaptekaReportKey,
@@ -344,21 +346,22 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
     })),
   );
 
-  // Nom odam o'qiy oladigan bo'lsin: Harajatlar sahifasida shu ko'rinadi.
-  // Prefiks o'zgarmas - qayta yuborilganda eski yozuvlar shu bo'yicha topiladi.
-  const titlePrefix = FAPTEKA_EXPENSE_PREFIX;
+  // Eski ko'rinishdagi yozuvlar ham tozalansin, aks holda nom o'zgargach
+  // bir xil kirim ikki marta turib qolardi.
+  const titleFilters = [
+    { title: { startsWith: FAPTEKA_EXPENSE_PREFIX } },
+    { title: { startsWith: FAPTEKA_EXPENSE_PREFIX_OLD } },
+  ];
   await db.$transaction([
     db.expense.deleteMany({
       where: {
-        title: { startsWith: titlePrefix },
+        OR: titleFilters,
         spentAt: { gte: new Date(input.dateFrom), lt: endExclusive(input.dateTo) },
       },
     }),
     db.expense.createMany({
       data: entries.map((entry) => ({
-        title: entry.supplier
-          ? `${titlePrefix}${entry.docId} — ${entry.supplier}`
-          : `${titlePrefix}${entry.docId}`,
+        title: faptekaExpenseTitle(entry.docId, entry.supplier),
         category: "GOODS" as const,
         amount: entry.amount,
         spentAt: entry.spentAt,

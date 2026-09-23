@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { activeBranch } from "@/lib/actions/_shared";
 import { monthName } from "@/lib/format";
-import { FAPTEKA_EXPENSE_PREFIX, isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
+import { isFaptekaExpenseTitle, isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 import { unitWhere } from "@/lib/filial";
 import { currentFilial } from "@/lib/filial-server";
 
@@ -295,7 +295,7 @@ export async function getExpensesData(period?: Date) {
   // Tovar puli ikki manbadan kelishi mumkin: F-Apteka kirimi (avtomatik) va
   // qo'lda kiritilgani. Ikkalasi bir oyda bo'lsa - ikki marta hisoblangan.
   const goodsAuto = list
-    .filter((e) => e.category === "GOODS" && e.title.startsWith(FAPTEKA_EXPENSE_PREFIX))
+    .filter((e) => e.category === "GOODS" && isFaptekaExpenseTitle(e.title))
     .reduce((sum, e) => sum + num(e.amount), 0);
 
   const byUnit = byUnitRows
