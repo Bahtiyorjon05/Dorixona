@@ -648,8 +648,15 @@ export async function syncFaptekaSalesTotals(input: {
   const dateTo = isoDate(input.dateTo);
   const unit = otdelUnitMap().get(input.filialId) ?? null;
 
-  // F maydoni bo'lsa, boshqa filial qatorlarini olmaymiz
-  const rows = input.rows.filter((row) => !row.F || row.F.trim() === input.filialId);
+  // 22-hisobot DOCTYPE (2,3,4,8,7) ni oladi, 4-hisobot esa faqat (2,4) ni.
+  // Tan narx o'sha savdolarga tarqatilishi uchun bir xil doiradan olamiz,
+  // aks holda sug'urta va qaytarishlar aralashib, foyda buzilardi.
+  const SALE_DOC_TYPES = new Set(["2", "4"]);
+  const rows = input.rows.filter(
+    (row) =>
+      (!row.F || row.F.trim() === input.filialId) &&
+      (!row.DT || SALE_DOC_TYPES.has(row.DT.trim())),
+  );
   const reported = rows.reduce((sum, row) => sum + numberValue(row.SS || row.SP), 0);
   const reportedCost = rows.reduce((sum, row) => sum + numberValue(row.SI), 0);
 
