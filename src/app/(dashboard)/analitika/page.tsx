@@ -56,6 +56,11 @@ export default async function AnalitikaPage({
         inventoryByCategory={d.inventoryByCategory}
         inventoryTotal={d.inventoryTotal}
         assortment={d.assortment}
+        topProducts={d.topProducts}
+        slowMovers={d.slowMovers}
+        turnoverRatio={d.turnoverRatio}
+        vedomost={d.vedomost}
+        dailySales={d.dailySales}
       />
 
       {!d.hasFinance && !d.hasInventory && (

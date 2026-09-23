@@ -8,12 +8,18 @@ import {
   AstatkaChart,
   DinamikaChart,
   FiliallarChart,
+  KunlikChart,
   OmborToifaChart,
 } from "@/components/charts/AnalyticsCharts";
 
 type MonthPoint = { month: number; label: string; savdo: number; foyda: number; astatka: number; xarajat: number };
 type UnitPoint = { unit: string; savdo: number; foyda: number; astatka: number };
 type AssortItem = { name: string; category: string; stock: number; price: number; value: number };
+type TopItem = { name: string; qty: number; turnover: number; profit: number };
+type SlowItem = { name: string; stock: number; qty: number; value: number };
+type RatioItem = { name: string; stock: number; qty: number; ratio: number };
+type VedomostItem = { name: string; incoming: number; sold: number; stock: number };
+type DayPoint = { label: string; savdo: number; foyda: number };
 
 type Props = {
   year: number;
@@ -23,15 +29,20 @@ type Props = {
   inventoryByCategory: { name: string; value: number }[];
   inventoryTotal: number;
   assortment: AssortItem[];
+  topProducts: TopItem[];
+  slowMovers: SlowItem[];
+  turnoverRatio: RatioItem[];
+  vedomost: VedomostItem[];
+  dailySales: DayPoint[];
 };
 
 /** F-Apteka "Отчеты" ro'yxati — o'zbekcha. `ready` = bizda ma'lumot bormi. */
 const REPORTS = [
   { key: "assortiment", label: "Assortiment (sana holatiga)", ready: true },
-  { key: "top500", label: "TOP 500 savdo", ready: false },
-  { key: "lejeboki", label: "Sekin sotiladigan (lejeboki)", ready: false },
-  { key: "aylanuvchanlik", label: "Aylanuvchanlik", ready: false },
-  { key: "vedomost", label: "Tovar bo'yicha aylanma vedomost", ready: false },
+  { key: "top500", label: "TOP savdo", ready: true },
+  { key: "lejeboki", label: "Sekin sotiladigan (lejeboki)", ready: true },
+  { key: "aylanuvchanlik", label: "Aylanuvchanlik", ready: true },
+  { key: "vedomost", label: "Tovar bo'yicha aylanma vedomost", ready: true },
   { key: "tolov", label: "To'lov usullari bo'yicha", ready: false },
   { key: "cheklar", label: "Cheklar bo'yicha", ready: false },
   { key: "guruhlar", label: "Guruhlar bo'yicha savdo", ready: false },
@@ -43,7 +54,7 @@ const CHARTS = [
   { key: "astatka", label: "Astatka dinamikasi", ready: true },
   { key: "filiallar", label: "Dorixonalar taqqoslashi", ready: true },
   { key: "ombor", label: "Ombor qiymati (toifalar)", ready: true },
-  { key: "kunlik", label: "Kunlik savdo grafigi", ready: false },
+  { key: "kunlik", label: "Kunlik savdo grafigi", ready: true },
   { key: "postavshik_qoldiq", label: "Yetkazib beruvchilar — qoldiq", ready: false },
   { key: "postavshik_qoldiq_savdo", label: "Yetkazib beruvchilar — qoldiq/savdo", ready: false },
   { key: "postavshik_kirim", label: "Yetkazib beruvchilar — kirim", ready: false },
@@ -58,9 +69,43 @@ function Kutilyapti({ nima }: { nima: string }) {
     <div className="flex h-[220px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-edge px-6 text-center">
       <span className="text-2xl">⏳</span>
       <p className="text-sm text-muted">
-        Bu hisobot <b>{nima}</b> talab qiladi. F-Apteka savdo/kirim integratsiyasi ulangach
-        avtomatik to&apos;ladi.
+        Bu hisobot <b>{nima}</b> talab qiladi. Hozirgi F-Apteka API&apos;sida bu ma&apos;lumot yo&apos;q —
+        texnik bo&apos;lim qo&apos;shib bergach avtomatik to&apos;ladi.
       </p>
+    </div>
+  );
+}
+
+function Bosh() {
+  return <p className="py-10 text-center text-sm text-muted">Bu davr uchun ma&apos;lumot yo&apos;q.</p>;
+}
+
+/** Oddiy jadval: birinchi ustun chapda, qolganlari o'ngda */
+function DataTable({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
+  return (
+    <div className="-mx-2 max-h-[460px] overflow-auto">
+      <table className="w-full min-w-[440px] text-sm">
+        <thead>
+          <tr className="border-b border-edge text-left text-xs text-muted">
+            {head.map((title, i) => (
+              <th key={title} className={`px-2 py-1.5 ${i === 0 ? "" : "text-right"}`}>
+                {title}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b border-edge/50">
+              {row.map((cell, j) => (
+                <td key={j} className={`px-2 py-1.5 ${j === 0 ? "" : "text-right"}`}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -73,6 +118,11 @@ export function AnalitikaView({
   inventoryByCategory,
   inventoryTotal,
   assortment,
+  topProducts,
+  slowMovers,
+  turnoverRatio,
+  vedomost,
+  dailySales,
 }: Props) {
   const router = useRouter();
   const [report, setReport] = useState<ReportKey>("assortiment");
@@ -167,8 +217,72 @@ export function AnalitikaView({
               </div>
             </div>
           )
+        ) : report === "top500" ? (
+          topProducts.length === 0 ? <Bosh /> : (
+            <div>
+              <p className="mb-2 text-sm text-muted">
+                {year}-yilda eng ko&apos;p tushum keltirgan {topProducts.length} tovar
+              </p>
+              <DataTable
+                head={["Nomi", "Soni", "Tushum (mln)", "Foyda (mln)"]}
+                rows={topProducts.map((item) => [item.name, formatNumber(item.qty), item.turnover, item.profit])}
+              />
+            </div>
+          )
+        ) : report === "lejeboki" ? (
+          slowMovers.length === 0 ? <Bosh /> : (
+            <div>
+              <p className="mb-2 text-sm text-muted">
+                Qoldig&apos;i bor, lekin {year}-yilda kam sotilgan tovarlar — pul shu yerda qotib turadi
+              </p>
+              <DataTable
+                head={["Nomi", "Qoldiq", "Sotilgan", "Qiymat (mln)"]}
+                rows={slowMovers.map((item) => [item.name, formatNumber(item.stock), formatNumber(item.qty), item.value])}
+              />
+            </div>
+          )
+        ) : report === "aylanuvchanlik" ? (
+          turnoverRatio.length === 0 ? <Bosh /> : (
+            <div>
+              <p className="mb-2 text-sm text-muted">
+                Yillik savdo qoldiqqa nisbatan necha marta aylangan — raqam katta bo&apos;lsa, tovar tez ketadi
+              </p>
+              <DataTable
+                head={["Nomi", "Qoldiq", "Sotilgan", "Aylanish"]}
+                rows={turnoverRatio.map((item) => [
+                  item.name,
+                  formatNumber(item.stock),
+                  formatNumber(item.qty),
+                  `${item.ratio}x`,
+                ])}
+              />
+            </div>
+          )
+        ) : report === "vedomost" ? (
+          vedomost.length === 0 ? <Bosh /> : (
+            <div>
+              <p className="mb-2 text-sm text-muted">
+                {year}-yil: kirim, sotuv va hozirgi qoldiq
+              </p>
+              <DataTable
+                head={["Nomi", "Kirim", "Sotilgan", "Qoldiq"]}
+                rows={vedomost.map((item) => [
+                  item.name,
+                  formatNumber(item.incoming),
+                  formatNumber(item.sold),
+                  formatNumber(item.stock),
+                ])}
+              />
+            </div>
+          )
         ) : (
-          <Kutilyapti nima="F-Apteka savdo hisobotini (chek/kirim)" />
+          <Kutilyapti
+            nima={
+              report === "guruhlar"
+                ? "F-Apteka tovar guruhlari ma'lumotini"
+                : "F-Apteka chek ma'lumotini (14-hisobot)"
+            }
+          />
         )}
       </Card>
 
@@ -237,15 +351,15 @@ export function AnalitikaView({
             <OmborToifaChart data={inventoryByCategory} />
           </>
         )}
-        {!activeChart.ready && (
-          <Kutilyapti
-            nima={
-              chart === "kunlik"
-                ? "F-Apteka kunlik savdo ma'lumotini"
-                : "F-Apteka yetkazib beruvchi ma'lumotini"
-            }
-          />
+        {chart === "kunlik" && (
+          dailySales.length === 0 ? <Bosh /> : (
+            <>
+              <p className="mb-3 text-sm text-muted">Oxirgi 60 kun — kunlik savdo va foyda (mln so&apos;m)</p>
+              <KunlikChart data={dailySales} />
+            </>
+          )
         )}
+        {!activeChart.ready && <Kutilyapti nima="F-Apteka yetkazib beruvchi ma'lumotini" />}
       </Card>
     </div>
   );

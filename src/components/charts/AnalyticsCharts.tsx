@@ -58,6 +58,24 @@ function Empty({ text }: { text: string }) {
 type MonthPoint = { label: string; savdo: number; foyda: number; astatka: number; xarajat: number };
 type UnitPoint = { unit: string; savdo: number; foyda: number; astatka: number };
 
+/** Kunlik savdo — F-Apteka "Продажи по дням" kabi. */
+export function KunlikChart({ data }: { data: { label: string; savdo: number; foyda: number }[] }) {
+  if (data.length === 0) return <Empty text="Kunlik savdo ma'lumoti yo'q." />;
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--c-chart-grid)" vertical={false} />
+        <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+        <YAxis tick={AXIS} axisLine={false} tickLine={false} />
+        <Tooltip {...tooltipStyle()} formatter={(v) => `${v} mln so'm`} />
+        <Legend formatter={(v) => LABELS[String(v)] ?? String(v)} wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="savdo" fill={GREEN} radius={[3, 3, 0, 0]} maxBarSize={18} />
+        <Bar dataKey="foyda" fill={BLUE} radius={[3, 3, 0, 0]} maxBarSize={18} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 /** Savdo va foyda dinamikasi — chiziqli (F-Apteka "Динамика продаж" kabi). */
 export function DinamikaChart({ data }: { data: MonthPoint[] }) {
   if (data.length === 0) {

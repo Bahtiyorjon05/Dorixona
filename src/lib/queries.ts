@@ -586,7 +586,12 @@ export async function getAnalyticsData(year?: number) {
   const yearStart = new Date(Date.UTC(y, 0, 1));
   const yearEnd = new Date(Date.UTC(y + 1, 0, 1));
 
-  const [finRows, catRows, expRows, assortRows] = await Promise.all([
+  // Savdo endi F-Apteka'dan keladi, shuning uchun yil kesimida tovar
+  // tahlillarini ham hisoblaymiz (TOP savdo, sekin sotiladigan, vedomost).
+  const salesFrom = yearStart;
+  const salesTo = yearEnd;
+
+  const [finRows, catRows, expRows, assortRows, topRows, stockRows, vedomostRows, dailyRows] = await Promise.all([
     // Oylik moliya — filial kesimida (Umumiy'ni chiqarib tashlaymiz, u taqsimlanmagan)
     db.monthlyFinance.findMany({
       where: { branchId, periodMonth: { gte: yearStart, lt: yearEnd } },
@@ -613,6 +618,51 @@ export async function getAnalyticsData(year?: number) {
       FROM "Product" p
       WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0
       ORDER BY value DESC LIMIT 50`,
+    // TOP savdo — tushum bo'yicha
+    db.$queryRaw<{ name: string; qty: number; turnover: number; profit: number }[]>`
+      SELECT p.name,
+        SUM(si.quantity)::float8 AS qty,
+        SUM(si."lineTotal")::float8 AS turnover,
+        SUM(si."lineTotal" - si."costPrice" * si.quantity)::float8 AS profit
+      FROM "SaleItem" si
+      JOIN "Sale" s ON s.id = si."saleId"
+      JOIN "Product" p ON p.id = si."productId"
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${salesFrom} AND s."createdAt" < ${salesTo}
+      GROUP BY p.name ORDER BY turnover DESC LIMIT 50`,
+    // Qoldig'i bor tovarlar: yil ichida qancha sotilgan (sekin sotiladigan va aylanuvchanlik uchun)
+    db.$queryRaw<{ name: string; stock: number; value: number; qty: number }[]>`
+      SELECT p.name, p.stock::float8 AS stock,
+        (p.stock * p."salePrice")::float8 AS value,
+        COALESCE((
+          SELECT SUM(si.quantity) FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+          WHERE si."productId" = p.id AND s."createdAt" >= ${salesFrom} AND s."createdAt" < ${salesTo}
+        ), 0)::float8 AS qty
+      FROM "Product" p
+      WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0
+      ORDER BY value DESC LIMIT 400`,
+    // Aylanma vedomost: kirim, sotuv, hozirgi qoldiq
+    db.$queryRaw<{ name: string; incoming: number; sold: number; stock: number }[]>`
+      SELECT p.name, p.stock::float8 AS stock,
+        COALESCE((
+          SELECT SUM(si.quantity) FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+          WHERE si."productId" = p.id AND s."createdAt" >= ${salesFrom} AND s."createdAt" < ${salesTo}
+        ), 0)::float8 AS sold,
+        COALESCE((
+          SELECT SUM(m.quantity) FROM "StockMovement" m
+          WHERE m."productId" = p.id AND m.type = 'IN'
+            AND m."createdAt" >= ${salesFrom} AND m."createdAt" < ${salesTo}
+        ), 0)::float8 AS incoming
+      FROM "Product" p
+      WHERE p."isActive" = true AND p."branchId" = ${branchId}
+      ORDER BY sold DESC LIMIT 50`,
+    // Kunlik savdo — oxirgi 60 kun
+    db.$queryRaw<{ day: Date; savdo: number; foyda: number }[]>`
+      SELECT date_trunc('day', s."createdAt") AS day,
+        SUM(si."lineTotal")::float8 AS savdo,
+        SUM(si."lineTotal" - si."costPrice" * si.quantity)::float8 AS foyda
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${new Date(Date.now() - 60 * 864e5)}
+      GROUP BY 1 ORDER BY 1`,
   ]);
 
   // Oy raqami -> harajat
@@ -689,6 +739,50 @@ export async function getAnalyticsData(year?: number) {
       price: Math.round(r.price),
       value: +M(r.value).toFixed(2),
     })),
+    // TOP savdo — yil bo'yicha eng ko'p tushum keltirgan tovarlar
+    topProducts: topRows.map((r) => ({
+      name: r.name,
+      qty: Math.round(r.qty),
+      turnover: +M(r.turnover).toFixed(2),
+      profit: +M(r.profit).toFixed(2),
+    })),
+    // Sekin sotiladigan: qoldig'i bor, lekin yil davomida kam sotilgan
+    slowMovers: [...stockRows]
+      .sort((a, b) => a.qty - b.qty || b.value - a.value)
+      .slice(0, 50)
+      .map((r) => ({
+        name: r.name,
+        stock: Math.round(r.stock),
+        qty: Math.round(r.qty),
+        value: +M(r.value).toFixed(2),
+      })),
+    // Aylanuvchanlik: yil savdosi qoldiqqa nisbatan necha marta aylangan
+    turnoverRatio: stockRows
+      .filter((r) => r.qty > 0 && r.stock > 0)
+      .map((r) => ({
+        name: r.name,
+        stock: Math.round(r.stock),
+        qty: Math.round(r.qty),
+        ratio: +(r.qty / r.stock).toFixed(2),
+      }))
+      .sort((a, b) => b.ratio - a.ratio)
+      .slice(0, 50),
+    // Aylanma vedomost: kirim, sotuv, hozirgi qoldiq
+    vedomost: vedomostRows.map((r) => ({
+      name: r.name,
+      incoming: Math.round(r.incoming),
+      sold: Math.round(r.sold),
+      stock: Math.round(r.stock),
+    })),
+    // Kunlik savdo — oxirgi 60 kun (mln so'm)
+    dailySales: dailyRows.map((r) => {
+      const day = new Date(r.day);
+      return {
+        label: `${String(day.getDate()).padStart(2, "0")}.${String(day.getMonth() + 1).padStart(2, "0")}`,
+        savdo: +M(r.savdo).toFixed(2),
+        foyda: +M(r.foyda).toFixed(2),
+      };
+    }),
   };
 }
 
