@@ -1,4 +1,4 @@
-import { getExpensesData, getFinanceData } from "@/lib/queries";
+import { getDebtsData, getExpensesData, getFinanceData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Badge, Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
 import { FoydaXarajatChart, SavdoChart, ToifalarChart } from "@/components/charts/FinanceCharts";
@@ -72,10 +72,11 @@ export default async function MoliyaPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const selected = parseMonth((await searchParams).oy);
-  const [d, ex, filial] = await Promise.all([
+  const [d, ex, filial, debts] = await Promise.all([
     getFinanceData(selected),
     getExpensesData(selected),
     currentFilial(),
+    getDebtsData(),
   ]);
 
   const units = ex.monthlyUnits;
@@ -107,6 +108,31 @@ export default async function MoliyaPage({
           />
         }
       />
+
+      {/* Qarz eslatmasi — muddati o'tgan va yaqinlari */}
+      {(debts.overdue.length > 0 || debts.dueSoon.length > 0) && (
+        <a
+          href="/qarzlar"
+          className={`mb-5 block rounded-lg border p-3 text-sm ${
+            debts.overdue.length > 0
+              ? "border-danger bg-danger-light"
+              : "border-edge bg-accent-light"
+          }`}
+        >
+          {debts.overdue.length > 0 && (
+            <div>
+              🔴 <b>Muddati o&apos;tgan {debts.overdue.length} ta qarz</b> —{" "}
+              {debts.overdue.map((debt) => debt.counterparty).join(", ")}
+            </div>
+          )}
+          {debts.dueSoon.length > 0 && (
+            <div className={debts.overdue.length > 0 ? "mt-1" : undefined}>
+              🟡 Muddati yaqin {debts.dueSoon.length} ta qarz —{" "}
+              {debts.dueSoon.map((debt) => debt.counterparty).join(", ")}
+            </div>
+          )}
+        </a>
+      )}
 
       {/* Kassa ko'rsatkichlari */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">

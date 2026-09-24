@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/notifications/debts",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}

@@ -874,3 +874,79 @@ export async function getSalesData(input: { from: Date; to: Date }) {
     })),
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  QARZLAR
+// ─────────────────────────────────────────────────────────────
+
+/** Muddati shu kun ichida bo'lsa "yaqin" deb sanaladi */
+export const DEBT_DUE_SOON_DAYS = 5;
+
+/**
+ * Qarzlar: firma (tovar) va ko'cha (naqd) kesimida, tarixi bilan.
+ * Qoldiq tarixdan hisoblanadi, shuning uchun "shuncha berildi, shuncha
+ * qoldi" har doim to'g'ri chiqadi.
+ */
+export async function getDebtsData() {
+  const branchId = await getBranchId();
+  const rows = await db.debt.findMany({
+    where: { branchId },
+    orderBy: [{ closedAt: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
+    include: { entries: { orderBy: { happenedAt: "desc" } } },
+  });
+
+  const today = startOfDay();
+  const soonEdge = new Date(today.getTime() + DEBT_DUE_SOON_DAYS * 864e5);
+
+  const debts = rows.map((debt) => {
+    const total = num(debt.totalAmount);
+    const paid = num(debt.paidAmount);
+    const remaining = total - paid;
+    const due = debt.dueDate ? new Date(debt.dueDate) : null;
+    const closed = Boolean(debt.closedAt) || remaining <= 0.009;
+
+    return {
+      id: debt.id,
+      counterparty: debt.counterparty,
+      kind: debt.kind as "FIRM" | "STREET",
+      currency: debt.currency as "UZS" | "USD",
+      direction: debt.direction as "PAYABLE" | "RECEIVABLE",
+      total,
+      paid,
+      remaining,
+      dueDate: due,
+      closed,
+      // Rang uchun: muddati o'tgan / yaqin / vaqti bor
+      overdue: !closed && due !== null && due < today,
+      dueSoon: !closed && due !== null && due >= today && due <= soonEdge,
+      unit: debt.unit,
+      note: debt.note,
+      entries: debt.entries.map((entry) => ({
+        id: entry.id,
+        type: entry.type as "CHARGE" | "PAYMENT",
+        amount: num(entry.amount),
+        happenedAt: entry.happenedAt,
+        note: entry.note,
+      })),
+    };
+  });
+
+  const open = debts.filter((debt) => !debt.closed);
+  const sumBy = (kind: "FIRM" | "STREET", currency: "UZS" | "USD") =>
+    open
+      .filter((debt) => debt.kind === kind && debt.currency === currency)
+      .reduce((sum, debt) => sum + debt.remaining, 0);
+
+  return {
+    debts,
+    totals: {
+      firmUzs: sumBy("FIRM", "UZS"),
+      firmUsd: sumBy("FIRM", "USD"),
+      streetUzs: sumBy("STREET", "UZS"),
+      streetUsd: sumBy("STREET", "USD"),
+    },
+    overdue: open.filter((debt) => debt.overdue),
+    dueSoon: open.filter((debt) => debt.dueSoon),
+    openCount: open.length,
+  };
+}

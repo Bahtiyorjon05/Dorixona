@@ -380,6 +380,23 @@ enum DebtDirection {
   PAYABLE
 }
 
+/// Qarz turi: firmadan olingan tovar qarzi yoki ko'chadagi naqd qarz
+enum DebtKind {
+  FIRM
+  STREET
+}
+
+enum DebtCurrency {
+  UZS
+  USD
+}
+
+/// Qarz harakati: yangi qarz (CHARGE) yoki to'lov (PAYMENT)
+enum DebtEntryType {
+  CHARGE
+  PAYMENT
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Integratsiya jurnali
 //
@@ -405,19 +422,45 @@ model Debt {
   id           String        @id @default(cuid())
   counterparty String
   direction    DebtDirection
+  kind         DebtKind      @default(FIRM)
+  currency     DebtCurrency  @default(UZS)
+  /// Jami olingan qarz — CHARGE harakatlari yig'indisi
   totalAmount  Decimal       @db.Decimal(16, 2)
+  /// To'langani — PAYMENT harakatlari yig'indisi
   paidAmount   Decimal       @default(0) @db.Decimal(16, 2)
+  /// To'lash muddati; kirimga qarab qo'yiladi
+  dueDate      DateTime?
+  /// Yopilgan sana (qoldiq nolga tushganda)
+  closedAt     DateTime?
   unit         String?
   note         String?
 
+  entries  DebtEntry[]
   branchId String
-  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch   Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   @@index([branchId])
   @@index([direction])
+  @@index([kind, closedAt])
+  @@index([dueDate])
+}
+
+/// Qarz tarixi: "shuncha berildi, shuncha qoldi" shu yerdan hisoblanadi
+model DebtEntry {
+  id        String        @id @default(cuid())
+  debtId    String
+  debt      Debt          @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  type      DebtEntryType
+  amount    Decimal       @db.Decimal(16, 2)
+  happenedAt DateTime     @default(now())
+  note      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([debtId, happenedAt])
 }
 
 /// F-Apteka tashkilotlari (189-hisobot): yetkazib beruvchi, filial,
