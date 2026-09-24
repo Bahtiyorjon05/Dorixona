@@ -102,9 +102,11 @@ export default async function MoliyaPage({
         <MetricCard
           icon="🏦"
           label="Oylik kassa tushumi"
-          value={formatNumber(d.cashTotal)}
+          value={formatNumber(d.hasPayments ? d.paymentsTotal : d.cashTotal)}
           sub={
-            d.hasFaptekaSplit
+            d.hasPayments
+              ? d.payments.map((p) => `${p.label}: ${formatNumber(p.amount)}`).join(" · ")
+              : d.hasFaptekaSplit
               ? `Qaytarilgan: ${formatNumber(d.faptekaRefunds)}`
               : `Naqd: ${formatNumber(d.cash)} · Terminal: ${formatNumber(d.card)}`
           }

@@ -31,6 +31,55 @@ function docTypeGroups() {
   };
 }
 
+/**
+ * Kassa nomlari: F-Apteka faqat raqam beradi (1, 2, 6...). Qaysi biri naqd,
+ * qaysi biri terminal ekani hali aniqlanmagan — taxmin qilmaymiz. Aniqlangach
+ * shu yerga yoziladi yoki Vercel env orqali beriladi:
+ *   FAPTEKA_CASHBOX_LABELS="1:Naqd,2:Terminal,6:Payme"
+ */
+function cashboxLabels() {
+  const map = new Map<string, string>();
+  const raw = process.env.FAPTEKA_CASHBOX_LABELS?.trim();
+  if (raw) {
+    for (const pair of raw.split(",")) {
+      const [id, label] = pair.split(":").map((part) => part.trim());
+      if (id && label) map.set(id, label);
+    }
+  }
+  return map;
+}
+
+/** To'lov turlari bo'yicha tushum (30-hisobot, PAYIN) */
+export async function paymentBreakdown(from: Date, to: Date, unit: string | null) {
+  let rows: { docType: string; amount: unknown }[] = [];
+  try {
+    rows = await db.dailySales
+      .groupBy({
+        by: ["docType"],
+        _sum: { amount: true },
+        where: {
+          day: { gte: from, lt: to },
+          docType: { startsWith: "PAY:" },
+          ...(unit ? { unit } : {}),
+        },
+      })
+      .then((list) => list.map((row) => ({ docType: row.docType, amount: row._sum.amount })));
+  } catch {
+    return { items: [], total: 0, known: false };
+  }
+
+  const labels = cashboxLabels();
+  const items = rows
+    .map((row) => {
+      const cashbox = row.docType.slice(4);
+      return { cashbox, label: labels.get(cashbox) ?? `Kassa ${cashbox}`, amount: num(row.amount) };
+    })
+    .filter((item) => item.amount !== 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  return { items, total: items.reduce((sum, item) => sum + item.amount, 0), known: items.length > 0 };
+}
+
 /** Oy ichidagi sotuv va qaytarish — DailySales jadvalidan */
 export async function salesSplit(from: Date, to: Date, unit: string | null) {
   let rows: { docType: string; amount: unknown }[] = [];
@@ -38,7 +87,11 @@ export async function salesSplit(from: Date, to: Date, unit: string | null) {
     rows = await db.dailySales.groupBy({
       by: ["docType"],
       _sum: { amount: true },
-      where: { day: { gte: from, lt: to }, ...(unit ? { unit } : {}) },
+      where: {
+        day: { gte: from, lt: to },
+        NOT: { docType: { startsWith: "PAY:" } },
+        ...(unit ? { unit } : {}),
+      },
     }).then((list) => list.map((row) => ({ docType: row.docType, amount: row._sum.amount })));
   } catch {
     // Jadval hali yaratilmagan
@@ -191,7 +244,10 @@ export async function getFinanceData(period?: Date) {
   // F-Apteka savdosi: sotuv va qaytarish. To'lov turini (naqd/terminal)
   // F-Apteka bermaydi, shuning uchun ajratilmaydi.
   const filial = await currentFilial();
-  const split = await salesSplit(monthStart, nextMonth, filial === "Umumiy" ? null : filial);
+  const [split, payments] = await Promise.all([
+    salesSplit(monthStart, nextMonth, filial === "Umumiy" ? null : filial),
+    paymentBreakdown(monthStart, nextMonth, filial === "Umumiy" ? null : filial),
+  ]);
   const cash = posCash;
   const card = posCard;
 
@@ -212,6 +268,9 @@ export async function getFinanceData(period?: Date) {
     faptekaSales: split.sales,
     faptekaRefunds: split.refunds,
     hasFaptekaSplit: split.known,
+    payments: payments.items,
+    paymentsTotal: payments.total,
+    hasPayments: payments.known,
     inventoryValue: num(invValue[0]?.value),
     weekSales,
     monthDaily,
@@ -935,7 +994,11 @@ export async function getSalesData(input: { from: Date; to: Date }) {
   let paymentRows: { day: Date; docType: string; amount: unknown }[] = [];
   try {
     paymentRows = await db.dailySales.findMany({
-      where: { day: { gte: input.from, lt: toExclusive }, ...(unit ? { unit } : {}) },
+      where: {
+        day: { gte: input.from, lt: toExclusive },
+        NOT: { docType: { startsWith: "PAY:" } },
+        ...(unit ? { unit } : {}),
+      },
       select: { day: true, docType: true, amount: true },
     });
   } catch {
