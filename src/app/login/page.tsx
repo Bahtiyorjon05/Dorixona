@@ -13,10 +13,9 @@ export default async function LoginPage({
     <div className="flex min-h-screen items-center justify-center bg-surface px-4">
       <div className="card w-full max-w-sm p-8 shadow-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-light text-2xl">
-            💊
+          <div className="flex justify-center">
+            <Logo height={34} />
           </div>
-          <Logo height={34} />
           <p className="mt-1 text-sm text-muted">Boshqaruv paneliga kirish</p>
         </div>
 
