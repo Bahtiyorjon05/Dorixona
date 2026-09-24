@@ -70,12 +70,13 @@ export default async function SavdoPage({
           valueColor="var(--c-primary)"
         />
         <MetricCard icon="📅" label="Kunlik o'rtacha" value={formatSom(average)} sub={`${days} kun`} />
-        {d.hasPayments ? (
+        {d.hasRefunds ? (
           <MetricCard
-            icon="💳"
-            label="Naqd / Terminal"
-            value={formatSom(d.cashTotal)}
-            sub={`Terminal: ${formatSom(d.cardTotal)}`}
+            icon="↩️"
+            label="Qaytarilgan tovar"
+            value={formatSom(d.refundTotal)}
+            valueColor={d.refundTotal > 0 ? "var(--c-danger)" : undefined}
+            sub="Tushumdan ayrilgan"
           />
         ) : (
           <MetricCard
@@ -105,8 +106,7 @@ export default async function SavdoPage({
                   <tr>
                     <th>Sana</th>
                     <th>Tushum</th>
-                    {d.hasPayments && <th>Naqd</th>}
-                    {d.hasPayments && <th>Terminal</th>}
+                    {d.hasRefunds && <th>Qaytarish</th>}
                     <th>Foyda</th>
                     <th>Marja</th>
                   </tr>
@@ -116,8 +116,11 @@ export default async function SavdoPage({
                     <tr key={row.day.toISOString()}>
                       <td className="whitespace-nowrap">{formatDate(row.day)}</td>
                       <td>{formatSom(row.turnover)}</td>
-                      {d.hasPayments && <td>{formatSom(row.cash)}</td>}
-                      {d.hasPayments && <td>{formatSom(row.card)}</td>}
+                      {d.hasRefunds && (
+                        <td className={row.refund > 0 ? "text-danger" : undefined}>
+                          {row.refund > 0 ? formatSom(row.refund) : "—"}
+                        </td>
+                      )}
                       <td>{formatSom(row.profit)}</td>
                       <td>{margin(row.turnover, row.profit)}</td>
                     </tr>

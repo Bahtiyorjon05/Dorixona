@@ -8,12 +8,14 @@ import { unitWhere } from "@/lib/filial";
 import { currentFilial } from "@/lib/filial-server";
 
 /**
- * F-Apteka hujjat turi (DOCTYPE) → to'lov turi.
+ * F-Apteka hujjat turi (DOCTYPE) nimani bildiradi.
  *
- * 22-hisobotda har savdo hujjatining turi bor: 2 va 4 — chakana savdo.
- * Kuzatishimizcha biri naqd, ikkinchisi terminal. Agar teskari bo'lsa,
- * Vercel env orqali almashtiriladi:
- *   FAPTEKA_CASH_DOCTYPES="2"   FAPTEKA_CARD_DOCTYPES="4"
+ * 22-hisobotdagi ma'lumotdan aniqlandi: DT=2 oddiy sotuv, DT=4 esa
+ * summasi manfiy bo'lib keladi — ya'ni mijoz qaytargan tovar.
+ * To'lov turi (naqd yoki terminal) bu hisobotda umuman yo'q.
+ *
+ * Kerak bo'lsa env orqali o'zgartiriladi:
+ *   FAPTEKA_SALE_DOCTYPES="2"   FAPTEKA_REFUND_DOCTYPES="4"
  */
 function docTypeGroups() {
   const parse = (raw: string | undefined, fallback: string[]) => {
@@ -24,14 +26,13 @@ function docTypeGroups() {
     return new Set(list.length ? list : fallback);
   };
   return {
-    cash: parse(process.env.FAPTEKA_CASH_DOCTYPES, ["2"]),
-    card: parse(process.env.FAPTEKA_CARD_DOCTYPES, ["4"]),
+    sale: parse(process.env.FAPTEKA_SALE_DOCTYPES, ["2"]),
+    refund: parse(process.env.FAPTEKA_REFUND_DOCTYPES, ["4"]),
   };
 }
 
-/** Oy ichidagi naqd/terminal taqsimoti — DailySales jadvalidan */
-export async function cashSplit(from: Date, to: Date, unit: string | null) {
-  const groups = docTypeGroups();
+/** Oy ichidagi sotuv va qaytarish — DailySales jadvalidan */
+export async function salesSplit(from: Date, to: Date, unit: string | null) {
   let rows: { docType: string; amount: unknown }[] = [];
   try {
     rows = await db.dailySales.groupBy({
@@ -41,19 +42,18 @@ export async function cashSplit(from: Date, to: Date, unit: string | null) {
     }).then((list) => list.map((row) => ({ docType: row.docType, amount: row._sum.amount })));
   } catch {
     // Jadval hali yaratilmagan
-    return { cash: 0, card: 0, other: 0, total: 0, known: false };
+    return { sales: 0, refunds: 0, net: 0, known: false };
   }
 
-  let cash = 0;
-  let card = 0;
-  let other = 0;
+  const groups = docTypeGroups();
+  let sales = 0;
+  let refunds = 0;
   for (const row of rows) {
     const amount = num(row.amount);
-    if (groups.cash.has(row.docType)) cash += amount;
-    else if (groups.card.has(row.docType)) card += amount;
-    else other += amount;
+    if (groups.refund.has(row.docType)) refunds += Math.abs(amount);
+    else if (groups.sale.has(row.docType)) sales += amount;
   }
-  return { cash, card, other, total: cash + card + other, known: rows.length > 0 };
+  return { sales, refunds, net: sales - refunds, known: rows.length > 0 };
 }
 
 async function getBranchId() {
@@ -188,13 +188,12 @@ export async function getFinanceData(period?: Date) {
   const posCard = payAgg.find((p) => p.method === "CARD")?.sum ?? 0;
   const mixed = payAgg.find((p) => p.method === "MIXED")?.sum ?? 0;
 
-  // F-Apteka savdosi: naqd va terminal hujjat turi bo'yicha ajratiladi.
-  // Ajratish ma'lum bo'lsa, POS raqamlari o'rniga shu ishlatiladi —
-  // aks holda hamma savdo "naqd" bo'lib ko'rinardi.
+  // F-Apteka savdosi: sotuv va qaytarish. To'lov turini (naqd/terminal)
+  // F-Apteka bermaydi, shuning uchun ajratilmaydi.
   const filial = await currentFilial();
-  const split = await cashSplit(monthStart, nextMonth, filial === "Umumiy" ? null : filial);
-  const cash = split.known ? split.cash : posCash;
-  const card = split.known ? split.card : posCard;
+  const split = await salesSplit(monthStart, nextMonth, filial === "Umumiy" ? null : filial);
+  const cash = posCash;
+  const card = posCard;
 
   const todaySales = num(todayAgg._sum.total);
   const yesterdaySales = num(yesterdayAgg._sum.total) || 1;
@@ -206,9 +205,13 @@ export async function getFinanceData(period?: Date) {
     todayTrend: ((todaySales - yesterdaySales) / yesterdaySales) * 100,
     monthlyProfit: margin,
     profitTrend: ((margin - lastMargin) / lastMargin) * 100,
-    cashTotal: cash + card + mixed,
+    cashTotal: split.known ? split.net : cash + card + mixed,
     cash,
     card,
+    // F-Apteka savdosi: sotuv, qaytarish va sof tushum
+    faptekaSales: split.sales,
+    faptekaRefunds: split.refunds,
+    hasFaptekaSplit: split.known,
     inventoryValue: num(invValue[0]?.value),
     weekSales,
     monthDaily,
@@ -927,7 +930,7 @@ export async function getSalesData(input: { from: Date; to: Date }) {
       GROUP BY 1 ORDER BY 3 DESC LIMIT 25`,
   ]);
 
-  // Kunlik naqd/terminal — F-Apteka hujjat turidan (DailySales)
+  // Kunlik sotuv va qaytarish — F-Apteka hujjat turidan (DailySales)
   const groups = docTypeGroups();
   let paymentRows: { day: Date; docType: string; amount: unknown }[] = [];
   try {
@@ -939,13 +942,11 @@ export async function getSalesData(input: { from: Date; to: Date }) {
     // Jadval hali yaratilmagan bo'lsa ustunlar bo'sh qoladi
   }
 
-  const payments = new Map<string, { cash: number; card: number }>();
+  const payments = new Map<string, { refund: number }>();
   for (const row of paymentRows) {
     const key = new Date(row.day).toISOString().slice(0, 10);
-    const current = payments.get(key) ?? { cash: 0, card: 0 };
-    const amount = num(row.amount);
-    if (groups.cash.has(row.docType)) current.cash += amount;
-    else if (groups.card.has(row.docType)) current.card += amount;
+    const current = payments.get(key) ?? { refund: 0 };
+    if (groups.refund.has(row.docType)) current.refund += Math.abs(num(row.amount));
     payments.set(key, current);
   }
 
@@ -956,8 +957,7 @@ export async function getSalesData(input: { from: Date; to: Date }) {
       day,
       turnover: num(row.turnover),
       profit: num(row.profit),
-      cash: payment?.cash ?? 0,
-      card: payment?.card ?? 0,
+      refund: payment?.refund ?? 0,
     };
   });
   const turnover = daily.reduce((sum, row) => sum + row.turnover, 0);
@@ -968,9 +968,8 @@ export async function getSalesData(input: { from: Date; to: Date }) {
     daily,
     turnover,
     profit,
-    cashTotal: daily.reduce((sum, row) => sum + row.cash, 0),
-    cardTotal: daily.reduce((sum, row) => sum + row.card, 0),
-    hasPayments: paymentRows.length > 0,
+    refundTotal: daily.reduce((sum, row) => sum + row.refund, 0),
+    hasRefunds: paymentRows.length > 0,
     // Tan narx hali kelmagan bo'lsa foyda tushumga teng bo'lib qoladi —
     // sahifa shunda ogohlantirish ko'rsatadi.
     costMissing: turnover > 0 && profit >= turnover - 0.5,

@@ -101,9 +101,13 @@ export default async function MoliyaPage({
         <MetricCard icon="📈" label="Oylik foyda (marja)" value={formatNumber(d.monthlyProfit)} sub="POS savdolaridan" />
         <MetricCard
           icon="🏦"
-          label="Kassadagi pul"
+          label="Oylik kassa tushumi"
           value={formatNumber(d.cashTotal)}
-          sub={`Naqd: ${formatNumber(d.cash)} · Terminal: ${formatNumber(d.card)}`}
+          sub={
+            d.hasFaptekaSplit
+              ? `Qaytarilgan: ${formatNumber(d.faptekaRefunds)}`
+              : `Naqd: ${formatNumber(d.cash)} · Terminal: ${formatNumber(d.card)}`
+          }
         />
         <MetricCard icon="📦" label="Ombor qiymati" value={formatNumber(d.inventoryValue)} sub="Tan narxida" />
       </div>
