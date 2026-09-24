@@ -474,3 +474,21 @@ model FaptekaOrg {
 
   @@index([inn])
 }
+
+/// F-Apteka 22-hisobotidan kunlik savdo — hujjat turi (DOCTYPE) kesimida.
+/// Naqd va terminal shu yerdan ajratiladi: 4-hisobotda to'lov turi yo'q,
+/// 22-hisobotda esa har hujjatning turi bor.
+model DailySales {
+  id      String   @id @default(cuid())
+  day     DateTime
+  /// Dorixona nomi; ajratilmagan bo'lsa "Umumiy" (NULL emas — takror yozuv bo'lmasin)
+  unit    String   @default("Umumiy")
+  docType String // F-Apteka DOCTYPE: 2, 4, 7, 3, 8 ...
+  amount  Decimal  @db.Decimal(16, 2)
+  cost    Decimal  @default(0) @db.Decimal(16, 2)
+
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([day, unit, docType])
+  @@index([day])
+}

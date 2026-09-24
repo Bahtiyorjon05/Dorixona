@@ -3,6 +3,7 @@ import { getExpensesData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
 import { ExpensesPanel } from "@/components/panels/ExpensesPanel";
+import { RecurringReminder } from "@/components/panels/RecurringReminder";
 import { MonthlyFinancePanel } from "@/components/panels/MonthlyFinancePanel";
 import { MonthPicker } from "@/components/MonthPicker";
 import { FILIALS } from "@/lib/filial";
@@ -85,6 +86,8 @@ export default async function HarajatlarPage({
           <MetricCard label="Sotib olishlar" value={formatNumber(d.goods)} sub="Tovar" />
         )}
       </div>
+
+      <RecurringReminder items={d.missingRecurring} month={label} />
 
       {d.goodsAuto > 0 && d.goodsManual > 0 && (
         <div className="mb-5 rounded-lg border border-edge bg-accent-light p-3 text-sm">

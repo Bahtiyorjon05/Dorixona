@@ -70,7 +70,21 @@ export default async function SavdoPage({
           valueColor="var(--c-primary)"
         />
         <MetricCard icon="🗓️" label="Kunlik o'rtacha" value={formatSom(average)} sub={`${days} kun`} />
-        <MetricCard icon="💊" label="Sotilgan tovar turi" value={`${formatNumber(d.products.length)}+`} sub="Eng ko'plari pastda" />
+        {d.hasPayments ? (
+          <MetricCard
+            icon="👛"
+            label="Naqd / Terminal"
+            value={formatSom(d.cashTotal)}
+            sub={`Terminal: ${formatSom(d.cardTotal)}`}
+          />
+        ) : (
+          <MetricCard
+            icon="💊"
+            label="Sotilgan tovar turi"
+            value={`${formatNumber(d.products.length)}+`}
+            sub="Eng ko'plari pastda"
+          />
+        )}
       </div>
 
       {d.costMissing && (
@@ -91,6 +105,8 @@ export default async function SavdoPage({
                   <tr>
                     <th>Sana</th>
                     <th>Tushum</th>
+                    {d.hasPayments && <th>Naqd</th>}
+                    {d.hasPayments && <th>Terminal</th>}
                     <th>Foyda</th>
                     <th>Marja</th>
                   </tr>
@@ -100,6 +116,8 @@ export default async function SavdoPage({
                     <tr key={row.day.toISOString()}>
                       <td className="whitespace-nowrap">{formatDate(row.day)}</td>
                       <td>{formatSom(row.turnover)}</td>
+                      {d.hasPayments && <td>{formatSom(row.cash)}</td>}
+                      {d.hasPayments && <td>{formatSom(row.card)}</td>}
                       <td>{formatSom(row.profit)}</td>
                       <td>{margin(row.turnover, row.profit)}</td>
                     </tr>

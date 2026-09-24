@@ -26,6 +26,8 @@ const CATEGORY: Record<string, { label: string; icon: string; color: "green" | "
   OTHER: { label: "Boshqa", icon: "📌", color: "blue" },
 };
 const CATS = Object.keys(CATEGORY);
+/** Har oy takrorlanadigan toifalar — forma ochilganda "doimiy" o'zi belgilanadi */
+const RECURRING_CATS = ["RENT", "UTILITIES", "SALARY"];
 const UMUMIY = "Umumiy";
 
 function toDateInput(value: string | Date) {
@@ -41,6 +43,14 @@ export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: s
   const [editing, setEditing] = useState<Expense | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [confirming, setConfirming] = useState<Expense | null>(null);
+  const [formCategory, setFormCategory] = useState("OTHER");
+  const [recurring, setRecurring] = useState(false);
+
+  // Toifa o'zgarganda doimiylik belgisi ham moslashadi
+  function pickCategory(category: string) {
+    setFormCategory(category);
+    setRecurring(RECURRING_CATS.includes(category));
+  }
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
@@ -65,12 +75,16 @@ export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: s
   function openCreate() {
     setEditing(null);
     setError("");
+    setFormCategory("OTHER");
+    setRecurring(false);
     setFormOpen(true);
   }
 
   function openEdit(expense: Expense) {
     setEditing(expense);
     setError("");
+    setFormCategory(expense.category);
+    setRecurring(expense.isRecurring);
     setFormOpen(true);
   }
 
@@ -199,7 +213,12 @@ export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: s
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Kategoriya">
-              <Select name="category" required defaultValue={editing?.category ?? "OTHER"}>
+              <Select
+                name="category"
+                required
+                value={formCategory}
+                onChange={(event) => pickCategory(event.target.value)}
+              >
                 {CATS.map((c) => (
                   <option key={c} value={c}>
                     {CATEGORY[c].label}
@@ -234,8 +253,14 @@ export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: s
             </Field>
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="isRecurring" defaultChecked={editing?.isRecurring ?? false} /> Doimiy
-            xarajat
+            <input
+              type="checkbox"
+              name="isRecurring"
+              // Ijara, kommunal va oylik har oy takrorlanadi — o'zi belgilanadi
+              checked={recurring}
+              onChange={(event) => setRecurring(event.target.checked)}
+            />{" "}
+            Doimiy xarajat
           </label>
           <FormError message={error} />
           <SubmitButton pending={pending} />

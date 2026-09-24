@@ -669,9 +669,34 @@ export async function syncFaptekaSalesTotals(input: {
       AND s."receiptNo" LIKE ${`${FAPTEKA_RECEIPT_PREFIX}%`}
       AND (${unit}::text IS NULL OR s."unit" = ${unit})`;
 
+  // Hujjat turi kesimida kunlik savdo — naqd va terminal shundan ajratiladi
+  const byDocType = new Map<string, { amount: number; cost: number }>();
+  for (const row of input.rows) {
+    if (row.F && row.F.trim() !== input.filialId) continue;
+    const docType = (row.DT ?? "").trim() || "?";
+    const current = byDocType.get(docType) ?? { amount: 0, cost: 0 };
+    byDocType.set(docType, {
+      amount: current.amount + numberValue(row.SS || row.SP),
+      cost: current.cost + numberValue(row.SI),
+    });
+  }
+
+  const dayStart = new Date(dateFrom);
+  for (const [docType, sums] of byDocType) {
+    try {
+      await db.dailySales.upsert({
+        where: { day_unit_docType: { day: dayStart, unit: unit ?? "Umumiy", docType } },
+        update: { amount: sums.amount, cost: sums.cost },
+        create: { day: dayStart, unit: unit ?? "Umumiy", docType, amount: sums.amount, cost: sums.cost },
+      });
+    } catch {
+      // Jadval hali yaratilmagan bo'lsa asosiy ish to'xtamasin
+    }
+  }
+
   const erpTurnover = numberValue(current?.turnover);
   if (reportedCost <= 0 || erpTurnover <= 0) {
-    return { ok: true, reported, reportedCost, erpTurnover, updated: 0, applied: false };
+    return { ok: true, reported, reportedCost, erpTurnover, updated: 0, applied: false, docTypes: "" };
   }
 
   // Tan narxni tushum ulushiga qarab tarqatamiz
@@ -685,7 +710,10 @@ export async function syncFaptekaSalesTotals(input: {
       AND s."receiptNo" LIKE ${`${FAPTEKA_RECEIPT_PREFIX}%`}
       AND (${unit}::text IS NULL OR s."unit" = ${unit})`;
 
-  return { ok: true, reported, reportedCost, erpTurnover, updated, applied: true };
+  const docTypes = [...byDocType.entries()]
+    .map(([docType, sums]) => `DT${docType}=${Math.round(sums.amount)}`)
+    .join(", ");
+  return { ok: true, reported, reportedCost, erpTurnover, updated, applied: true, docTypes };
 }
 
 /**

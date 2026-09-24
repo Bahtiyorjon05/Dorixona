@@ -7,6 +7,55 @@ import { isFaptekaExpenseTitle, isFaptekaSku } from "@/lib/integrations/fapteka/
 import { unitWhere } from "@/lib/filial";
 import { currentFilial } from "@/lib/filial-server";
 
+/**
+ * F-Apteka hujjat turi (DOCTYPE) → to'lov turi.
+ *
+ * 22-hisobotda har savdo hujjatining turi bor: 2 va 4 — chakana savdo.
+ * Kuzatishimizcha biri naqd, ikkinchisi terminal. Agar teskari bo'lsa,
+ * Vercel env orqali almashtiriladi:
+ *   FAPTEKA_CASH_DOCTYPES="2"   FAPTEKA_CARD_DOCTYPES="4"
+ */
+function docTypeGroups() {
+  const parse = (raw: string | undefined, fallback: string[]) => {
+    const list = (raw ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return new Set(list.length ? list : fallback);
+  };
+  return {
+    cash: parse(process.env.FAPTEKA_CASH_DOCTYPES, ["2"]),
+    card: parse(process.env.FAPTEKA_CARD_DOCTYPES, ["4"]),
+  };
+}
+
+/** Oy ichidagi naqd/terminal taqsimoti — DailySales jadvalidan */
+export async function cashSplit(from: Date, to: Date, unit: string | null) {
+  const groups = docTypeGroups();
+  let rows: { docType: string; amount: unknown }[] = [];
+  try {
+    rows = await db.dailySales.groupBy({
+      by: ["docType"],
+      _sum: { amount: true },
+      where: { day: { gte: from, lt: to }, ...(unit ? { unit } : {}) },
+    }).then((list) => list.map((row) => ({ docType: row.docType, amount: row._sum.amount })));
+  } catch {
+    // Jadval hali yaratilmagan
+    return { cash: 0, card: 0, other: 0, total: 0, known: false };
+  }
+
+  let cash = 0;
+  let card = 0;
+  let other = 0;
+  for (const row of rows) {
+    const amount = num(row.amount);
+    if (groups.cash.has(row.docType)) cash += amount;
+    else if (groups.card.has(row.docType)) card += amount;
+    else other += amount;
+  }
+  return { cash, card, other, total: cash + card + other, known: rows.length > 0 };
+}
+
 async function getBranchId() {
   const session = await auth();
   if (session?.user?.branchId) return session.user.branchId;
@@ -134,9 +183,18 @@ export async function getFinanceData(period?: Date) {
     };
   });
 
-  const cash = payAgg.find((p) => p.method === "CASH")?.sum ?? 0;
-  const card = payAgg.find((p) => p.method === "CARD")?.sum ?? 0;
+  // ERP ichidagi POS savdolari (kam) — to'lov turi o'zida yozilgan
+  const posCash = payAgg.find((p) => p.method === "CASH")?.sum ?? 0;
+  const posCard = payAgg.find((p) => p.method === "CARD")?.sum ?? 0;
   const mixed = payAgg.find((p) => p.method === "MIXED")?.sum ?? 0;
+
+  // F-Apteka savdosi: naqd va terminal hujjat turi bo'yicha ajratiladi.
+  // Ajratish ma'lum bo'lsa, POS raqamlari o'rniga shu ishlatiladi —
+  // aks holda hamma savdo "naqd" bo'lib ko'rinardi.
+  const filial = await currentFilial();
+  const split = await cashSplit(monthStart, nextMonth, filial === "Umumiy" ? null : filial);
+  const cash = split.known ? split.cash : posCash;
+  const card = split.known ? split.card : posCard;
 
   const todaySales = num(todayAgg._sum.total);
   const yesterdaySales = num(yesterdayAgg._sum.total) || 1;
@@ -318,9 +376,32 @@ export async function getExpensesData(period?: Date) {
     })
     .sort((a, b) => b.getTime() - a.getTime());
 
+  // Doimiy xarajatlar: o'tgan oylarda bor, lekin shu oyda hali yo'q
+  const recurringSources = await db.expense.findMany({
+    where: { branchId, isRecurring: true, spentAt: { lt: monthStart } },
+    orderBy: { spentAt: "desc" },
+    take: 60,
+  });
+  const currentTitles = new Set(list.map((expense) => expense.title.trim().toLowerCase()));
+  const missingRecurring: { id: string; title: string; category: string; amount: number; unit: string | null }[] = [];
+  const seen = new Set<string>();
+  for (const expense of recurringSources) {
+    const key = expense.title.trim().toLowerCase();
+    if (seen.has(key) || currentTitles.has(key)) continue;
+    seen.add(key);
+    missingRecurring.push({
+      id: expense.id,
+      title: expense.title,
+      category: expense.category as string,
+      amount: num(expense.amount),
+      unit: expense.unit,
+    });
+  }
+
   return {
     period: monthStart,
     availableMonths,
+    missingRecurring,
     list: list.map((e) => ({
       id: e.id,
       title: e.title,
@@ -846,11 +927,39 @@ export async function getSalesData(input: { from: Date; to: Date }) {
       GROUP BY 1 ORDER BY 3 DESC LIMIT 25`,
   ]);
 
-  const daily = dailyRows.map((row) => ({
-    day: new Date(row.day),
-    turnover: num(row.turnover),
-    profit: num(row.profit),
-  }));
+  // Kunlik naqd/terminal — F-Apteka hujjat turidan (DailySales)
+  const groups = docTypeGroups();
+  let paymentRows: { day: Date; docType: string; amount: unknown }[] = [];
+  try {
+    paymentRows = await db.dailySales.findMany({
+      where: { day: { gte: input.from, lt: toExclusive }, ...(unit ? { unit } : {}) },
+      select: { day: true, docType: true, amount: true },
+    });
+  } catch {
+    // Jadval hali yaratilmagan bo'lsa ustunlar bo'sh qoladi
+  }
+
+  const payments = new Map<string, { cash: number; card: number }>();
+  for (const row of paymentRows) {
+    const key = new Date(row.day).toISOString().slice(0, 10);
+    const current = payments.get(key) ?? { cash: 0, card: 0 };
+    const amount = num(row.amount);
+    if (groups.cash.has(row.docType)) current.cash += amount;
+    else if (groups.card.has(row.docType)) current.card += amount;
+    payments.set(key, current);
+  }
+
+  const daily = dailyRows.map((row) => {
+    const day = new Date(row.day);
+    const payment = payments.get(day.toISOString().slice(0, 10));
+    return {
+      day,
+      turnover: num(row.turnover),
+      profit: num(row.profit),
+      cash: payment?.cash ?? 0,
+      card: payment?.card ?? 0,
+    };
+  });
   const turnover = daily.reduce((sum, row) => sum + row.turnover, 0);
   const profit = daily.reduce((sum, row) => sum + row.profit, 0);
 
@@ -859,6 +968,9 @@ export async function getSalesData(input: { from: Date; to: Date }) {
     daily,
     turnover,
     profit,
+    cashTotal: daily.reduce((sum, row) => sum + row.cash, 0),
+    cardTotal: daily.reduce((sum, row) => sum + row.card, 0),
+    hasPayments: paymentRows.length > 0,
     // Tan narx hali kelmagan bo'lsa foyda tushumga teng bo'lib qoladi —
     // sahifa shunda ogohlantirish ko'rsatadi.
     costMissing: turnover > 0 && profit >= turnover - 0.5,

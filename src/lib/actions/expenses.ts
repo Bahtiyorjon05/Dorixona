@@ -14,6 +14,12 @@ const schema = z.object({
   unit: z.string().optional(),
 });
 
+/**
+ * Har oy takrorlanadigan toifalar — forma ochilganda "doimiy" belgisi
+ * o'zi qo'yiladi. Odam xohlasa olib tashlashi mumkin.
+ */
+export const RECURRING_CATEGORIES = ["RENT", "UTILITIES", "SALARY"] as const;
+
 /** Bo'sh yoki "Umumiy" bo'lsa null saqlaymiz (umumiy xarajat). */
 function normalizeUnit(unit?: string) {
   const value = unit?.trim();
@@ -96,4 +102,47 @@ export async function listExpenseUnits(): Promise<string[]> {
     orderBy: { unit: "asc" },
   });
   return rows.map((r) => r.unit!).filter(Boolean);
+}
+
+/**
+ * Doimiy xarajatni shu oyga nusxalash — ijara, oylik kabi har oy
+ * takrorlanadigan yozuvlar uchun. Summani keyin tahrirlash mumkin.
+ */
+export async function copyRecurringExpense(id: string, spentAt?: string): Promise<ActionResult> {
+  try {
+    await requireUser();
+    const source = await db.expense.findUnique({ where: { id } });
+    if (!source) return { ok: false, error: "Harajat topilmadi" };
+
+    const date = spentAt ? new Date(spentAt) : new Date();
+    if (Number.isNaN(date.getTime())) return { ok: false, error: "Sana noto'g'ri" };
+
+    // Shu oyda xuddi shu nom bilan yozuv bo'lsa, takror yozmaymiz
+    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+    const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    const exists = await db.expense.findFirst({
+      where: {
+        branchId: source.branchId,
+        title: source.title,
+        spentAt: { gte: monthStart, lt: nextMonth },
+      },
+    });
+    if (exists) return { ok: false, error: "Bu oyda shunday harajat allaqachon bor" };
+
+    await db.expense.create({
+      data: {
+        title: source.title,
+        category: source.category,
+        amount: source.amount,
+        isRecurring: true,
+        unit: source.unit,
+        spentAt: date,
+        branchId: source.branchId,
+      },
+    });
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
 }

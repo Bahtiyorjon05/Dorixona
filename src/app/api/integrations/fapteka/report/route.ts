@@ -131,7 +131,8 @@ export async function POST(request: NextRequest) {
       keys: fieldKeys(rows).slice(0, 2000),
       note:
         `${label} | tan narx: ${Math.round(totals.reportedCost)}, ERP tushum: ${Math.round(totals.erpTurnover)}, ` +
-        `F-Apteka tushum: ${Math.round(totals.reported)} (farq ${diff}%), ${totals.updated} band`,
+        `F-Apteka tushum: ${Math.round(totals.reported)} (farq ${diff}%), ${totals.updated} band` +
+        (totals.docTypes ? ` | ${totals.docTypes}` : ""),
       ok: true,
     });
     await recomputeSafely(dateFrom, dateTo);
