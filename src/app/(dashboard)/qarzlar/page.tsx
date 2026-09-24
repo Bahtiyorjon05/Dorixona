@@ -57,24 +57,27 @@ export default async function QarzlarPage() {
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
+          icon="🏢"
           label="Firmaga qarz (so'm)"
           value={formatNumber(d.totals.firmUzs)}
           valueColor="var(--c-danger)"
         />
-        <MetricCard label="Firmaga qarz (dollar)" value={`$${formatNumber(Math.round(d.totals.firmUsd))}`} />
+        <MetricCard icon="🏢" label="Firmaga qarz (dollar)" value={`$${formatNumber(Math.round(d.totals.firmUsd))}`} />
         <MetricCard
+          icon="🤝"
           label="Ko'cha qarzi (so'm)"
           value={formatNumber(d.totals.streetUzs)}
           valueColor="var(--c-danger)"
         />
         <MetricCard
+          icon="🤝"
           label="Ko'cha qarzi (dollar)"
           value={`$${formatNumber(Math.round(d.totals.streetUsd))}`}
           sub={`${d.openCount} ta ochiq qarz`}
         />
       </div>
 
-      <Card title="Qarzlar ro'yxati" icon="🧮">
+      <Card title="Qarzlar ro'yxati" icon="💳">
         <DebtsPanel debts={d.debts} units={[...units]} />
       </Card>
 

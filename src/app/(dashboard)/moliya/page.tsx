@@ -84,6 +84,7 @@ export default async function MoliyaPage({
       {/* Kassa ko'rsatkichlari */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
+          icon="🧾"
           label="Kunlik savdo"
           value={formatNumber(d.todaySales)}
           sub={
@@ -97,13 +98,14 @@ export default async function MoliyaPage({
             </>
           }
         />
-        <MetricCard label="Oylik foyda (marja)" value={formatNumber(d.monthlyProfit)} sub="POS savdolaridan" />
+        <MetricCard icon="📈" label="Oylik foyda (marja)" value={formatNumber(d.monthlyProfit)} sub="POS savdolaridan" />
         <MetricCard
+          icon="🏦"
           label="Kassadagi pul"
           value={formatNumber(d.cashTotal)}
           sub={`Naqd: ${formatNumber(d.cash)} · Terminal: ${formatNumber(d.card)}`}
         />
-        <MetricCard label="Ombor qiymati" value={formatNumber(d.inventoryValue)} sub="Tan narxida" />
+        <MetricCard icon="📦" label="Ombor qiymati" value={formatNumber(d.inventoryValue)} sub="Tan narxida" />
       </div>
 
       {/* Grafiklar */}

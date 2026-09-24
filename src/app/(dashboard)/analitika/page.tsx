@@ -27,18 +27,21 @@ export default async function AnalitikaPage({
       <PageHeader title="Analitika" subtitle={`${d.year}-yil tahlili — savdo, foyda, ombor`} />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label={`${d.year} jami savdo`} value={`${formatNumber(jamiSavdo)} mln`} />
+        <MetricCard icon="🧾" label={`${d.year} jami savdo`} value={`${formatNumber(jamiSavdo)} mln`} />
         <MetricCard
+          icon="📈"
           label={`${d.year} jami foyda`}
           value={`${formatNumber(jamiFoyda)} mln`}
           valueColor="var(--c-primary)"
         />
         <MetricCard
+          icon="📦"
           label="Ombor qiymati (hozir)"
           value={`${formatNumber(d.inventoryTotal)} mln`}
           sub="Chakana narxda"
         />
         <MetricCard
+          icon="📅"
           label="Oxirgi oy savdo"
           value={oxirgi ? `${formatNumber(oxirgi.savdo)} mln` : "—"}
           sub={d.lastMonthName ?? undefined}

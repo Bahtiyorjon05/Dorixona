@@ -1,0 +1,22 @@
+{
+  "name": "Dorixona — boshqaruv platformasi",
+  "short_name": "Dorixona",
+  "description": "Savdo, ombor, moliya, qarzlar va xodimlar boshqaruvi",
+  "lang": "uz",
+  "start_url": "/boshqaruv",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#1a7f5a",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Savdo", "url": "/savdo" },
+    { "name": "Qarzlar", "url": "/qarzlar" },
+    { "name": "Ombor", "url": "/ombor" }
+  ]
+}

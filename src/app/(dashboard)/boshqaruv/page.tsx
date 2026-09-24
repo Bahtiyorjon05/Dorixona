@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
 import { formatDate, formatNumber, formatTime } from "@/lib/format";
+import { InstallApp } from "@/components/InstallApp";
 import { getDashboardData, getDebtsData } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export default async function BoshqaruvPage() {
       <PageHeader
         title="Dorixona — bosh sahifa"
         subtitle={`Umumiy holat${d.filial === "Umumiy" ? "" : ` — ${d.filial}`}`}
+        action={<InstallApp />}
       />
 
       {(debts.overdue.length > 0 || debts.dueSoon.length > 0) && (
@@ -55,6 +57,7 @@ export default async function BoshqaruvPage() {
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
+          icon="🧾"
           label="Bugungi savdo"
           value={formatNumber(d.todaySales)}
           sub={
@@ -72,14 +75,16 @@ export default async function BoshqaruvPage() {
             )
           }
         />
-        <MetricCard label="Shu oy tushum" value={formatNumber(d.monthTurnover)} />
+        <MetricCard icon="📊" label="Shu oy tushum" value={formatNumber(d.monthTurnover)} />
         <MetricCard
+          icon="📈"
           label="Shu oy foyda"
           value={formatNumber(d.monthProfit)}
           valueColor="var(--c-primary)"
           sub={`Marja ${margin.toFixed(1)}%`}
         />
         <MetricCard
+          icon="📦"
           label="Ombor qiymati"
           value={formatNumber(d.stockValue)}
           sub={`${formatNumber(d.stockPositions)} pozitsiya`}
@@ -87,7 +92,7 @@ export default async function BoshqaruvPage() {
       </div>
 
       <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <Card title="Qoldig'i tugayotgan">
+        <Card title="Qoldig'i tugayotgan" icon="📉">
           {d.lowStock.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted">Hammasi yetarli.</p>
           ) : (
@@ -114,7 +119,7 @@ export default async function BoshqaruvPage() {
           )}
         </Card>
 
-        <Card title="Muddati yaqin dorilar">
+        <Card title="Muddati yaqin dorilar" icon="⏳">
           {d.expiring.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted">30 kun ichida muddati tugaydigan yo&apos;q.</p>
           ) : (
