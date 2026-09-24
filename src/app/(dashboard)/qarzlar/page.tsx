@@ -64,13 +64,13 @@ export default async function QarzlarPage() {
         />
         <MetricCard icon="🏢" label="Firmaga qarz (dollar)" value={`$${formatNumber(Math.round(d.totals.firmUsd))}`} />
         <MetricCard
-          icon="🤝"
+          icon="💰"
           label="Ko'cha qarzi (so'm)"
           value={formatNumber(d.totals.streetUzs)}
           valueColor="var(--c-danger)"
         />
         <MetricCard
-          icon="🤝"
+          icon="💰"
           label="Ko'cha qarzi (dollar)"
           value={`$${formatNumber(Math.round(d.totals.streetUsd))}`}
           sub={`${d.openCount} ta ochiq qarz`}
