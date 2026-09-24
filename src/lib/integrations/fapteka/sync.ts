@@ -746,24 +746,48 @@ export async function syncFaptekaIncomingSuppliers(input: {
  * sug'urta kompaniyasi. Kirim harajatida nomni yozish uchun kerak.
  */
 export async function syncFaptekaOrganizations(rows: FaptekaRow[]) {
-  let saved = 0;
+  // Ro'yxatda 300 dan ortiq tashkilot bor: bittalab yozilsa Vercel'ning
+  // 60 soniyasiga sig'maydi (504 bergan edi), shuning uchun to'p-to'p yoziladi.
+  const orgs = new Map<string, { id: string; name: string; inn: string | null; isSupplier: boolean }>();
   for (const row of rows) {
     const id = (row.I ?? "").trim();
     const name = (row.N ?? "").trim();
     if (!id || !name) continue;
-    const data = {
+    orgs.set(id, {
+      id,
       name,
       inn: (row.INN ?? "").trim() || null,
       isSupplier: (row.INC ?? "") === "1",
-    };
+    });
+  }
+
+  const list = [...orgs.values()];
+  let saved = 0;
+  const errors: string[] = [];
+
+  for (let index = 0; index < list.length; index += 500) {
+    const chunk = list.slice(index, index + 500);
     try {
-      await db.faptekaOrg.upsert({ where: { id }, update: data, create: { id, ...data } });
-      saved += 1;
-    } catch {
-      // Bitta yozuv tushmasa ham qolganlari saqlansin
+      await db.$executeRaw(Prisma.sql`
+        INSERT INTO "FaptekaOrg" ("id", "name", "inn", "isSupplier", "updatedAt")
+        VALUES ${Prisma.join(
+          chunk.map(
+            (org) => Prisma.sql`(${org.id}, ${org.name}, ${org.inn}, ${org.isSupplier}, NOW())`,
+          ),
+        )}
+        ON CONFLICT ("id") DO UPDATE SET
+          "name" = EXCLUDED."name",
+          "inn" = EXCLUDED."inn",
+          "isSupplier" = EXCLUDED."isSupplier",
+          "updatedAt" = NOW()
+      `);
+      saved += chunk.length;
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Tashkilotlar saqlanmadi");
     }
   }
-  return { ok: true, receivedRows: rows.length, saved };
+
+  return { ok: errors.length === 0, receivedRows: rows.length, saved, errors };
 }
 
 /**

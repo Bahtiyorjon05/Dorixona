@@ -3,25 +3,50 @@
  *
  * F-Apteka na SITE.exe push'ida, na hisobot API'sida tovar guruhini
  * yubormaydi — faqat nom keladi. Nomda esa dori shakli deyarli doim bor:
- * "PARATSETAMOL TAB №20", "AMOKSIKLAV SUSP 100ML", "DIKLOFENAK AMP 3ML".
- * Shuning uchun toifani nomdan aniqlaymiz. Ro'yxat yuqoridan pastga
- * tekshiriladi: birinchi mos kelgani olinadi.
+ * "ПАРАЦЕТАМОЛ ТАБ №20", "АМОКСИКЛАВ СУСП 100МЛ", "ДИКЛОФЕНАК АМП 3МЛ".
+ * Nomlar kirilchada keladi, shuning uchun har bir qoidada kirilcha ham,
+ * lotincha ham bor. Ro'yxat yuqoridan pastga tekshiriladi: birinchi mos
+ * kelgani olinadi.
  */
 
 const RULES: { category: string; patterns: RegExp }[] = [
-  { category: "Ampula va in'ektsiya", patterns: /\b(AMP|AMPULA|INEKS|INJEC|INYEKS|UKOL|FLAKON|FL\b|R-R|RASTVOR|INFUZ)/i },
-  { category: "Tabletka", patterns: /\b(TAB|TABL|TABLETKA|PILL|DRAJE|LOZENG)/i },
-  { category: "Kapsula", patterns: /\b(KAPS|CAPS|KAPSULA)/i },
-  { category: "Sirop va suspenziya", patterns: /\b(SIROP|SYRUP|SUSP|EMULS|ELIKSIR|MIKSTURA)/i },
-  { category: "Malham, krem, gel", patterns: /\b(MAZ|MALHAM|MALXAM|KREM|CREAM|GEL|LINIMENT|PASTA)/i },
-  { category: "Tomchi", patterns: /\b(KAPLI|TOMCHI|DROPS|KAPL|GLAZ|KO'Z|KOZ)\b/i },
-  { category: "Sprey va ingalyator", patterns: /\b(SPREY|SPRAY|AEROZOL|INGAL|NEBUL)/i },
-  { category: "Svecha (suppozitoriy)", patterns: /\b(SVECH|SUPPOZ|SUPP)\b/i },
-  { category: "Kukun va choy", patterns: /\b(POROSHOK|PORO[SŞ]|KUKUN|SASHE|SASHET|CHAY|CHAI|FITO|SBOR)/i },
-  { category: "Vitamin va BAD", patterns: /\b(VITAMIN|BAD\b|OMEGA|MAGNE|KALTSIY|CALCIUM|ZINK|ASKORB)/i },
-  { category: "Tibbiy buyum", patterns: /\b(SHPRITS|SHPRIC|BINT|VATA|PLASTIR|MASKA|PERCHAT|QO'LQOP|QOLQOP|GRELKA|TERMOMETR|TONOMETR|GLYUKOMETR|SISTEM|KATETER|ZOND|SALFET|BANDAJ|KORSET|BAHILA)/i },
-  { category: "Kosmetika va gigiyena", patterns: /\b(SHAMPUN|SAPUN|SOAP|GIGIEN|PROKLAD|PAMPERS|PODGUZ|KOSMET|LOSON|SKRAB|DEZOD|ZUBN|PASTA ZUB)/i },
-  { category: "Chaqaloq mahsulotlari", patterns: /\b(BABY|DETSK|CHAQALOQ|SMES|NUTRIL|NAN\b|MALYSH)/i },
+  {
+    category: "Ampula va in'ektsiya",
+    patterns:
+      /(АМП|АМПУЛ|ИНЪЕК|ИНЕКЦ|УКОЛ|ФЛАК|Р-Р|РАСТВОР|ИНФУЗ|ЛИОФ|AMP|AMPULA|INEKS|INJEC|INYEKS|UKOL|FLAKON|RASTVOR|INFUZ)/i,
+  },
+  { category: "Tabletka", patterns: /(ТАБ|ТБЛ|ДРАЖЕ|ПИЛЮЛ|TAB|TABL|TABLETKA|DRAJE|PILL)/i },
+  { category: "Kapsula", patterns: /(КАПС|КПС|KAPS|CAPS|KAPSULA)/i },
+  {
+    category: "Sirop va suspenziya",
+    patterns: /(СИРОП|СУСП|ЭМУЛЬС|ЭЛИКСИР|МИКСТУР|НАСТОЙ|SIROP|SYRUP|SUSP|EMULS|ELIKSIR|MIKSTURA)/i,
+  },
+  { category: "Malham, krem, gel", patterns: /(МАЗЬ|МАЗИ|КРЕМ|ГЕЛЬ|ЛИНИМЕНТ|ПАСТА|БАЛЬЗАМ|MAZ|KREM|CREAM|GEL|LINIMENT)/i },
+  { category: "Tomchi", patterns: /(КАПЛ|ГЛАЗН|УШН|НАЗАЛ|KAPLI|TOMCHI|DROPS)/i },
+  { category: "Sprey va ingalyator", patterns: /(СПРЕЙ|АЭРОЗОЛ|ИНГАЛ|НЕБУЛ|SPREY|SPRAY|AEROZOL|INGAL|NEBUL)/i },
+  { category: "Svecha (suppozitoriy)", patterns: /(СВЕЧ|СУППОЗ|SVECH|SUPPOZ)/i },
+  {
+    category: "Kukun va choy",
+    patterns: /(ПОРОШ|ПОР\.|САШЕ|ЧАЙ|СБОР|ГРАНУЛ|POROSHOK|KUKUN|SASHE|CHAY|FITO|SBOR|GRANUL)/i,
+  },
+  {
+    category: "Vitamin va BAD",
+    patterns: /(ВИТАМИН|БАД|ОМЕГА|МАГНЕ|КАЛЬЦ|ЦИНК|АСКОРБ|VITAMIN|OMEGA|MAGNE|KALTSIY|CALCIUM|ZINK|ASKORB)/i,
+  },
+  {
+    category: "Tibbiy buyum",
+    patterns:
+      /(ШПРИЦ|БИНТ|ВАТА|ПЛАСТЫР|МАСКА|ПЕРЧАТ|ГРЕЛКА|ТЕРМОМЕТР|ТОНОМЕТР|ГЛЮКОМЕТР|СИСТЕМА|КАТЕТЕР|ЗОНД|САЛФЕТ|БАНДАЖ|КОРСЕТ|БАХИЛ|ЖГУТ|ТЕСТ-ПОЛОС|SHPRITS|BINT|VATA|PLASTIR|MASKA|BANDAJ|KORSET)/i,
+  },
+  {
+    category: "Kosmetika va gigiyena",
+    patterns:
+      /(ШАМПУН|МЫЛО|ГИГИЕН|ПРОКЛАД|ПАМПЕРС|ПОДГУЗ|КОСМЕТ|ЛОСЬОН|СКРАБ|ДЕЗОД|ЗУБН|SHAMPUN|SAPUN|GIGIEN|PROKLAD|PAMPERS|KOSMET)/i,
+  },
+  {
+    category: "Chaqaloq mahsulotlari",
+    patterns: /(ДЕТСК|МАЛЫШ|СМЕСЬ|НУТРИЛ|BABY|DETSK|CHAQALOQ|SMES|NUTRIL)/i,
+  },
 ];
 
 export const FAPTEKA_DEFAULT_CATEGORY = "Boshqa dorilar";

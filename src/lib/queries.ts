@@ -962,3 +962,82 @@ export async function getDebtsData() {
     openCount: open.length,
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  BOSH SAHIFA (dashboard)
+// ─────────────────────────────────────────────────────────────
+
+/** Saytga kirganda ko'rinadigan umumiy holat — hamma bo'limdan qisqacha */
+export async function getDashboardData() {
+  const branchId = await getBranchId();
+  const filial = await currentFilial();
+  const unit = filial === "Umumiy" ? null : filial;
+
+  const today = startOfDay();
+  const tomorrow = new Date(today.getTime() + 864e5);
+  const yesterday = new Date(today.getTime() - 864e5);
+  const monthStart = startOfMonth(0);
+  const nextMonth = startOfMonth(1);
+  const in30 = new Date(today.getTime() + 30 * 864e5);
+
+  const [todayRows, yesterdayRows, monthRows, stock, lowStock, expiring, lastSync] = await Promise.all([
+    db.$queryRaw<{ turnover: number }[]>`
+      SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${today} AND s."createdAt" < ${tomorrow}
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})`,
+    db.$queryRaw<{ turnover: number }[]>`
+      SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${yesterday} AND s."createdAt" < ${today}
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})`,
+    db.$queryRaw<{ turnover: number; profit: number }[]>`
+      SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover,
+             COALESCE(SUM(si."lineTotal" - si."costPrice" * si.quantity), 0)::float8 AS profit
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})`,
+    db.$queryRaw<{ value: number; positions: number }[]>`
+      SELECT COALESCE(SUM(p.stock * p."salePrice"), 0)::float8 AS value,
+             COUNT(*)::float8 AS positions
+      FROM "Product" p
+      WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0`,
+    db.product.findMany({
+      where: { isActive: true, branchId, stock: { lte: 3 } },
+      orderBy: { stock: "asc" },
+      take: 6,
+      select: { id: true, name: true, stock: true },
+    }),
+    db.product.findMany({
+      where: { isActive: true, branchId, stock: { gt: 0 }, expiryDate: { not: null, lte: in30 } },
+      orderBy: { expiryDate: "asc" },
+      take: 6,
+      select: { id: true, name: true, stock: true, expiryDate: true },
+    }),
+    db.integrationLog
+      .findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true, source: true, note: true } })
+      .catch(() => null),
+  ]);
+
+  const todaySales = num(todayRows[0]?.turnover);
+  const yesterdaySales = num(yesterdayRows[0]?.turnover);
+
+  return {
+    filial,
+    todaySales,
+    yesterdaySales,
+    todayTrend: yesterdaySales > 0 ? ((todaySales - yesterdaySales) / yesterdaySales) * 100 : 0,
+    monthTurnover: num(monthRows[0]?.turnover),
+    monthProfit: num(monthRows[0]?.profit),
+    stockValue: num(stock[0]?.value),
+    stockPositions: Math.round(num(stock[0]?.positions)),
+    lowStock: lowStock.map((p) => ({ id: p.id, name: p.name, stock: p.stock })),
+    expiring: expiring.map((p) => ({
+      id: p.id,
+      name: p.name,
+      stock: p.stock,
+      expiryDate: p.expiryDate as Date,
+    })),
+    lastSync: lastSync ? { at: lastSync.createdAt, source: lastSync.source, note: lastSync.note } : null,
+  };
+}

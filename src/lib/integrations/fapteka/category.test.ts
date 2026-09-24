@@ -3,6 +3,16 @@ import test from "node:test";
 
 import { categoryFromName, FAPTEKA_DEFAULT_CATEGORY, isAutoCategory } from "./category";
 
+test("kirilcha nomlardan dori shaklini aniqlaydi", () => {
+  assert.equal(categoryFromName("ПАРАЦЕТАМОЛ ТАБ №20"), "Tabletka");
+  assert.equal(categoryFromName("АМОКСИКЛАВ СУСП 100МЛ"), "Sirop va suspenziya");
+  assert.equal(categoryFromName("ДИКЛОФЕНАК АМП 3МЛ №5"), "Ampula va in'ektsiya");
+  assert.equal(categoryFromName("ОМЕПРАЗОЛ КАПС 20МГ"), "Kapsula");
+  assert.equal(categoryFromName("ЛЕВОМЕКОЛЬ МАЗЬ 40Г"), "Malham, krem, gel");
+  assert.equal(categoryFromName("ШПРИЦ 5МЛ №100"), "Tibbiy buyum");
+  assert.equal(categoryFromName("ПК-МЕРЦ ТАБ №30"), "Tabletka");
+});
+
 test("dori shaklini nomdan aniqlaydi", () => {
   assert.equal(categoryFromName("PARATSETAMOL TAB N20"), "Tabletka");
   assert.equal(categoryFromName("AMOKSIKLAV SUSP 100ML"), "Sirop va suspenziya");

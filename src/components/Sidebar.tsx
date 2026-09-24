@@ -47,9 +47,25 @@ function NavLinks({
   const pathname = usePathname();
   return (
     <>
-      <div className="flex items-center gap-2 px-5 pb-5 text-base font-semibold text-primary">
+      <Link
+        href="/boshqaruv"
+        onClick={onNavigate}
+        className="mb-2 flex items-center gap-2 px-5 pb-3 text-base font-semibold text-primary"
+      >
         <span className="text-xl">💊</span> Dorixona
-      </div>
+      </Link>
+      {/* Bosh sahifa hammaga ochiq — ruxsat talab qilmaydi */}
+      <Link
+        href="/boshqaruv"
+        onClick={onNavigate}
+        className={`mx-2 mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+          pathname === "/boshqaruv"
+            ? "bg-primary-light font-medium text-primary"
+            : "text-muted hover:bg-surface hover:text-fg"
+        }`}
+      >
+        <span>🏠</span> Bosh sahifa
+      </Link>
       {NAV.map((group, i) => {
         const items = group.items.filter((item) => canAccessPermission(role, permissions, item.permission));
         if (items.length === 0) return null;

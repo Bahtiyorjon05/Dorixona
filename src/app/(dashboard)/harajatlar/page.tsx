@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getExpensesData } from "@/lib/queries";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
@@ -150,31 +151,31 @@ export default async function HarajatlarPage({
       </div>
 
       {d.debts.length > 0 && (
-        <Card title="Qarzlar" icon="🧮" className="mb-5">
-          <div className="space-y-3">
-            {d.debts.map((q) => (
-              <div key={q.id} className="border-b border-surface pb-3 last:border-0 last:pb-0">
-                <div className="mb-1 flex items-center justify-between text-sm">
-                  <span>{q.counterparty}</span>
-                  <Badge color={q.direction === "PAYABLE" ? "red" : "green"}>
-                    {q.direction === "PAYABLE" ? "To'lashimiz kerak" : "Olishimiz kerak"}
-                  </Badge>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted">Qoldiq</span>
-                  <span>{formatSom(q.remaining)}</span>
-                </div>
-                {q.paid > 0 && (
-                  <div className="flex justify-between text-xs text-muted">
-                    <span>To&apos;langan</span>
-                    <span>
-                      {formatSom(q.paid)} / {formatSom(q.total)}
-                    </span>
-                  </div>
-                )}
-                {q.note && <p className="mt-1 text-xs text-muted">{q.note}</p>}
+        <Card
+          title="Qarzlar"
+          icon="🧮"
+          className="mb-5"
+          action={
+            <Link href="/qarzlar" className="text-xs text-primary">
+              To&apos;liq bo&apos;lim →
+            </Link>
+          }
+        >
+          <div className="space-y-2">
+            {d.debts.slice(0, 5).map((q) => (
+              <div key={q.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate">{q.counterparty}</span>
+                <span className="whitespace-nowrap">
+                  {formatSom(q.remaining)}{" "}
+                  <span className="text-xs text-muted">
+                    ({formatSom(q.paid)} / {formatSom(q.total)})
+                  </span>
+                </span>
               </div>
             ))}
+            {d.debts.length > 5 && (
+              <p className="text-xs text-muted">va yana {d.debts.length - 5} ta — Qarzlar bo&apos;limida</p>
+            )}
           </div>
         </Card>
       )}
