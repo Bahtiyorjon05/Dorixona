@@ -32,15 +32,22 @@ function docTypeGroups() {
 }
 
 /**
- * Kassa nomlari: F-Apteka faqat raqam beradi (1, 2, 6...). Qaysi biri naqd,
- * qaysi biri terminal ekani hali aniqlanmagan — taxmin qilmaymiz. Aniqlangach
- * shu yerga yoziladi yoki Vercel env orqali beriladi:
- *   FAPTEKA_CASHBOX_LABELS="1:Naqd,2:Terminal,6:Payme"
+ * Kassa nomlari. F-Apteka PAYIN jadvalida faqat raqam beradi; qaysi raqam
+ * nima ekani "Розничная продажа" hisobotidagi ustunlar bilan solishtirib
+ * aniqlandi (24.09.2026, Yunusobod):
+ *   Наличные 20 282 654 = C1 · HUMO 4 067 900 = C2 · UzCard 8 077 002 = C6
+ * Yangi kassa qo'shilsa, env orqali nomlanadi:
+ *   FAPTEKA_CASHBOX_LABELS="1:Naqd,2:HUMO,6:UzCard"
  */
 function cashboxLabels() {
-  const map = new Map<string, string>();
+  const map = new Map<string, string>([
+    ["1", "Naqd"],
+    ["2", "HUMO"],
+    ["6", "UzCard"],
+  ]);
   const raw = process.env.FAPTEKA_CASHBOX_LABELS?.trim();
   if (raw) {
+    map.clear();
     for (const pair of raw.split(",")) {
       const [id, label] = pair.split(":").map((part) => part.trim());
       if (id && label) map.set(id, label);
@@ -48,6 +55,9 @@ function cashboxLabels() {
   }
   return map;
 }
+
+/** Naqd va kartani ajratish uchun: qaysi kassa naqd hisoblanadi */
+const CASH_BOXES = new Set((process.env.FAPTEKA_CASH_BOXES ?? "1").split(",").map((v) => v.trim()));
 
 /** To'lov turlari bo'yicha tushum (30-hisobot, PAYIN) */
 export async function paymentBreakdown(from: Date, to: Date, unit: string | null) {
@@ -65,7 +75,7 @@ export async function paymentBreakdown(from: Date, to: Date, unit: string | null
       })
       .then((list) => list.map((row) => ({ docType: row.docType, amount: row._sum.amount })));
   } catch {
-    return { items: [], total: 0, known: false };
+    return { items: [], total: 0, cash: 0, card: 0, known: false };
   }
 
   const labels = cashboxLabels();
@@ -77,7 +87,9 @@ export async function paymentBreakdown(from: Date, to: Date, unit: string | null
     .filter((item) => item.amount !== 0)
     .sort((a, b) => b.amount - a.amount);
 
-  return { items, total: items.reduce((sum, item) => sum + item.amount, 0), known: items.length > 0 };
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const cash = items.filter((item) => CASH_BOXES.has(item.cashbox)).reduce((sum, i) => sum + i.amount, 0);
+  return { items, total, cash, card: total - cash, known: items.length > 0 };
 }
 
 /** Oy ichidagi sotuv va qaytarish — DailySales jadvalidan */
@@ -270,6 +282,8 @@ export async function getFinanceData(period?: Date) {
     hasFaptekaSplit: split.known,
     payments: payments.items,
     paymentsTotal: payments.total,
+    paymentsCash: payments.cash,
+    paymentsCard: payments.card,
     hasPayments: payments.known,
     inventoryValue: num(invValue[0]?.value),
     weekSales,

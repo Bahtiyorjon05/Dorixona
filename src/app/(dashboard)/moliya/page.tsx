@@ -105,7 +105,7 @@ export default async function MoliyaPage({
           value={formatNumber(d.hasPayments ? d.paymentsTotal : d.cashTotal)}
           sub={
             d.hasPayments
-              ? d.payments.map((p) => `${p.label}: ${formatNumber(p.amount)}`).join(" · ")
+              ? `Naqd: ${formatNumber(d.paymentsCash)} · Karta: ${formatNumber(d.paymentsCard)}`
               : d.hasFaptekaSplit
               ? `Qaytarilgan: ${formatNumber(d.faptekaRefunds)}`
               : `Naqd: ${formatNumber(d.cash)} · Terminal: ${formatNumber(d.card)}`
@@ -113,6 +113,38 @@ export default async function MoliyaPage({
         />
         <MetricCard icon="📦" label="Ombor qiymati" value={formatNumber(d.inventoryValue)} sub="Tan narxida" />
       </div>
+
+      {d.hasPayments && (
+        <Card title="To'lov turlari" icon="💳" className="mb-4">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Tur</th>
+                <th>Summa</th>
+                <th>Ulushi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.payments.map((payment) => (
+                <tr key={payment.cashbox}>
+                  <td className="text-left">{payment.label}</td>
+                  <td>{formatNumber(payment.amount)}</td>
+                  <td>
+                    {d.paymentsTotal > 0
+                      ? `${((payment.amount / d.paymentsTotal) * 100).toFixed(1)}%`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td className="text-left font-semibold">Jami</td>
+                <td className="font-semibold">{formatNumber(d.paymentsTotal)}</td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {/* Grafiklar */}
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
