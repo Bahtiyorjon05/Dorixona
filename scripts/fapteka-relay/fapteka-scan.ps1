@@ -7,18 +7,25 @@
 # Ishga tushirish (dorixona kompyuterida):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-scan.ps1
 #
+# Boshqa oraliqni qarash uchun:
+#   ... -File fapteka-scan.ps1 -From 61 -To 200
+#
 # Natija ekranda va yonidagi scan-natija.txt faylida qoladi.
+
+param(
+  [int]$From = 1,
+  [int]$To = 60
+)
 
 $ApiUrl   = "http://localhost:8081/P_GetReport_XML"
 $Filial   = "2"                     # Yunusobod
 $DateFrom = (Get-Date).AddDays(-7).ToString("dd.MM.yyyy")
 $DateTo   = (Get-Date).ToString("dd.MM.yyyy")
-$MaxId    = 60
 $OutFile  = Join-Path $PSScriptRoot "scan-natija.txt"
 
-"F-Apteka hisobotlari qidiruvi: $DateFrom - $DateTo, filial $Filial" | Tee-Object $OutFile
+"F-Apteka hisobotlari qidiruvi: #$From-#$To, $DateFrom - $DateTo, filial $Filial" | Tee-Object $OutFile
 
-for ($id = 1; $id -le $MaxId; $id++) {
+for ($id = $From; $id -le $To; $id++) {
   $url = "{0}?pDateFrom={1}&pDateTo={2}&pFilial_id={3}&pReport_id={4}" -f $ApiUrl, $DateFrom, $DateTo, $Filial, $id
   try {
     $client = New-Object System.Net.WebClient
