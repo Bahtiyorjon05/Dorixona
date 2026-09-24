@@ -18,7 +18,7 @@ export default async function QarzlarPage() {
     <div>
       <PageHeader
         title="Qarzlar"
-        subtitle="Firmadan olingan tovar qarzi va ko'chadagi naqd qarz — qancha berildi, qancha qoldi"
+        subtitle="Firmalardan olingan tovar qarzi — qancha berildi, qancha qoldi"
       />
 
       {d.needsMigration && (
@@ -58,22 +58,22 @@ export default async function QarzlarPage() {
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
           icon="🏢"
-          label="Firmaga qarz (so'm)"
-          value={formatNumber(d.totals.firmUzs)}
-          valueColor="var(--c-danger)"
-        />
-        <MetricCard icon="🏢" label="Firmaga qarz (dollar)" value={`$${formatNumber(Math.round(d.totals.firmUsd))}`} />
-        <MetricCard
-          icon="🤝"
-          label="Ko'cha qarzi (so'm)"
-          value={formatNumber(d.totals.streetUzs)}
+          label="Jami qarz (so'm)"
+          value={formatNumber(d.totals.uzs)}
           valueColor="var(--c-danger)"
         />
         <MetricCard
-          icon="🤝"
-          label="Ko'cha qarzi (dollar)"
-          value={`$${formatNumber(Math.round(d.totals.streetUsd))}`}
-          sub={`${d.openCount} ta ochiq qarz`}
+          icon="💵"
+          label="Jami qarz (dollar)"
+          value={`$${formatNumber(Math.round(d.totals.usd))}`}
+        />
+        <MetricCard icon="📋" label="Ochiq qarzlar" value={String(d.openCount)} sub="Yopilmaganlari" />
+        <MetricCard
+          icon="⏳"
+          label="Muddati yaqin yoki o'tgan"
+          value={String(d.overdue.length + d.dueSoon.length)}
+          valueColor={d.overdue.length > 0 ? "var(--c-danger)" : undefined}
+          sub={`${d.overdue.length} ta shoshilinch`}
         />
       </div>
 
@@ -82,9 +82,9 @@ export default async function QarzlarPage() {
       </Card>
 
       <p className="mt-4 text-xs text-muted">
-        Har bir qarzning tarixi saqlanadi: yangi tovar olinsa &laquo;+ Qarz&raquo;, pul berilsa
-        &laquo;To&apos;lov&raquo; tugmasi. Qoldiq shu ikkisidan hisoblanadi. Muddati o&apos;tgan qarz qizil,
-        yaqinlashgani sariq bo&apos;lib turadi.
+        F-Apteka&apos;da firmadan tovar olinsa, qarz o&apos;zi yoziladi. Pul berilganda
+        &laquo;To&apos;lov&raquo; tugmasi bilan kiritasiz — qoldiq shundan hisoblanadi. Muddatiga 10
+        kundan kam qolsa qizil, 20 kundan kam qolsa sariq bo&apos;lib turadi.
       </p>
     </div>
   );
