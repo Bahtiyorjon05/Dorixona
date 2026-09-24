@@ -1058,15 +1058,19 @@ export async function getDebtsData() {
   });
 
   const open = debts.filter((debt) => !debt.closed);
-  const sumBy = (currency: "UZS" | "USD") =>
-    open.filter((debt) => debt.currency === currency).reduce((sum, debt) => sum + debt.remaining, 0);
+  const sumBy = (kind: "FIRM" | "STREET", currency: "UZS" | "USD") =>
+    open
+      .filter((debt) => debt.kind === kind && debt.currency === currency)
+      .reduce((sum, debt) => sum + debt.remaining, 0);
 
   return {
     needsMigration,
     debts,
     totals: {
-      uzs: sumBy("UZS"),
-      usd: sumBy("USD"),
+      firmUzs: sumBy("FIRM", "UZS"),
+      firmUsd: sumBy("FIRM", "USD"),
+      streetUzs: sumBy("STREET", "UZS"),
+      streetUsd: sumBy("STREET", "USD"),
     },
     overdue: open.filter((debt) => debt.overdue),
     dueSoon: open.filter((debt) => debt.dueSoon),

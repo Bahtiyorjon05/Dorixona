@@ -20,7 +20,7 @@ type Entry = {
 export type DebtRow = {
   id: string;
   counterparty: string;
-  kind: string;
+  kind: "FIRM" | "STREET";
   currency: "UZS" | "USD";
   total: number;
   paid: number;
@@ -32,6 +32,11 @@ export type DebtRow = {
   unit?: string | null;
   note?: string | null;
   entries: Entry[];
+};
+
+const KIND_LABEL: Record<string, string> = {
+  FIRM: "Firmadan qarz",
+  STREET: "Ko'chadan qarz",
 };
 
 function money(amount: number, currency: "UZS" | "USD") {
@@ -81,6 +86,7 @@ function DueCell({ debt }: { debt: DebtRow }) {
 
 export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: string[] }) {
   const router = useRouter();
+  const [kind, setKind] = useState<"ALL" | "FIRM" | "STREET">("ALL");
   const [showClosed, setShowClosed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [entryFor, setEntryFor] = useState<{ debt: DebtRow; type: "CHARGE" | "PAYMENT" } | null>(null);
@@ -90,8 +96,8 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
   const [pending, start] = useTransition();
 
   const shown = useMemo(
-    () => debts.filter((debt) => showClosed || !debt.closed),
-    [debts, showClosed],
+    () => debts.filter((debt) => (kind === "ALL" || debt.kind === kind) && (showClosed || !debt.closed)),
+    [debts, kind, showClosed],
   );
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, onDone?: () => void) {
@@ -110,6 +116,11 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
+        <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+          <option value="ALL">Hammasi</option>
+          <option value="FIRM">Firmadan qarz</option>
+          <option value="STREET">Ko&apos;chadan qarz</option>
+        </Select>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
           Yopilganlar ham
@@ -126,6 +137,7 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
           <thead>
             <tr>
               <th>Kim</th>
+              <th>Turi</th>
               <th>Olingan</th>
               <th>To&apos;langan</th>
               <th>Qoldiq</th>
@@ -136,7 +148,7 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
           <tbody>
             {shown.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-muted">
+                <td colSpan={7} className="py-6 text-center text-muted">
                   Qarz yo&apos;q.
                 </td>
               </tr>
@@ -146,6 +158,9 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
                 <td className="text-left">
                   <div className="font-medium">{debt.counterparty}</div>
                   {debt.note && <div className="text-xs text-muted">{debt.note}</div>}
+                </td>
+                <td>
+                  <span className="text-xs text-muted">{KIND_LABEL[debt.kind]}</span>
                 </td>
                 <td className="whitespace-nowrap">{money(debt.total, debt.currency)}</td>
                 <td className="whitespace-nowrap">{money(debt.paid, debt.currency)}</td>
@@ -204,6 +219,7 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
               () =>
                 createDebt({
                   counterparty: String(fd.get("counterparty") ?? ""),
+                  kind: String(fd.get("kind") ?? "FIRM") as "FIRM" | "STREET",
                   currency: String(fd.get("currency") ?? "UZS") as "UZS" | "USD",
                   amount: Number(fd.get("amount") ?? 0),
                   dueDate: String(fd.get("dueDate") ?? "") || undefined,
@@ -215,14 +231,22 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
           }}
         >
           <Field label="Kimdan / kimga">
-            <Input name="counterparty" required placeholder="OOO FARM SAVDO" />
+            <Input name="counterparty" required placeholder="OOO FARM SAVDO yoki Akmal aka" />
           </Field>
-          <Field label="Valyuta">
-            <Select name="currency" defaultValue="UZS">
-              <option value="UZS">so&apos;m</option>
-              <option value="USD">dollar</option>
-            </Select>
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Turi">
+              <Select name="kind" defaultValue="FIRM">
+                <option value="FIRM">Firmadan qarz (tovar)</option>
+                <option value="STREET">Ko&apos;chadan qarz (naqd)</option>
+              </Select>
+            </Field>
+            <Field label="Valyuta">
+              <Select name="currency" defaultValue="UZS">
+                <option value="UZS">so&apos;m</option>
+                <option value="USD">dollar</option>
+              </Select>
+            </Field>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Summa">
               <Input name="amount" type="number" min="1" step="0.01" required />
