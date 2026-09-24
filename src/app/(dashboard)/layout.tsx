@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { AppUpdate } from "@/components/AppUpdate";
 import { MobileNav, Sidebar } from "@/components/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { FilialSwitcher } from "@/components/FilialSwitcher";
@@ -23,6 +24,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
+      <AppUpdate />
       <Sidebar role={role} permissions={permissions} />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-edge bg-card px-4 py-3 sm:px-6">

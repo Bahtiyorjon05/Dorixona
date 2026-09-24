@@ -5,11 +5,12 @@
  * oq ekran chiqmasin. Ma'lumot keshlanmaydi — moliya raqamlari eskirib
  * qolmasligi uchun har doim serverdan olinadi.
  */
-const CACHE = "dorixona-v1";
+const CACHE = "dorixona-v2";
 const SHELL = ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
+  // Yangi versiya kutib turmasin; sahifa "Yangilash" bosilganda qayta yuklanadi
   self.skipWaiting();
 });
 
