@@ -1027,14 +1027,43 @@ export async function getSalesData(input: { from: Date; to: Date }) {
     payments.set(key, current);
   }
 
+  // Kunlik naqd va karta — 30-hisobotdan (PAY: qatorlari)
+  let payRows: { day: Date; docType: string; amount: unknown }[] = [];
+  try {
+    payRows = await db.dailySales.findMany({
+      where: {
+        day: { gte: input.from, lt: toExclusive },
+        docType: { startsWith: "PAY:" },
+        ...(unit ? { unit } : {}),
+      },
+      select: { day: true, docType: true, amount: true },
+    });
+  } catch {
+    // Jadval hali yaratilmagan
+  }
+
+  const cashBoxes = new Set((process.env.FAPTEKA_CASH_BOXES ?? "1").split(",").map((v) => v.trim()));
+  const byDay = new Map<string, { cash: number; card: number }>();
+  for (const row of payRows) {
+    const key = new Date(row.day).toISOString().slice(0, 10);
+    const current = byDay.get(key) ?? { cash: 0, card: 0 };
+    const amount = num(row.amount);
+    if (cashBoxes.has(row.docType.slice(4))) current.cash += amount;
+    else current.card += amount;
+    byDay.set(key, current);
+  }
+
   const daily = dailyRows.map((row) => {
     const day = new Date(row.day);
     const payment = payments.get(day.toISOString().slice(0, 10));
+    const pay = byDay.get(day.toISOString().slice(0, 10));
     return {
       day,
       turnover: num(row.turnover),
       profit: num(row.profit),
       refund: payment?.refund ?? 0,
+      cash: pay?.cash ?? 0,
+      card: pay?.card ?? 0,
     };
   });
   const turnover = daily.reduce((sum, row) => sum + row.turnover, 0);
@@ -1047,6 +1076,9 @@ export async function getSalesData(input: { from: Date; to: Date }) {
     profit,
     refundTotal: daily.reduce((sum, row) => sum + row.refund, 0),
     hasRefunds: paymentRows.length > 0,
+    cashTotal: daily.reduce((sum, row) => sum + row.cash, 0),
+    cardTotal: daily.reduce((sum, row) => sum + row.card, 0),
+    hasPayments: payRows.length > 0,
     // Tan narx hali kelmagan bo'lsa foyda tushumga teng bo'lib qoladi —
     // sahifa shunda ogohlantirish ko'rsatadi.
     costMissing: turnover > 0 && profit >= turnover - 0.5,
