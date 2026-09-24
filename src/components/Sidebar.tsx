@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import { canAccessPermission, type AppPermission } from "@/lib/permissions";
 
 const NAV: { section?: string; items: { href: string; label: string; icon: string; permission: AppPermission }[] }[] = [
@@ -50,9 +51,9 @@ function NavLinks({
       <Link
         href="/boshqaruv"
         onClick={onNavigate}
-        className="mb-2 flex items-center gap-2 px-5 pb-3 text-base font-semibold text-primary"
+        className="mb-2 flex items-center px-5 pb-3"
       >
-        <span className="text-xl">💊</span> Dorixona
+        <Logo height={30} />
       </Link>
       {/* Bosh sahifa hammaga ochiq — ruxsat talab qilmaydi */}
       <Link

@@ -11,7 +11,10 @@ import sharp from "sharp";
 const GREEN = "#1a7f5a";
 const LIGHT = "#e8f5f0";
 
-/** Dorixona belgisi: yashil fon, shaffof kapsula va yurak urishi chizig'i */
+/**
+ * Evomed apteka ilova ikonkasi: ko'k fon, brend yuragi va oq kapsula.
+ * Brend ranglari logotipdagidek — pushti #ec1e79, ko'k #1b2f8f.
+ */
 function icon({ padding = 0 } = {}) {
   const s = 512;
   const inset = padding;
@@ -19,33 +22,28 @@ function icon({ padding = 0 } = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#2ec27e"/>
-      <stop offset="55%" stop-color="#1a9463"/>
-      <stop offset="100%" stop-color="#127048"/>
+      <stop offset="0%" stop-color="#2a45c4"/>
+      <stop offset="55%" stop-color="#1b2f8f"/>
+      <stop offset="100%" stop-color="#121f63"/>
     </linearGradient>
-    <radialGradient id="glow" cx="30%" cy="22%" r="45%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+    <radialGradient id="glow" cx="28%" cy="20%" r="48%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.2"/>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="shade" cx="78%" cy="82%" r="40%">
-      <stop offset="0%" stop-color="#05301f" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#05301f" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
   <rect width="${s}" height="${s}" fill="url(#bg)"/>
   <rect width="${s}" height="${s}" fill="url(#glow)"/>
-  <rect width="${s}" height="${s}" fill="url(#shade)"/>
 
   <g transform="translate(${inset} ${inset}) scale(${box / s})">
-    <g transform="rotate(-38 256 256)">
-      <rect x="96" y="186" width="320" height="140" rx="70"
-            fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6"/>
-      <line x1="256" y1="186" x2="256" y2="326" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6"/>
+    <!-- Brend yuragi -->
+    <path d="M256 412l-22-20c-78-70-129-116-129-174 0-47 37-84 84-84 27 0 52 12 67 32
+             15-20 40-32 67-32 47 0 84 37 84 84 0 58-51 104-129 174z" fill="#ec1e79"/>
+    <!-- Yurak ichidagi oq kapsula -->
+    <g transform="rotate(-38 256 232)">
+      <rect x="150" y="196" width="212" height="86" rx="43" fill="#ffffff"/>
+      <line x1="256" y1="196" x2="256" y2="282" stroke="#ec1e79" stroke-opacity="0.35" stroke-width="7"/>
     </g>
-    <polyline points="112,262 176,262 208,196 252,320 288,242 330,242 356,208 400,262"
-              fill="none" stroke="#ffffff" stroke-width="26"
-              stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>`;
 }

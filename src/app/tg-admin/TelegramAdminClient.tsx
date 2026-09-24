@@ -245,7 +245,7 @@ const tabPermission: Partial<Record<TabKey, string>> = {
 };
 
 const pageMeta: Record<TabKey, { title: string; subtitle: string }> = {
-  overview: { title: "Dorixona Admin", subtitle: "Umumiy holat va tezkor ko'rsatkichlar" },
+  overview: { title: "Evomed apteka", subtitle: "Umumiy holat va tezkor ko'rsatkichlar" },
   finance: { title: "Moliyaviy ko'rsatkichlar", subtitle: "Savdo, foyda va pul oqimi tahlili" },
   sales: { title: "Kassa va savdo", subtitle: "Yangi savdo, oxirgi cheklar va POS nazorati" },
   inventory: { title: "Ombor holati", subtitle: "Mahsulotlar, qoldiq va muddat nazorati" },
@@ -651,7 +651,7 @@ export function TelegramAdminClient() {
       <div className="mx-auto flex min-h-screen w-full max-w-7xl overflow-hidden bg-surface">
         <aside className="hidden w-56 shrink-0 flex-col border-r border-edge bg-card py-4 md:flex">
           <div className="flex items-center gap-2 px-5 pb-5 text-base font-semibold text-primary">
-            <span className="text-xl">💊</span> Dorixona
+            <span className="text-xl">💊</span> Evomed apteka
           </div>
           <nav className="space-y-0.5">
             {availableTabs.map(([key, label, icon]) => (

@@ -26,7 +26,7 @@ export default async function BoshqaruvPage() {
   return (
     <div>
       <PageHeader
-        title="Dorixona — bosh sahifa"
+        title="Evomed apteka — bosh sahifa"
         subtitle={`Umumiy holat${d.filial === "Umumiy" ? "" : ` — ${d.filial}`}`}
         action={<InstallApp />}
       />

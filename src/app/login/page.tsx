@@ -1,4 +1,5 @@
 import { authenticate } from "@/lib/actions/auth";
+import { Logo } from "@/components/Logo";
 
 export default async function LoginPage({
   searchParams,
@@ -15,7 +16,7 @@ export default async function LoginPage({
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-light text-2xl">
             💊
           </div>
-          <h1 className="text-lg font-semibold text-primary">Dorixona</h1>
+          <Logo height={34} />
           <p className="mt-1 text-sm text-muted">Boshqaruv paneliga kirish</p>
         </div>
 

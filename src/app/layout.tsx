@@ -8,13 +8,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Dorixona — boshqaruv platformasi",
+  title: "Evomed apteka — boshqaruv platformasi",
   description:
-    "Dorixona moliya, ombor, xodimlar KPI va sodiqlik tizimi boshqaruv paneli",
+    "Evomed apteka: savdo, ombor, moliya, qarzlar va xodimlar boshqaruvi",
   // Telefon va kompyuterga ilova sifatida o'rnatish uchun
   manifest: "/manifest.webmanifest",
-  applicationName: "Dorixona",
-  appleWebApp: { capable: true, title: "Dorixona", statusBarStyle: "default" },
+  applicationName: "Evomed apteka",
+  appleWebApp: { capable: true, title: "Evomed apteka", statusBarStyle: "default" },
   icons: {
     icon: [
       { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1a7f5a",
+  themeColor: "#1b2f8f",
 };
 
 // Sahifa ko'rinishidan oldin temani o'rnatadi (miltillashning oldini oladi)
