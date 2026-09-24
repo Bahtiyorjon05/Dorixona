@@ -33,6 +33,11 @@
   /* grafik o'qlari */
   --c-chart-axis: #6b7280;
   --c-chart-grid: rgba(128, 128, 128, 0.12);
+
+  /* soya va chuqurlik */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 20, 0.05);
+  --shadow-md: 0 2px 10px rgba(16, 24, 20, 0.07);
+  --ring: rgba(26, 127, 90, 0.35);
 }
 
 /* ─── Qorong'i tema ─── */
@@ -55,6 +60,12 @@
 
   --c-chart-axis: #8b958f;
   --c-chart-grid: rgba(255, 255, 255, 0.08);
+
+  /* Qorong'ida soya ko'rinmaydi — chegara biroz yorqinroq bo'ladi */
+  --c-border: #2f3833;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --ring: rgba(86, 207, 160, 0.4);
 }
 
 @theme inline {
@@ -79,6 +90,18 @@
   box-sizing: border-box;
 }
 
+/* Klaviatura bilan yurilganda qayerda turganimiz ko'rinsin */
+:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--c-primary-light);
+  color: var(--c-text);
+}
+
 html {
   color-scheme: light;
 }
@@ -91,6 +114,12 @@ body {
   color: var(--c-text);
   font-family: var(--font-sans), system-ui, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Raqamlar ustunlarda tekis tursin */
+table, .metric-card, .badge {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Qayta ishlatiladigan komponent klasslari ─── */
@@ -99,13 +128,42 @@ body {
     background: var(--c-bg);
     border: 1px solid var(--c-border);
     border-radius: 14px;
+    box-shadow: var(--shadow-sm);
   }
   .metric-card {
     background: var(--c-bg);
     border: 1px solid var(--c-border);
-    border-radius: 10px;
-    padding: 16px;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   }
+  .metric-card:hover {
+    border-color: color-mix(in srgb, var(--c-primary) 35%, var(--c-border));
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Tugmalar — bir xil ko'rinish uchun */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  }
+  .btn:disabled { opacity: 0.6; cursor: default; }
+  .btn-primary { background: var(--c-primary); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--c-primary-mid); }
+  .btn-ghost { background: transparent; border-color: var(--c-border); color: var(--c-text); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--c-primary); color: var(--c-primary); }
+  .btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
   .badge {
     display: inline-flex;
     align-items: center;
@@ -129,9 +187,12 @@ body {
   }
   .data-table th {
     text-align: left;
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--c-muted);
-    padding: 8px 10px;
+    padding: 10px;
     border-bottom: 1px solid var(--c-border);
     white-space: nowrap;
   }
@@ -141,6 +202,7 @@ body {
     vertical-align: middle;
   }
   .data-table tbody tr:last-child td { border-bottom: 0; }
+  .data-table tbody tr { transition: background-color 0.12s ease; }
   .data-table tbody tr:hover { background: var(--c-surface); }
   .data-table th:not(:first-child),
   .data-table td:not(:first-child) { text-align: center; }

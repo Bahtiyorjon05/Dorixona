@@ -55,7 +55,7 @@ export default async function SavdoPage({
           gacha
           <input type="date" name="gacha" defaultValue={toInputValue(to)} className={inputClass} />
         </label>
-        <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">
+        <button type="submit" className="btn btn-primary">
           Ko&apos;rsatish
         </button>
       </form>

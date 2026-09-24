@@ -125,9 +125,9 @@ export function InstallApp() {
       <button
         type="button"
         onClick={install}
-        className="rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary-light"
+        className="btn btn-primary btn-sm whitespace-nowrap"
       >
-        Ilovani o&apos;rnatish
+        <span aria-hidden>⤓</span> Ilovani o&apos;rnatish
       </button>
 
       {showHelp && (
@@ -146,7 +146,7 @@ export function InstallApp() {
             <button
               type="button"
               onClick={() => setShowHelp(false)}
-              className="w-full rounded-lg bg-primary py-2 text-sm font-medium text-white"
+              className="btn btn-primary w-full"
             >
               Tushunarli
             </button>

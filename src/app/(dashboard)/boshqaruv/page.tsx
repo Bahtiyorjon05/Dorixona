@@ -153,7 +153,7 @@ export default async function BoshqaruvPage() {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-lg border border-edge px-3 py-3 text-center text-sm transition hover:border-primary"
+              className="rounded-lg border border-edge bg-surface px-3 py-3 text-center text-sm font-medium transition hover:border-primary hover:text-primary"
             >
               {link.label}
             </Link>

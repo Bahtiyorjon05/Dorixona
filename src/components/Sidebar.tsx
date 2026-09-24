@@ -61,7 +61,7 @@ function NavLinks({
         onClick={onNavigate}
         className={`mx-2 mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
           pathname === "/boshqaruv"
-            ? "bg-primary-light font-medium text-primary"
+            ? "bg-primary-light font-medium text-primary shadow-[inset_3px_0_0_var(--c-primary)]"
             : "text-muted hover:bg-surface hover:text-fg"
         }`}
       >
@@ -86,7 +86,7 @@ function NavLinks({
                   onClick={onNavigate}
                   className={`mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
                     active
-                      ? "bg-primary-light font-medium text-primary"
+                      ? "bg-primary-light font-medium text-primary shadow-[inset_3px_0_0_var(--c-primary)]"
                       : "text-muted hover:bg-surface hover:text-fg"
                   }`}
                 >

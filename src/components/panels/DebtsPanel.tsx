@@ -175,28 +175,28 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
                     <button
                       type="button"
                       onClick={() => { setError(""); setEntryFor({ debt, type: "PAYMENT" }); }}
-                      className="rounded-lg bg-primary px-2 py-1 text-xs font-medium text-white"
+                      className="btn btn-primary btn-sm"
                     >
                       To&apos;lov
                     </button>
                     <button
                       type="button"
                       onClick={() => { setError(""); setEntryFor({ debt, type: "CHARGE" }); }}
-                      className="rounded-lg border border-edge px-2 py-1 text-xs"
+                      className="btn btn-ghost btn-sm"
                     >
                       + Qarz
                     </button>
                     <button
                       type="button"
                       onClick={() => setHistoryFor(debt)}
-                      className="rounded-lg border border-edge px-2 py-1 text-xs"
+                      className="btn btn-ghost btn-sm"
                     >
                       Tarix
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirming(debt)}
-                      className="rounded-lg border border-edge px-2 py-1 text-xs text-danger"
+                      className="btn btn-ghost btn-sm text-danger"
                     >
                       O&apos;chirish
                     </button>
@@ -390,14 +390,14 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
                 type="button"
                 disabled={pending}
                 onClick={() => run(() => deleteDebt(confirming.id), () => setConfirming(null))}
-                className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white"
+                className="btn btn-primary" style={{ background: "var(--c-danger)" }}
               >
                 O&apos;chirish
               </button>
               <button
                 type="button"
                 onClick={() => setConfirming(null)}
-                className="rounded-lg border border-edge px-4 py-2 text-sm"
+                className="btn btn-ghost"
               >
                 Bekor qilish
               </button>

@@ -90,7 +90,7 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+      className="btn btn-primary w-full py-2.5"
     >
       {pending ? "Saqlanmoqda..." : children}
     </button>
@@ -107,7 +107,7 @@ export function PrimaryButton({
   return (
     <button
       onClick={onClick}
-      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+      className="btn btn-primary btn-sm"
     >
       {children}
     </button>

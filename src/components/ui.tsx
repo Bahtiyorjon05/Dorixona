@@ -10,12 +10,12 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex items-start justify-between">
-      <div>
-        <h1 className="text-xl font-semibold">{title}</h1>
-        {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
     </div>
   );
 }
@@ -35,14 +35,14 @@ export function MetricCard({
 }) {
   return (
     <div className="metric-card">
-      <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted">
-        {icon && <span>{icon}</span>}
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
+        {icon && <span className="text-sm opacity-80">{icon}</span>}
         {label}
       </div>
-      <div className="text-[22px] font-semibold" style={{ color: valueColor }}>
+      <div className="text-[23px] font-semibold leading-none tracking-tight" style={{ color: valueColor }}>
         {value}
       </div>
-      {sub && <div className="mt-1 text-xs text-muted">{sub}</div>}
+      {sub && <div className="mt-2 text-xs text-muted">{sub}</div>}
     </div>
   );
 }
@@ -63,10 +63,10 @@ export function Card({
   return (
     <div className={`card p-4 ${className}`}>
       {(title || action) && (
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between gap-2">
           {title && (
-            <span className="flex items-center gap-2 text-sm font-medium">
-              {icon && <span>{icon}</span>}
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              {icon && <span className="opacity-80">{icon}</span>}
               {title}
             </span>
           )}
