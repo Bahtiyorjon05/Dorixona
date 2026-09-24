@@ -8,6 +8,7 @@ import {
   syncFaptekaCostPrices,
   syncFaptekaIncomingSuppliers,
   syncFaptekaOrganizations,
+  syncFaptekaPayments,
   syncFaptekaPushedReport,
   syncFaptekaSupplierDebts,
   syncFaptekaSalesTotals,
@@ -133,6 +134,20 @@ export async function POST(request: NextRequest) {
     });
     revalidatePath("/ombor");
     revalidatePath("/boshqaruv");
+    return NextResponse.json({ ok: true, result });
+  }
+
+  // 30-hisobot: kassaga tushgan pul — to'lov turi bo'yicha
+  if (report === "payments") {
+    const result = await syncFaptekaPayments({ rows, filialId, dateFrom });
+    await writeLog({
+      rowCount: rows.length,
+      keys: fieldKeys(rows).slice(0, 2000),
+      note: `${label} | kassa: ${result.summary || "yo'q"}`,
+      ok: true,
+    });
+    revalidatePath("/moliya");
+    revalidatePath("/savdo");
     return NextResponse.json({ ok: true, result });
   }
 

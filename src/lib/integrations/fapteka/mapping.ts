@@ -55,7 +55,8 @@ export type FaptekaReportKey =
   | "insuranceSaleV2"
   | "organizations"
   | "salesTotals"
-  | "incomingTotals";
+  | "incomingTotals"
+  | "payments";
 
 export type FaptekaReport = {
   key: FaptekaReportKey;
@@ -262,6 +263,20 @@ export const FAPTEKA_REPORTS: Record<FaptekaReportKey, FaptekaReport> = {
       { key: "N", meaning: "Hujjat raqami", erpField: "Expense.title ichidagi #raqam" },
       { key: "O", meaning: "Yetkazib beruvchi ID", erpField: "FaptekaOrg.id" },
       { key: "SS", meaning: "Summa (QQS bilan)", erpField: "Tekshirish uchun" },
+    ],
+  },
+  payments: {
+    key: "payments",
+    id: 30,
+    title: "Kassaga tushgan pul (PAYIN)",
+    direction: "F_APTEKA_TO_ERP",
+    erpTarget: "DailySales — to'lov turi bo'yicha",
+    preferred: true,
+    fields: [
+      { key: "F", meaning: "Filial ID", erpField: "unit" },
+      { key: "D", meaning: "Sana", erpField: "day" },
+      { key: "C", meaning: "Kassa raqami (naqd, terminal, ...)", erpField: "docType = PAY:<C>" },
+      { key: "S", meaning: "Summa", erpField: "amount" },
     ],
   },
   organizations: {

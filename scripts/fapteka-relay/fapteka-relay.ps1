@@ -61,6 +61,7 @@ $Reports = [ordered]@{
   incomingTotals = 20                  # Prihody - yetkazib beruvchi bilan (tuzatilgan)
   supplierReturn = 2                   # Vozvrat postavshchiku
   writeOff       = 3                   # Spisanie
+  payments       = 30                  # PAYIN - kassaga tushgan pul (naqd/terminal)
   organizations  = 189                 # Spravochnik organizatsiy
   catalog        = 188                 # Spravochnik tovarov (nom va toifa)
 }
@@ -115,7 +116,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v10 boshlandi (kirimdan firma qarzi avtomatik yoziladi)"
+Write-Log "relay v11 boshlandi (30-hisobot: tolov turlari - naqd, terminal)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)

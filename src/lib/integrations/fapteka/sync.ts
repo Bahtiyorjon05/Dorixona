@@ -769,6 +769,51 @@ export async function syncFaptekaIncomingSuppliers(input: {
   return { ok: true, updated, unknownOrgs };
 }
 
+/**
+ * 30-hisobot (PAYIN): kassaga tushgan pul, kassa apparati kesimida.
+ *
+ * Savdo hisobotlarida to'lov turi yo'q, bu yerda esa har kassa alohida:
+ * naqd, terminal va boshqalar. Kassa raqamlari DailySales ga "PAY:1",
+ * "PAY:2" ko'rinishida yoziladi — nomlari sozlamada beriladi.
+ */
+export async function syncFaptekaPayments(input: {
+  rows: FaptekaRow[];
+  filialId: string;
+  dateFrom: string;
+}) {
+  const dateFrom = isoDate(input.dateFrom);
+  const unit = otdelUnitMap().get(input.filialId) ?? "Umumiy";
+  const day = new Date(dateFrom);
+
+  const byCashbox = new Map<string, number>();
+  for (const row of input.rows) {
+    if (row.F && row.F.trim() !== input.filialId) continue;
+    const cashbox = (row.C ?? "").trim() || "?";
+    byCashbox.set(cashbox, (byCashbox.get(cashbox) ?? 0) + numberValue(row.S));
+  }
+
+  let saved = 0;
+  for (const [cashbox, amount] of byCashbox) {
+    const docType = `PAY:${cashbox}`;
+    try {
+      await db.dailySales.upsert({
+        where: { day_unit_docType: { day, unit, docType } },
+        update: { amount, cost: 0 },
+        create: { day, unit, docType, amount, cost: 0 },
+      });
+      saved += 1;
+    } catch {
+      // Jadval hali yaratilmagan bo'lsa asosiy ish to'xtamasin
+    }
+  }
+
+  const summary = [...byCashbox.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([cashbox, amount]) => `K${cashbox}=${Math.round(amount)}`)
+    .join(", ");
+  return { ok: true, receivedRows: input.rows.length, saved, summary };
+}
+
 /** Kirim hujjatiga qarz muddati: sana + shuncha kun */
 const SUPPLIER_TERM_DAYS = Number(process.env.FAPTEKA_SUPPLIER_TERM_DAYS ?? 30) || 30;
 
@@ -1035,6 +1080,7 @@ export const FAPTEKA_PUSH_REPORTS = [
   "salesTotals",
   "incomingTotals",
   "catalog",
+  "payments",
 ] as const;
 export type FaptekaPushReport = (typeof FAPTEKA_PUSH_REPORTS)[number];
 
@@ -1096,6 +1142,7 @@ export async function syncFaptekaPushedReport(input: {
       case "salesTotals":
       case "incomingTotals":
       case "catalog":
+      case "payments":
         // Bularni route alohida bajaradi
         break;
     }
