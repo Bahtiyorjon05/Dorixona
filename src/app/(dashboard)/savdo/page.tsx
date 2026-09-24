@@ -61,25 +61,22 @@ export default async function SavdoPage({
       </form>
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard icon="🪙" label="Tushum" value={formatSom(d.turnover)} />
+        <MetricCard label="Tushum" value={formatSom(d.turnover)} />
         <MetricCard
-          icon="📈"
           label="Foyda"
           value={formatSom(d.profit)}
           sub={`Marja ${margin(d.turnover, d.profit)}`}
           valueColor="var(--c-primary)"
         />
-        <MetricCard icon="🗓️" label="Kunlik o'rtacha" value={formatSom(average)} sub={`${days} kun`} />
+        <MetricCard label="Kunlik o'rtacha" value={formatSom(average)} sub={`${days} kun`} />
         {d.hasPayments ? (
           <MetricCard
-            icon="👛"
             label="Naqd / Terminal"
             value={formatSom(d.cashTotal)}
             sub={`Terminal: ${formatSom(d.cardTotal)}`}
           />
         ) : (
           <MetricCard
-            icon="💊"
             label="Sotilgan tovar turi"
             value={`${formatNumber(d.products.length)}+`}
             sub="Eng ko'plari pastda"

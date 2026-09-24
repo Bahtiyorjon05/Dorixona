@@ -451,6 +451,8 @@ model Debt {
 /// Qarz tarixi: "shuncha berildi, shuncha qoldi" shu yerdan hisoblanadi
 model DebtEntry {
   id        String        @id @default(cuid())
+  /// F-Apteka hujjatidan kelgan bo'lsa: "FA:INC:1112" — takror yozilmasligi uchun
+  ref       String?       @unique
   debtId    String
   debt      Debt          @relation(fields: [debtId], references: [id], onDelete: Cascade)
   type      DebtEntryType

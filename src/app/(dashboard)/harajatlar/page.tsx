@@ -153,7 +153,6 @@ export default async function HarajatlarPage({
       {d.debts.length > 0 && (
         <Card
           title="Qarzlar"
-          icon="🧮"
           className="mb-5"
           action={
             <Link href="/qarzlar" className="text-xs text-primary">

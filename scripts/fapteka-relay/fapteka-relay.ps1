@@ -115,7 +115,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v9 boshlandi (188-spravochnik: tovar nomlari va toifalari)"
+Write-Log "relay v10 boshlandi (kirimdan firma qarzi avtomatik yoziladi)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)

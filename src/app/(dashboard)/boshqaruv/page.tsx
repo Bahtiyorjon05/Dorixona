@@ -6,12 +6,12 @@ import { getDashboardData, getDebtsData } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 const LINKS = [
-  { href: "/savdo", label: "Savdo", icon: "💹" },
-  { href: "/moliya", label: "Moliya", icon: "📈" },
-  { href: "/harajatlar", label: "Harajatlar", icon: "🧾" },
-  { href: "/qarzlar", label: "Qarzlar", icon: "💳" },
-  { href: "/ombor", label: "Ombor", icon: "📦" },
-  { href: "/analitika", label: "Analitika", icon: "📉" },
+  { href: "/savdo", label: "Savdo" },
+  { href: "/moliya", label: "Moliya" },
+  { href: "/harajatlar", label: "Harajatlar" },
+  { href: "/qarzlar", label: "Qarzlar" },
+  { href: "/ombor", label: "Ombor" },
+  { href: "/analitika", label: "Analitika" },
 ];
 
 function money(amount: number, currency: "UZS" | "USD") {
@@ -55,7 +55,6 @@ export default async function BoshqaruvPage() {
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
-          icon="🪙"
           label="Bugungi savdo"
           value={formatNumber(d.todaySales)}
           sub={
@@ -73,16 +72,14 @@ export default async function BoshqaruvPage() {
             )
           }
         />
-        <MetricCard icon="📊" label="Shu oy tushum" value={formatNumber(d.monthTurnover)} />
+        <MetricCard label="Shu oy tushum" value={formatNumber(d.monthTurnover)} />
         <MetricCard
-          icon="📈"
           label="Shu oy foyda"
           value={formatNumber(d.monthProfit)}
           valueColor="var(--c-primary)"
           sub={`Marja ${margin.toFixed(1)}%`}
         />
         <MetricCard
-          icon="📦"
           label="Ombor qiymati"
           value={formatNumber(d.stockValue)}
           sub={`${formatNumber(d.stockPositions)} pozitsiya`}
@@ -90,7 +87,7 @@ export default async function BoshqaruvPage() {
       </div>
 
       <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <Card title="Qoldig'i tugayotgan" icon="⚠️">
+        <Card title="Qoldig'i tugayotgan">
           {d.lowStock.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted">Hammasi yetarli.</p>
           ) : (
@@ -117,7 +114,7 @@ export default async function BoshqaruvPage() {
           )}
         </Card>
 
-        <Card title="Muddati yaqin dorilar" icon="⏳">
+        <Card title="Muddati yaqin dorilar">
           {d.expiring.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted">30 kun ichida muddati tugaydigan yo&apos;q.</p>
           ) : (
@@ -145,15 +142,14 @@ export default async function BoshqaruvPage() {
         </Card>
       </div>
 
-      <Card title="Bo'limlar" icon="🧭">
+      <Card title="Bo'limlar">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="flex flex-col items-center gap-1 rounded-lg border border-edge px-3 py-4 text-sm transition hover:border-primary"
+              className="rounded-lg border border-edge px-3 py-3 text-center text-sm transition hover:border-primary"
             >
-              <span className="text-xl">{link.icon}</span>
               {link.label}
             </Link>
           ))}

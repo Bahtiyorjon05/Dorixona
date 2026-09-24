@@ -769,6 +769,120 @@ export async function syncFaptekaIncomingSuppliers(input: {
   return { ok: true, updated, unknownOrgs };
 }
 
+/** Kirim hujjatiga qarz muddati: sana + shuncha kun */
+const SUPPLIER_TERM_DAYS = Number(process.env.FAPTEKA_SUPPLIER_TERM_DAYS ?? 30) || 30;
+
+/** Qarz summalarini tarixdan qayta hisoblaydi */
+async function recalcDebt(debtId: string) {
+  const entries = await db.debtEntry.findMany({
+    where: { debtId },
+    select: { type: true, amount: true },
+  });
+  let total = 0;
+  let paid = 0;
+  for (const entry of entries) {
+    if (entry.type === "CHARGE") total += Number(entry.amount);
+    else paid += Number(entry.amount);
+  }
+  const remaining = total - paid;
+  await db.debt.update({
+    where: { id: debtId },
+    data: { totalAmount: total, paidAmount: paid, closedAt: remaining <= 0.009 ? new Date() : null },
+  });
+}
+
+/**
+ * Firmadan olingan tovar — qarz sifatida yoziladi (20-hisobot).
+ *
+ * F-Apteka to'lovlarni bermaydi, faqat nima olinganini beradi. Shuning
+ * uchun qarz avtomatik oshadi, to'lovlar esa ERP da qo'lda kiritiladi:
+ * "shuncha berildi, shuncha qoldi" shundan chiqadi.
+ *
+ * Har hujjat bir marta yoziladi — DebtEntry.ref bo'yicha tekshiriladi.
+ */
+export async function syncFaptekaSupplierDebts(rows: FaptekaRow[]) {
+  const branch = await db.branch.findFirst({ where: { isActive: true } });
+  if (!branch) throw new Error("Aktiv filial topilmadi");
+
+  const orgIds = [...new Set(rows.map((row) => (row.O ?? "").trim()).filter(Boolean))];
+  if (!orgIds.length) return { ok: true, created: 0, updated: 0, skipped: rows.length };
+
+  const orgs = await db.faptekaOrg.findMany({
+    where: { id: { in: orgIds } },
+    select: { id: true, name: true },
+  });
+  const names = new Map(orgs.map((org) => [org.id, org.name]));
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const docId = (row.N ?? "").trim();
+    const supplier = names.get((row.O ?? "").trim());
+    const amount = numberValue(row.SS) || numberValue(row.SP) + numberValue(row.SN);
+    if (!docId || !supplier || amount <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const happenedAt = dateValue(row.D) ?? new Date();
+    const ref = `FA:INC:${docId}`;
+
+    // Shu yetkazib beruvchining ochiq qarzi bo'lsa — o'shanga qo'shamiz
+    let debt = await db.debt.findFirst({
+      where: { branchId: branch.id, kind: "FIRM", counterparty: supplier, closedAt: null },
+    });
+    if (!debt) {
+      debt = await db.debt.create({
+        data: {
+          counterparty: supplier,
+          kind: "FIRM",
+          currency: "UZS",
+          direction: "PAYABLE",
+          totalAmount: 0,
+          paidAmount: 0,
+          dueDate: new Date(happenedAt.getTime() + SUPPLIER_TERM_DAYS * 864e5),
+          note: "F-Apteka kirimlaridan avtomatik",
+          branchId: branch.id,
+        },
+      });
+    }
+
+    const existing = await db.debtEntry.findUnique({ where: { ref } });
+    if (existing) {
+      await db.debtEntry.update({
+        where: { ref },
+        data: { amount, happenedAt, debtId: debt.id },
+      });
+      updated += 1;
+    } else {
+      await db.debtEntry.create({
+        data: {
+          ref,
+          debtId: debt.id,
+          type: "CHARGE",
+          amount,
+          happenedAt,
+          note: `Kirim #${docId}`,
+        },
+      });
+      created += 1;
+    }
+
+    // Muddat qo'yilmagan bo'lsa, kirim sanasiga qarab qo'yiladi
+    if (!debt.dueDate) {
+      await db.debt.update({
+        where: { id: debt.id },
+        data: { dueDate: new Date(happenedAt.getTime() + SUPPLIER_TERM_DAYS * 864e5) },
+      });
+    }
+    await recalcDebt(debt.id);
+  }
+
+  return { ok: true, created, updated, skipped };
+}
+
 /**
  * 188-hisobot (spravochnik): barcha tovarlar nomi va o'lchov birligi.
  *

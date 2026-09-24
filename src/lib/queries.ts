@@ -1048,6 +1048,7 @@ export async function getDebtsData() {
       note: debt.note,
       entries: debt.entries.map((entry) => ({
         id: entry.id,
+        ref: entry.ref,
         type: entry.type as "CHARGE" | "PAYMENT",
         amount: num(entry.amount),
         happenedAt: entry.happenedAt,

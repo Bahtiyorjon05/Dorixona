@@ -9,6 +9,7 @@ import {
   syncFaptekaIncomingSuppliers,
   syncFaptekaOrganizations,
   syncFaptekaPushedReport,
+  syncFaptekaSupplierDebts,
   syncFaptekaSalesTotals,
 } from "@/lib/integrations/fapteka/sync";
 import { recomputeRange } from "@/lib/monthly-finance";
@@ -156,17 +157,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, totals });
   }
 
-  // 20-hisobot: harajat nomiga yetkazib beruvchini qo'shadi
+  // 20-hisobot: harajat nomiga yetkazib beruvchi + firmaga qarz yoziladi
   if (report === "incomingTotals") {
     const result = await syncFaptekaIncomingSuppliers({ rows, dateFrom, dateTo });
+    // Tovar olindi = firmaga qarz. To'lovlar ERP da qo'lda kiritiladi.
+    let debts = { created: 0, updated: 0, skipped: 0 };
+    try {
+      debts = await syncFaptekaSupplierDebts(rows);
+    } catch (error) {
+      await writeLog({
+        rowCount: rows.length,
+        note: `${label} | qarz yozilmadi: ${error instanceof Error ? error.message : "xato"}`,
+        ok: false,
+      });
+    }
     await writeLog({
       rowCount: rows.length,
       keys: fieldKeys(rows).slice(0, 2000),
-      note: `${label} | yetkazib beruvchi yozildi: ${result.updated} ta, noma'lum: ${result.unknownOrgs}`,
+      note:
+        `${label} | yetkazib beruvchi: ${result.updated} ta, noma'lum: ${result.unknownOrgs}` +
+        ` | qarz: +${debts.created} yangi, ${debts.updated} yangilandi`,
       ok: true,
     });
     revalidatePath("/harajatlar");
-    return NextResponse.json({ ok: true, result });
+    revalidatePath("/qarzlar");
+    return NextResponse.json({ ok: true, result, debts });
   }
 
   // costOnly: eski kirimlardan faqat tan narx olinadi (harajat yozilmaydi)

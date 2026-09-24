@@ -9,6 +9,8 @@ import { addDebtEntry, createDebt, deleteDebt, updateDebtDueDate } from "@/lib/a
 
 type Entry = {
   id: string;
+  /** F-Apteka kirimidan kelgan bo'lsa to'ladi */
+  ref?: string | null;
   type: "CHARGE" | "PAYMENT";
   amount: number;
   happenedAt: string | Date;
@@ -358,6 +360,7 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
                         <Badge color="amber">Qarz</Badge>
                       )}
                       {entry.note && <div className="text-xs text-muted">{entry.note}</div>}
+                      {entry.ref && <div className="text-xs text-muted">F-Apteka&apos;dan avtomatik</div>}
                     </td>
                     <td className="whitespace-nowrap">{money(entry.amount, historyFor.currency)}</td>
                   </tr>
