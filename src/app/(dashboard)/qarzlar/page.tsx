@@ -21,6 +21,14 @@ export default async function QarzlarPage() {
         subtitle="Firmadan olingan tovar qarzi va ko'chadagi naqd qarz — qancha berildi, qancha qoldi"
       />
 
+      {d.needsMigration && (
+        <div className="mb-5 rounded-lg border border-danger bg-danger-light p-3 text-sm">
+          <b>Jadval hali yaratilmagan.</b> Supabase → SQL Editor da{" "}
+          <code>prisma/manual/qarzlar.sql</code> faylini ishga tushiring, shundan keyin bu bo&apos;lim
+          ishlaydi.
+        </div>
+      )}
+
       {(d.overdue.length > 0 || d.dueSoon.length > 0) && (
         <div className="mb-5 space-y-2">
           {d.overdue.length > 0 && (

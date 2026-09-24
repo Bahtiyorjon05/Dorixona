@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { activeBranch } from "@/lib/actions/_shared";
 import { monthName } from "@/lib/format";
@@ -889,11 +890,21 @@ export const DEBT_DUE_SOON_DAYS = 5;
  */
 export async function getDebtsData() {
   const branchId = await getBranchId();
-  const rows = await db.debt.findMany({
-    where: { branchId },
-    orderBy: [{ closedAt: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
-    include: { entries: { orderBy: { happenedAt: "desc" } } },
-  });
+
+  // Jadval hali yaratilmagan bo'lsa (qarzlar.sql ishga tushirilmagan),
+  // sahifa xato bermasin — bo'sh ro'yxat va ogohlantirish qaytaramiz.
+  type DebtWithEntries = Prisma.DebtGetPayload<{ include: { entries: true } }>;
+  let rows: DebtWithEntries[] = [];
+  let needsMigration = false;
+  try {
+    rows = await db.debt.findMany({
+      where: { branchId },
+      orderBy: [{ closedAt: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
+      include: { entries: { orderBy: { happenedAt: "desc" } } },
+    });
+  } catch {
+    needsMigration = true;
+  }
 
   const today = startOfDay();
   const soonEdge = new Date(today.getTime() + DEBT_DUE_SOON_DAYS * 864e5);
@@ -938,6 +949,7 @@ export async function getDebtsData() {
       .reduce((sum, debt) => sum + debt.remaining, 0);
 
   return {
+    needsMigration,
     debts,
     totals: {
       firmUzs: sumBy("FIRM", "UZS"),
