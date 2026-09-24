@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { decodeXmlBuffer, parseFaptekaXml, type FaptekaRow } from "@/lib/integrations/fapteka/client";
 import {
   isFaptekaPushReport,
+  syncFaptekaCatalog,
   syncFaptekaCostPrices,
   syncFaptekaIncomingSuppliers,
   syncFaptekaOrganizations,
@@ -118,6 +119,20 @@ export async function POST(request: NextRequest) {
       ok: true,
     });
     return NextResponse.json({ ok: true, orgs });
+  }
+
+  // 188-hisobot: tovar nomlari va toifalari
+  if (report === "catalog") {
+    const result = await syncFaptekaCatalog(rows);
+    await writeLog({
+      rowCount: rows.length,
+      keys: fieldKeys(rows).slice(0, 2000),
+      note: `${label} | nom yangilandi: ${result.updated} ta tovar, ${Date.now() - startedAt}ms`,
+      ok: true,
+    });
+    revalidatePath("/ombor");
+    revalidatePath("/boshqaruv");
+    return NextResponse.json({ ok: true, result });
   }
 
   // 22-hisobot: kun bo'yicha haqiqiy tan narx — savdo bandlariga tarqatiladi

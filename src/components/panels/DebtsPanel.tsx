@@ -64,7 +64,7 @@ function DueCell({ debt }: { debt: DebtRow }) {
   if (debt.overdue) {
     return (
       <span className="font-semibold text-danger">
-        {text} · {Math.abs(left)} kun o&apos;tdi
+        {text} · {left < 0 ? `${Math.abs(left)} kun o'tdi` : `${left} kun qoldi`}
       </span>
     );
   }

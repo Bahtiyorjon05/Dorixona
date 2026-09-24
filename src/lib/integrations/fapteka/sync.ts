@@ -770,6 +770,57 @@ export async function syncFaptekaIncomingSuppliers(input: {
 }
 
 /**
+ * 188-hisobot (spravochnik): barcha tovarlar nomi va o'lchov birligi.
+ *
+ * SITE.exe faqat qoldig'i bor tovarlarni yuboradi, shuning uchun sotilgan-u
+ * qoldig'i qolmagan dori ERP da "F-Apteka #326340" bo'lib qolardi. Bu
+ * hisobot hammasini beradi: nom va toifa shu yerdan to'ldiriladi.
+ * Narx va qoldiqqa tegilmaydi — ular SITE.exe dan keladi.
+ */
+export async function syncFaptekaCatalog(rows: FaptekaRow[]) {
+  const branch = await db.branch.findFirst({ where: { isActive: true } });
+  if (!branch) throw new Error("Aktiv filial topilmadi");
+
+  const items = new Map<string, { sku: string; name: string; unit: string; category: string }>();
+  for (const row of rows) {
+    const id = rowId(row, "I");
+    const name = (row.N ?? "").trim();
+    if (!id || !name) continue;
+    items.set(faptekaSku(id), {
+      sku: faptekaSku(id),
+      name,
+      unit: (row.E ?? "").trim(),
+      category: categoryFromName(name),
+    });
+  }
+
+  const list = [...items.values()];
+  let updated = 0;
+  for (let index = 0; index < list.length; index += 1000) {
+    const chunk = list.slice(index, index + 1000);
+    const count = await db.$executeRaw(Prisma.sql`
+      UPDATE "Product" p SET
+        "name" = v.name,
+        "unit" = CASE WHEN v.unit = '' THEN p."unit" ELSE v.unit END,
+        -- Odam qo'lda qo'ygan toifaga tegilmaydi
+        "category" = CASE
+          WHEN p."category" IS NULL OR p."category" IN ('', 'F-Apteka', ${FAPTEKA_DEFAULT_CATEGORY})
+            THEN v.category
+          ELSE p."category"
+        END,
+        "updatedAt" = NOW()
+      FROM (VALUES ${Prisma.join(
+        chunk.map((item) => Prisma.sql`(${item.sku}, ${item.name}, ${item.unit}, ${item.category})`),
+      )}) AS v(sku, name, unit, category)
+      WHERE p."sku" = v.sku AND p."branchId" = ${branch.id}
+    `);
+    updated += Number(count);
+  }
+
+  return { ok: true, receivedRows: rows.length, updated };
+}
+
+/**
  * F-Apteka tashkilotlari (189-hisobot): yetkazib beruvchi, filial,
  * sug'urta kompaniyasi. Kirim harajatida nomni yozish uchun kerak.
  */
@@ -869,6 +920,7 @@ export const FAPTEKA_PUSH_REPORTS = [
   "organizations",
   "salesTotals",
   "incomingTotals",
+  "catalog",
 ] as const;
 export type FaptekaPushReport = (typeof FAPTEKA_PUSH_REPORTS)[number];
 
@@ -929,6 +981,7 @@ export async function syncFaptekaPushedReport(input: {
       case "organizations":
       case "salesTotals":
       case "incomingTotals":
+      case "catalog":
         // Bularni route alohida bajaradi
         break;
     }

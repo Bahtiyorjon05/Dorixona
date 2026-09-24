@@ -64,43 +64,62 @@ export default async function KpiPage() {
                 baholarni kiriting — reyting, bonus va o&apos;rtacha KPI avtomatik hisoblanadi.
               </p>
             )}
-            <div className="flex flex-col gap-1.5">
-              {d.ranking.map((r, i) => (
-                <div key={r.id} className="flex items-center gap-3 rounded-lg border border-edge p-2.5">
-                  <div
-                    className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium"
-                    style={{
-                      background: RANK_BG[i] ?? "var(--c-surface)",
-                      color: RANK_FG[i] ?? "var(--c-muted)",
-                    }}
-                  >
-                    {i + 1}
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{r.name}</div>
-                    <div className="text-xs text-muted">{r.position}</div>
-                  </div>
-                  <div className="text-right">
-                    <div
-                      className="text-lg font-semibold"
-                      style={{ color: r.hasRecord ? scoreColor(r.total) : "var(--c-muted)" }}
-                    >
-                      {r.hasRecord ? r.total : "—"}
-                    </div>
-                  </div>
-                  {r.hasRecord ? (
-                    <Badge color={bonusBadge(r.bonusPercent)}>+{r.bonusPercent}% bonus</Badge>
-                  ) : (
-                    <Badge color="amber">KPI kiritilmagan</Badge>
-                  )}
-                  <KpiEditor
-                    employeeId={r.employeeId}
-                    name={r.name}
-                    baseSalary={r.baseSalary}
-                    current={r.components}
-                  />
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th className="w-8">#</th>
+                    <th>Xodim</th>
+                    <th>KPI</th>
+                    <th>Bonus</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.ranking.map((r, i) => (
+                    <tr key={r.id}>
+                      <td>
+                        <span
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium"
+                          style={{
+                            background: RANK_BG[i] ?? "var(--c-surface)",
+                            color: RANK_FG[i] ?? "var(--c-muted)",
+                          }}
+                        >
+                          {i + 1}
+                        </span>
+                      </td>
+                      <td className="text-left">
+                        <div className="text-sm font-medium">{r.name}</div>
+                        <div className="text-xs text-muted">{r.position}</div>
+                      </td>
+                      <td>
+                        <span
+                          className="text-base font-semibold"
+                          style={{ color: r.hasRecord ? scoreColor(r.total) : "var(--c-muted)" }}
+                        >
+                          {r.hasRecord ? r.total : "—"}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap">
+                        {r.hasRecord ? (
+                          <Badge color={bonusBadge(r.bonusPercent)}>+{r.bonusPercent}%</Badge>
+                        ) : (
+                          <Badge color="amber">kiritilmagan</Badge>
+                        )}
+                      </td>
+                      <td>
+                        <KpiEditor
+                          employeeId={r.employeeId}
+                          name={r.name}
+                          baseSalary={r.baseSalary}
+                          current={r.components}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Card>
 

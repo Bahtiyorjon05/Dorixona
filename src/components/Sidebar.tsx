@@ -10,9 +10,9 @@ const NAV: { section?: string; items: { href: string; label: string; icon: strin
     items: [
       { href: "/moliya", label: "Moliya", icon: "📈", permission: "moliya" },
       { href: "/harajatlar", label: "Harajatlar", icon: "🧾", permission: "harajatlar" },
-      { href: "/qarzlar", label: "Qarzlar", icon: "🧮", permission: "qarzlar" },
+      { href: "/qarzlar", label: "Qarzlar", icon: "💳", permission: "qarzlar" },
       { href: "/ombor", label: "Ombor", icon: "📦", permission: "ombor" },
-      { href: "/savdo", label: "Savdo", icon: "🧮", permission: "savdo" },
+      { href: "/savdo", label: "Savdo", icon: "💹", permission: "savdo" },
       { href: "/pos", label: "Kassa (POS)", icon: "🛒", permission: "pos" },
       { href: "/mijozlar", label: "Mijozlar", icon: "🪪", permission: "mijozlar" },
     ],

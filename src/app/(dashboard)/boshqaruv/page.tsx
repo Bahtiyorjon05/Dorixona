@@ -6,7 +6,7 @@ import { getDashboardData, getDebtsData } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 const LINKS = [
-  { href: "/savdo", label: "Savdo", icon: "🧮" },
+  { href: "/savdo", label: "Savdo", icon: "💹" },
   { href: "/moliya", label: "Moliya", icon: "📈" },
   { href: "/harajatlar", label: "Harajatlar", icon: "🧾" },
   { href: "/qarzlar", label: "Qarzlar", icon: "💳" },

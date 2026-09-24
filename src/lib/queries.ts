@@ -992,8 +992,9 @@ export async function getSalesData(input: { from: Date; to: Date }) {
 //  QARZLAR
 // ─────────────────────────────────────────────────────────────
 
-/** Muddati shu kun ichida bo'lsa "yaqin" deb sanaladi */
-export const DEBT_DUE_SOON_DAYS = 5;
+/** 10 kundan kam qolsa qizil, 20 kundan kam qolsa sariq */
+export const DEBT_URGENT_DAYS = 10;
+export const DEBT_DUE_SOON_DAYS = 20;
 
 /**
  * Qarzlar: firma (tovar) va ko'cha (naqd) kesimida, tarixi bilan.
@@ -1019,6 +1020,7 @@ export async function getDebtsData() {
   }
 
   const today = startOfDay();
+  const urgentEdge = new Date(today.getTime() + DEBT_URGENT_DAYS * 864e5);
   const soonEdge = new Date(today.getTime() + DEBT_DUE_SOON_DAYS * 864e5);
 
   const debts = rows.map((debt) => {
@@ -1039,9 +1041,9 @@ export async function getDebtsData() {
       remaining,
       dueDate: due,
       closed,
-      // Rang uchun: muddati o'tgan / yaqin / vaqti bor
-      overdue: !closed && due !== null && due < today,
-      dueSoon: !closed && due !== null && due >= today && due <= soonEdge,
+      // Rang uchun: qizil (o'tgan yoki 10 kundan kam), sariq (20 kundan kam)
+      overdue: !closed && due !== null && due <= urgentEdge,
+      dueSoon: !closed && due !== null && due > urgentEdge && due <= soonEdge,
       unit: debt.unit,
       note: debt.note,
       entries: debt.entries.map((entry) => ({
@@ -1115,7 +1117,8 @@ export async function getDashboardData() {
       FROM "Product" p
       WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0`,
     db.product.findMany({
-      where: { isActive: true, branchId, stock: { lte: 3 } },
+      // Tugab qolganlar emas, tugayotganlar kerak: qoldig'i bor, lekin ozaygan
+      where: { isActive: true, branchId, stock: { gt: 0, lte: 3 } },
       orderBy: { stock: "asc" },
       take: 6,
       select: { id: true, name: true, stock: true },
