@@ -16,6 +16,13 @@ type InstallPrompt = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+/** Taklif sahifa ochilishida ushlanadi (layout.tsx) va shu yerda olinadi */
+declare global {
+  interface Window {
+    __pwaPrompt?: InstallPrompt | null;
+  }
+}
+
 type Platform = "ios" | "safari-mac" | "firefox" | "other";
 
 function isStandalone() {
@@ -35,40 +42,12 @@ function detectPlatform(): Platform {
   return "other";
 }
 
-const STEPS: Record<Platform, { title: string; steps: string[]; note?: string }> = {
-  ios: {
-    title: "iPhone yoki iPad'ga o'rnatish",
-    steps: [
-      "Sahifa Safari'da ochilgan bo'lsin (Chrome'da ishlamaydi)",
-      "Pastdagi «Ulashish» tugmasini bosing — yuqoriga qaragan strelka",
-      "Ro'yxatdan «Bosh ekranga qo'shish» ni tanlang",
-      "O'ng yuqoridagi «Qo'shish» ni bosing",
-    ],
-  },
-  "safari-mac": {
-    title: "Mac'da Safari orqali o'rnatish",
-    steps: [
-      "Yuqoridagi menyudan «Файл» (File) ni oching",
-      "«Add to Dock…» / «Dock'ga qo'shish» ni tanlang",
-      "Nomini tasdiqlang — «Add» ni bosing",
-    ],
-    note: "Chrome yoki Edge'da ochsangiz, bir bosishda o'rnatiladi.",
-  },
-  firefox: {
-    title: "Firefox o'rnatishni qo'llab-quvvatlamaydi",
-    steps: [
-      "Saytni Chrome, Edge yoki Safari'da oching",
-      "O'sha yerda «Ilovani o'rnatish» tugmasini bosing",
-    ],
-  },
-  other: {
-    title: "Ilovani o'rnatish",
-    steps: [
-      "Manzil satrining o'ng chetidagi o'rnatish belgisini bosing",
-      "Yoki brauzer menyusidan «Ilovani o'rnatish» ni tanlang",
-    ],
-    note: "Belgi ko'rinmasa, sahifani yangilab ko'ring.",
-  },
+/** Brauzer o'rnatishni taklif qilmasa — bitta qatorlik yo'l-yo'riq */
+const HINT: Record<Platform, string> = {
+  ios: "Safari'da: Ulashish → «Bosh ekranga qo'shish»",
+  "safari-mac": "Safari'da: Файл → «Add to Dock». Chrome'da bir bosishda o'rnatiladi.",
+  firefox: "Firefox o'rnatishni qo'llab-quvvatlamaydi — Chrome yoki Edge'da oching.",
+  other: "Manzil satrining o'ng chetidagi o'rnatish belgisini bosing.",
 };
 
 export function InstallApp() {
@@ -88,6 +67,14 @@ export function InstallApp() {
       });
     }
 
+    // Sahifa boshida ushlab qo'yilgan taklif bo'lsa, darhol olamiz
+    if (window.__pwaPrompt) setPrompt(window.__pwaPrompt);
+
+    const onReady = () => {
+      if (window.__pwaPrompt) setPrompt(window.__pwaPrompt);
+    };
+    window.addEventListener("pwa-prompt-ready", onReady);
+
     const onPrompt = (event: Event) => {
       event.preventDefault();
       setPrompt(event as InstallPrompt);
@@ -100,6 +87,7 @@ export function InstallApp() {
     window.addEventListener("beforeinstallprompt", onPrompt);
     window.addEventListener("appinstalled", onInstalled);
     return () => {
+      window.removeEventListener("pwa-prompt-ready", onReady);
       window.removeEventListener("beforeinstallprompt", onPrompt);
       window.removeEventListener("appinstalled", onInstalled);
     };
@@ -108,17 +96,19 @@ export function InstallApp() {
   if (hidden) return null;
 
   async function install() {
-    if (!prompt) {
+    const ready = prompt ?? window.__pwaPrompt ?? null;
+    if (!ready) {
       setShowHelp(true);
       return;
     }
-    await prompt.prompt();
-    const choice = await prompt.userChoice;
+    await ready.prompt();
+    const choice = await ready.userChoice;
     if (choice.outcome === "accepted") setHidden(true);
+    window.__pwaPrompt = null;
     setPrompt(null);
   }
 
-  const help = STEPS[platform];
+  const hint = HINT[platform];
 
   return (
     <>
@@ -135,19 +125,9 @@ export function InstallApp() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={() => setShowHelp(false)}
         >
-          <div className="card max-w-sm p-4 text-sm" onClick={(event) => event.stopPropagation()}>
-            <h3 className="mb-2 text-base font-semibold">{help.title}</h3>
-            <ol className="mb-3 list-decimal space-y-1 pl-5 text-muted">
-              {help.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            {help.note && <p className="mb-3 text-xs text-muted">{help.note}</p>}
-            <button
-              type="button"
-              onClick={() => setShowHelp(false)}
-              className="btn btn-primary w-full"
-            >
+          <div className="card max-w-xs p-4 text-sm" onClick={(event) => event.stopPropagation()}>
+            <p className="mb-3">{hint}</p>
+            <button type="button" onClick={() => setShowHelp(false)} className="btn btn-primary w-full">
               Tushunarli
             </button>
           </div>
