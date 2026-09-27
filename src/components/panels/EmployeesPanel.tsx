@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatNumber } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, PrimaryButton, Select, SubmitButton } from "@/components/Modal";
 import { createEmployee, deleteEmployee, updateEmployee } from "@/lib/actions/employees";
+import { SearchBox, matchesSearch } from "@/components/SearchBox";
 
 type Employee = {
   id: string;
@@ -36,13 +37,19 @@ function kpiColor(kpi: number | null) {
 
 export function EmployeesPanel({ employees }: { employees: Employee[] }) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [edit, setEdit] = useState<Employee | null>(null);
   const [confirming, setConfirming] = useState<Employee | null>(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
-  const payroll = employees.reduce((sum, e) => sum + e.baseSalary, 0);
+  // Ism, lavozim, telefon yoki filial bo'yicha qidiriladi
+  const shown = useMemo(
+    () => employees.filter((e) => matchesSearch(query, e.fullName, e.position, e.phone, e.unit)),
+    [employees, query],
+  );
+  const payroll = shown.reduce((sum, e) => sum + e.baseSalary, 0);
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, onOk: () => void) {
     setError("");
@@ -61,9 +68,16 @@ export function EmployeesPanel({ employees }: { employees: Employee[] }) {
         <span className="flex items-center gap-2 text-sm font-medium">
           👥 Xodimlar
           <span className="text-xs font-normal text-muted">
-            {employees.length} ta · {formatNumber(payroll)} so&apos;m
+            {shown.length} ta · {formatNumber(payroll)} so&apos;m
           </span>
         </span>
+        <div className="flex flex-wrap items-center gap-2">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          placeholder="Ism, lavozim, telefon..."
+          className="w-full sm:w-56"
+        />
         <PrimaryButton
           onClick={() => {
             setError("");
@@ -72,6 +86,7 @@ export function EmployeesPanel({ employees }: { employees: Employee[] }) {
         >
           + Yangi xodim
         </PrimaryButton>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -88,14 +103,14 @@ export function EmployeesPanel({ employees }: { employees: Employee[] }) {
             </tr>
           </thead>
           <tbody>
-            {employees.length === 0 && (
+            {shown.length === 0 && (
               <tr>
                 <td colSpan={7} className="py-6 text-center text-muted">
-                  Bu filialda xodim yo&apos;q.
+                  {query ? "Hech kim topilmadi." : "Bu filialda xodim yo'q."}
                 </td>
               </tr>
             )}
-            {employees.map((e, i) => {
+            {shown.map((e, i) => {
               const st = STATUS[e.status] ?? STATUS.ACTIVE;
               const initials = e.fullName.split(" ").map((w) => w[0]).slice(0, 2).join("");
               return (

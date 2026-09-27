@@ -6,6 +6,7 @@ import { formatDate, formatNumber } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, PrimaryButton, Select, SubmitButton } from "@/components/Modal";
 import { createExpense, deleteExpense, updateExpense } from "@/lib/actions/expenses";
+import { SearchBox, matchesSearch } from "@/components/SearchBox";
 
 type Expense = {
   id: string;
@@ -38,6 +39,7 @@ function toDateInput(value: string | Date) {
 
 export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: string[] }) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("ALL");
   const [unitFilter, setUnitFilter] = useState("ALL");
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -65,9 +67,11 @@ export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: s
       list.filter(
         (e) =>
           (filter === "ALL" || e.category === filter) &&
-          (unitFilter === "ALL" || (e.unit ?? UMUMIY) === unitFilter),
+          (unitFilter === "ALL" || (e.unit ?? UMUMIY) === unitFilter) &&
+          // Nomi, toifasi yoki dorixonasi bo'yicha qidiriladi
+          matchesSearch(query, e.title, CATEGORY[e.category]?.label, e.unit ?? UMUMIY),
       ),
-    [list, filter, unitFilter],
+    [list, filter, unitFilter, query],
   );
 
   const shown = useMemo(() => filtered.reduce((s, e) => s + e.amount, 0), [filtered]);
@@ -131,6 +135,12 @@ export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: s
           </span>
         </span>
         <div className="flex flex-wrap items-center gap-2">
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            placeholder="Harajat nomi..."
+            className="w-full sm:w-52"
+          />
           {unitOptions.length > 0 && (
             <Select
               value={unitFilter}

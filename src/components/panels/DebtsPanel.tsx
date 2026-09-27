@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, PrimaryButton, Select, SubmitButton } from "@/components/Modal";
 import { formatDate, formatNumber } from "@/lib/format";
 import { addDebtEntry, createDebt, deleteDebt, updateDebtDueDate } from "@/lib/actions/debts";
+import { SearchBox, matchesSearch } from "@/components/SearchBox";
 
 type Entry = {
   id: string;
@@ -86,6 +87,7 @@ function DueCell({ debt }: { debt: DebtRow }) {
 
 export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: string[] }) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [kind, setKind] = useState<"ALL" | "FIRM" | "STREET">("ALL");
   const [showClosed, setShowClosed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -96,8 +98,15 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
   const [pending, start] = useTransition();
 
   const shown = useMemo(
-    () => debts.filter((debt) => (kind === "ALL" || debt.kind === kind) && (showClosed || !debt.closed)),
-    [debts, kind, showClosed],
+    () =>
+      debts.filter(
+        (debt) =>
+          (kind === "ALL" || debt.kind === kind) &&
+          (showClosed || !debt.closed) &&
+          // Kim, izoh yoki dorixona bo'yicha qidiriladi
+          matchesSearch(query, debt.counterparty, debt.note, debt.unit),
+      ),
+    [debts, kind, showClosed, query],
   );
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, onDone?: () => void) {
@@ -116,6 +125,12 @@ export function DebtsPanel({ debts, units = [] }: { debts: DebtRow[]; units?: st
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          placeholder="Kim qarzdor..."
+          className="w-full sm:w-52"
+        />
         <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
           <option value="ALL">Hammasi</option>
           <option value="FIRM">Firmadan qarz</option>

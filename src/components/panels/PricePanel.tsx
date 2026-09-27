@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui";
+import { SearchBox } from "@/components/SearchBox";
 import { Field, FormError, Input, Modal, SubmitButton } from "@/components/Modal";
 import { formatDate, formatNumber, formatTime } from "@/lib/format";
 import {
@@ -298,27 +299,19 @@ export function PricePanel({
           }}
           className="flex flex-1 flex-wrap gap-2"
         >
-          <input
+          <SearchBox
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(value) => {
+              setQuery(value);
+              // Tozalansa darrov qaytamiz, aks holda Enter kutiladi
+              if (!value && search) go({ q: "" });
+            }}
             placeholder="Dori nomi"
-            className="min-w-[160px] flex-1 rounded-lg border border-edge bg-card px-3 py-1.5 text-sm outline-none focus:border-primary sm:max-w-[240px]"
+            className="min-w-[160px] flex-1 sm:max-w-[240px]"
           />
           <button type="submit" className="btn btn-ghost btn-sm">
             Qidirish
           </button>
-          {search && (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                go({ q: "" });
-              }}
-              className="btn btn-ghost btn-sm"
-            >
-              Tozalash
-            </button>
-          )}
         </form>
 
         <div className="flex gap-2">

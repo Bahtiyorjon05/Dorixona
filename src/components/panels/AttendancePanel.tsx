@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatTime } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, Select, SubmitButton } from "@/components/Modal";
 import { markAttendance } from "@/lib/actions/attendance";
+import { SearchBox, matchesSearch } from "@/components/SearchBox";
 
 type Rec = {
   employeeId: string;
@@ -27,6 +28,7 @@ function statusBadge(status: string | null, late: number) {
 export function AttendancePanel({ records }: { records: Rec[] }) {
   const router = useRouter();
   const [target, setTarget] = useState<Rec | null>(null);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
@@ -46,13 +48,22 @@ export function AttendancePanel({ records }: { records: Rec[] }) {
     });
   }
 
+  // Xodim ismi bo'yicha qidiriladi
+  const shown = useMemo(() => records.filter((r) => matchesSearch(query, r.name)), [records, query]);
+
   const now = new Date();
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
   return (
     <div className="card p-4">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2 text-sm font-medium">📅 Bugungi davomat</span>
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          placeholder="Xodim ismi..."
+          className="w-full sm:w-56"
+        />
       </div>
 
       <div className="overflow-x-auto">
@@ -68,7 +79,7 @@ export function AttendancePanel({ records }: { records: Rec[] }) {
             </tr>
           </thead>
           <tbody>
-            {records.map((r) => (
+            {shown.map((r) => (
               <tr key={r.employeeId} className="border-b border-edge last:border-0 hover:bg-surface">
                 <td className="py-2.5 pr-3 font-medium">{r.name}</td>
                 <td className="py-2.5 pr-3">{r.checkIn ? formatTime(r.checkIn) : "—"}</td>

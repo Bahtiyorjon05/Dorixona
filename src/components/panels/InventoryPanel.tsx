@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatNumber } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, PrimaryButton, SubmitButton } from "@/components/Modal";
+import { SearchBox } from "@/components/SearchBox";
 import { createProduct, receiveStock, updateProduct } from "@/lib/actions/products";
 
 type Product = {
@@ -89,14 +90,14 @@ export function InventoryPanel({ products }: { products: Product[] }) {
               </button>
             ))}
           </div>
-          <Input
+          <SearchBox
             value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
+            onChange={(value) => {
+              setQuery(value);
               setLimit(PAGE_SIZE);
             }}
             placeholder="Dori nomi yoki kodi..."
-            className="!w-56 !py-1.5 text-xs"
+            className="w-full sm:w-56"
           />
           <PrimaryButton onClick={() => { setError(""); setAddOpen(true); }}>+ Yangi dori</PrimaryButton>
         </div>

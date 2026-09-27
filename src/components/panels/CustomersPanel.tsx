@@ -6,6 +6,7 @@ import { formatNumber } from "@/lib/format";
 import { TIERS } from "@/lib/loyalty";
 import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, PrimaryButton, SubmitButton } from "@/components/Modal";
+import { SearchBox } from "@/components/SearchBox";
 import { adjustPoints, createCustomer } from "@/lib/actions/customers";
 
 type Txn = { id: string; type: string; points: number; note: string | null; createdAt: string };
@@ -69,11 +70,11 @@ export function CustomersPanel({ customers }: { customers: Customer[] }) {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2 text-sm font-medium">🪪 Mijozlar ro'yxati</span>
         <div className="flex items-center gap-2">
-          <Input
+          <SearchBox
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
             placeholder="Ism, telefon yoki karta..."
-            className="!w-56 !py-1.5 text-xs"
+            className="w-full sm:w-56"
           />
           <PrimaryButton onClick={() => { setError(""); setAddOpen(true); }}>+ Mijoz qo'shish</PrimaryButton>
         </div>
