@@ -23,7 +23,6 @@ function money(amount: number, currency: "UZS" | "USD") {
 export default async function BoshqaruvPage() {
   const [d, debts] = await Promise.all([getDashboardData(), getDebtsData()]);
   const margin = d.monthTurnover > 0 ? (d.monthProfit / d.monthTurnover) * 100 : 0;
-  const netProfit = d.monthProfit - d.monthExpense;
 
   return (
     <div>
@@ -89,7 +88,7 @@ export default async function BoshqaruvPage() {
           label="Shu oy foyda"
           value={formatNumber(d.monthProfit)}
           valueColor="var(--c-primary)"
-          sub={`Marja ${margin.toFixed(1)}% · xarajatdan keyin ${formatNumber(netProfit)}`}
+          sub={`Marja ${margin.toFixed(1)}%`}
         />
         <MetricCard
           icon="📦"

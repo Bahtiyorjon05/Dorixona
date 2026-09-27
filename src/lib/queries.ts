@@ -1214,7 +1214,6 @@ export async function getDashboardData() {
     expiring,
     lastSync,
     todayPay,
-    monthExpense,
   ] = await Promise.all([
     db.$queryRaw<{ turnover: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
@@ -1255,12 +1254,6 @@ export async function getDashboardData() {
       .catch(() => null),
     // Bugungi naqd va karta — 30-hisobotdan
     paymentBreakdown(today, tomorrow, unit),
-    db.expense
-      .aggregate({
-        _sum: { amount: true },
-        where: { spentAt: { gte: monthStart, lt: nextMonth }, ...(unit ? { unit } : {}) },
-      })
-      .catch(() => ({ _sum: { amount: 0 } })),
   ]);
 
   const todaySales = num(todayRows[0]?.turnover);
@@ -1287,7 +1280,6 @@ export async function getDashboardData() {
     cash: todayPay.cash,
     card: todayPay.card,
     payKnown: todayPay.known,
-    monthExpense: num(monthExpense._sum.amount),
   };
 }
 
