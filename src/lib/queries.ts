@@ -1214,6 +1214,9 @@ export async function getDashboardData() {
     expiring,
     lastSync,
     todayPay,
+    monthTotalRows,
+    ownExpense,
+    sharedExpense,
   ] = await Promise.all([
     db.$queryRaw<{ turnover: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
@@ -1254,10 +1257,44 @@ export async function getDashboardData() {
       .catch(() => null),
     // Bugungi naqd va karta — 30-hisobotdan
     paymentBreakdown(today, tomorrow, unit),
+    // Butun dorixona bo'yicha oylik tushum — umumiy xarajatni taqsimlash uchun
+    db.$queryRaw<{ turnover: number }[]>`
+      SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}`,
+    // Shu filialning o'z xarajati
+    db.expense
+      .aggregate({
+        _sum: { amount: true },
+        where: { spentAt: { gte: monthStart, lt: nextMonth }, ...(unit ? { unit } : {}) },
+      })
+      .catch(() => ({ _sum: { amount: 0 } })),
+    // Filialga biriktirilmagan xarajat: tovar xaridi shu yerda —
+    // F-Apteka kirimni ombor darajasida yuritadi, dorixona ko'rsatilmaydi
+    db.expense
+      .aggregate({
+        _sum: { amount: true },
+        where: { spentAt: { gte: monthStart, lt: nextMonth }, unit: null },
+      })
+      .catch(() => ({ _sum: { amount: 0 } })),
   ]);
 
   const todaySales = num(todayRows[0]?.turnover);
   const yesterdaySales = num(yesterdayRows[0]?.turnover);
+
+  // Oylik xarajat. Filial tanlanmagan bo'lsa hammasi shundoq qo'shiladi.
+  // Filial tanlangan bo'lsa: o'z xarajati + umumiy xarajatning savdo
+  // ulushiga to'g'ri kelgan qismi. Aks holda tovar xaridi hech qaysi
+  // dorixonaga tushmay, sof foyda haqiqiydan yuqori ko'rinardi.
+  const monthTurnover = num(monthRows[0]?.turnover);
+  const totalTurnover = num(monthTotalRows[0]?.turnover);
+  const ownTotal = num(ownExpense._sum.amount);
+  const sharedTotal = num(sharedExpense._sum.amount);
+  // Savdo umuman bo'lmagan oyda taqsimlaydigan asos yo'q — shunda umumiy
+  // xarajat hech qaysi filialga yozilmaydi, aks holda bittasiga to'liq
+  // tushib, sof foyda katta minusda ko'rinardi.
+  const share = !unit ? 1 : totalTurnover > 0 ? monthTurnover / totalTurnover : 0;
+  const monthExpense = unit ? ownTotal + sharedTotal * share : ownTotal;
 
   return {
     filial,
@@ -1280,6 +1317,10 @@ export async function getDashboardData() {
     cash: todayPay.cash,
     card: todayPay.card,
     payKnown: todayPay.known,
+    monthExpense,
+    // Umumiy xarajatning shu filialga to'g'ri kelgan qismi taxminiy:
+    // savdo ulushiga qarab bo'lingan. "Umumiy" ko'rinishda taqsimlash yo'q.
+    expenseShared: unit ? sharedTotal * share : 0,
   };
 }
 

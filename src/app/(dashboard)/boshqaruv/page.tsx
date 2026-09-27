@@ -23,6 +23,9 @@ function money(amount: number, currency: "UZS" | "USD") {
 export default async function BoshqaruvPage() {
   const [d, debts] = await Promise.all([getDashboardData(), getDebtsData()]);
   const margin = d.monthTurnover > 0 ? (d.monthProfit / d.monthTurnover) * 100 : 0;
+  // Sof foyda: yalpi foydadan oylik xarajat ayirilgan. Filial tanlangan
+  // bo'lsa umumiy xarajatning savdo ulushiga to'g'ri kelgan qismi ham kiradi.
+  const netProfit = d.monthProfit - d.monthExpense;
 
   return (
     <div>
@@ -88,7 +91,11 @@ export default async function BoshqaruvPage() {
           label="Shu oy foyda"
           value={formatNumber(d.monthProfit)}
           valueColor="var(--c-primary)"
-          sub={`Marja ${margin.toFixed(1)}%`}
+          sub={
+            d.monthExpense > 0
+              ? `Marja ${margin.toFixed(1)}% · xarajatdan keyin ${formatNumber(netProfit)}`
+              : `Marja ${margin.toFixed(1)}% · bu oyda xarajat yo'q`
+          }
         />
         <MetricCard
           icon="📦"
