@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
 import { utcMonthStart } from "@/lib/queries";
+import { debtSummary, type DebtRow } from "@/lib/telegram/digest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -538,10 +539,135 @@ async function getOptions() {
   };
 }
 
+/**
+ * Qarzlar — muddati bo'yicha ranglangan holda (saytdagi bilan bir xil:
+ * qizil 10 kundan kam, sariq 20 kundan kam).
+ */
+async function getDebts() {
+  const summary = await debtSummary();
+  const row = (debt: DebtRow, level: "red" | "yellow" | "grey") => ({
+    id: debt.id,
+    counterparty: debt.counterparty,
+    kind: debt.kind,
+    currency: debt.currency,
+    direction: debt.direction,
+    remaining: debt.remaining,
+    dueDate: debt.dueDate ? debt.dueDate.toISOString() : null,
+    days: debt.days,
+    unit: debt.unit,
+    level,
+  });
+
+  return {
+    needsMigration: summary.needsMigration,
+    openCount: summary.openCount,
+    totals: summary.totals,
+    urgentCount: summary.overdue.length + summary.urgent.length,
+    soonCount: summary.soon.length,
+    noDueCount: summary.noDueDate.length,
+    list: [
+      ...summary.overdue.map((d) => row(d, "red" as const)),
+      ...summary.urgent.map((d) => row(d, "red" as const)),
+      ...summary.soon.map((d) => row(d, "yellow" as const)),
+      ...summary.later.map((d) => row(d, "grey" as const)),
+      ...summary.noDueDate.map((d) => row(d, "grey" as const)),
+    ],
+  };
+}
+
+/** Narx nazorati — raqobatchi narxi, tavsiya va bizning narx */
+async function getPrices() {
+  let rows: Awaited<ReturnType<typeof db.priceWatch.findMany>> = [];
+  let settings: Awaited<ReturnType<typeof db.priceSetting.findMany>> = [];
+  let needsMigration = false;
+  try {
+    [rows, settings] = await Promise.all([
+      db.priceWatch.findMany({ orderBy: { name: "asc" } }),
+      db.priceSetting.findMany({ orderBy: { unit: "asc" } }),
+    ]);
+  } catch {
+    needsMigration = true;
+  }
+
+  const defaultPercent = settings.length ? num(settings[0].percent) : 5;
+  const skus = rows.map((r) => r.sku).filter((sku): sku is string => Boolean(sku));
+  const products = skus.length
+    ? await db.product.findMany({
+        where: { sku: { in: skus }, isActive: true },
+        select: { sku: true, salePrice: true, stock: true },
+      })
+    : [];
+  const bySku = new Map(products.map((p) => [p.sku, p]));
+
+  const items = rows.map((r) => {
+    const product = r.sku ? bySku.get(r.sku) : undefined;
+    const competitor = r.competitorPrice === null ? null : num(r.competitorPrice);
+    const percent = r.percent === null ? defaultPercent : num(r.percent);
+    const suggested = competitor === null ? null : Math.round(competitor * (1 + percent / 100));
+    const our = product ? num(product.salePrice) : null;
+    return {
+      id: r.id,
+      name: r.name,
+      competitor,
+      suggested,
+      our,
+      percent,
+      ownPercent: r.percent === null ? null : num(r.percent),
+      stock: product?.stock ?? null,
+      diff: our !== null && suggested !== null ? our - suggested : null,
+      checkedAt: r.checkedAt ? r.checkedAt.toISOString() : null,
+      active: r.active,
+      hasUrl: Boolean(r.sourceUrl),
+    };
+  });
+
+  const lastChecked = rows.reduce<Date | null>(
+    (latest, r) => (r.checkedAt && (!latest || r.checkedAt > latest) ? r.checkedAt : latest),
+    null,
+  );
+
+  return {
+    needsMigration,
+    total: rows.length,
+    priced: items.filter((i) => i.competitor !== null).length,
+    overpriced: items.filter((i) => (i.diff ?? 0) > 0).length,
+    noUrl: items.filter((i) => !i.hasUrl).length,
+    lastChecked: lastChecked ? lastChecked.toISOString() : null,
+    settings: settings.map((s) => ({ unit: s.unit, enabled: s.enabled, percent: num(s.percent) })),
+    // Qimmat turganlar birinchi — panelda shu muhim
+    items: items.sort((a, b) => (b.diff ?? -Infinity) - (a.diff ?? -Infinity)),
+  };
+}
+
 type GrantedAccess = Extract<RequestAccess, { ok: true }>;
 
 function has(access: GrantedAccess, permission: AppPermission) {
   return canRead(access, permission);
+}
+
+function emptyDebts() {
+  return {
+    needsMigration: false,
+    openCount: 0,
+    totals: { firmUzs: 0, firmUsd: 0, streetUzs: 0, streetUsd: 0 },
+    urgentCount: 0,
+    soonCount: 0,
+    noDueCount: 0,
+    list: [],
+  };
+}
+
+function emptyPrices() {
+  return {
+    needsMigration: false,
+    total: 0,
+    priced: 0,
+    overpriced: 0,
+    noUrl: 0,
+    lastChecked: null,
+    settings: [],
+    items: [],
+  };
 }
 
 function emptyFinance() {
@@ -752,6 +878,8 @@ export async function GET(req: NextRequest) {
     sales: has(access, "pos") || has(access, "moliya"),
     inventory: has(access, "ombor"),
     expenses: has(access, "harajatlar"),
+    debts: has(access, "qarzlar"),
+    prices: has(access, "narxlar"),
     customers: has(access, "mijozlar"),
     employees: has(access, "xodimlar"),
     kpi: has(access, "kpi"),
@@ -762,12 +890,28 @@ export async function GET(req: NextRequest) {
   const needsOptions =
     allowed.sales || allowed.inventory || allowed.customers || allowed.employees || allowed.kpi || allowed.attendance;
 
-  const [finance, sales, inventory, expenses, customers, employees, kpi, attendance, reports, analytics, options] =
+  const [
+    finance,
+    sales,
+    inventory,
+    expenses,
+    debts,
+    prices,
+    customers,
+    employees,
+    kpi,
+    attendance,
+    reports,
+    analytics,
+    options,
+  ] =
     await Promise.all([
       allowed.finance ? getFinance(period) : emptyFinance(),
       allowed.sales ? getSales() : emptySales(),
       allowed.inventory ? getInventory() : emptyInventory(),
       allowed.expenses ? getExpenses(period) : emptyExpenses(),
+      allowed.debts ? getDebts() : emptyDebts(),
+      allowed.prices ? getPrices() : emptyPrices(),
       allowed.customers ? getCustomers() : emptyCustomers(),
       allowed.employees ? getEmployees() : emptyEmployees(),
       allowed.kpi ? getKpi() : emptyKpi(),
@@ -797,6 +941,8 @@ export async function GET(req: NextRequest) {
       sales,
       inventory,
       expenses,
+      debts,
+      prices,
       customers,
       employees,
       kpi,

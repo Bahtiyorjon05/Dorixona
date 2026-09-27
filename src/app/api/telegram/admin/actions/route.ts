@@ -3,6 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { latePenalty, bonusAmount, bonusPercentForScore, computeTotalScore } from "@/lib/kpi";
 import { makeCardCode, pointsForPurchase, tierDiscount, tierForSpent } from "@/lib/loyalty";
+import { recalcDebt } from "@/lib/debts";
+import { refreshPriceWatch } from "@/lib/price-watch";
 import { canEdit, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
 
@@ -71,6 +73,22 @@ const schemas = {
     attendanceScore: score,
     disciplineScore: score,
     customerScore: score,
+  }),
+  createDebt: z.object({
+    counterparty: z.string().min(2),
+    kind: z.enum(["FIRM", "STREET"]).default("FIRM"),
+    currency: z.enum(["UZS", "USD"]).default("UZS"),
+    direction: z.enum(["PAYABLE", "RECEIVABLE"]).default("PAYABLE"),
+    amount: num.positive(),
+    dueDate: z.string().optional(),
+    unit: z.string().optional(),
+    note: z.string().optional(),
+  }),
+  addDebtEntry: z.object({
+    debtId: z.string().min(1),
+    type: z.enum(["CHARGE", "PAYMENT"]),
+    amount: num.positive(),
+    note: z.string().optional(),
   }),
 };
 
@@ -281,6 +299,65 @@ async function saveKpi(payload: unknown) {
   return "KPI saqlandi";
 }
 
+function parseDate(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+async function createDebt(payload: unknown) {
+  const d = schemas.createDebt.parse(payload);
+  const branch = await activeBranch();
+  const unit = d.unit?.trim();
+
+  await db.debt.create({
+    data: {
+      counterparty: d.counterparty.trim(),
+      kind: d.kind,
+      currency: d.currency,
+      direction: d.direction,
+      totalAmount: d.amount,
+      paidAmount: 0,
+      dueDate: parseDate(d.dueDate),
+      unit: !unit || unit === "Umumiy" ? null : unit,
+      note: d.note?.trim() || null,
+      branchId: branch.id,
+      entries: { create: { type: "CHARGE", amount: d.amount, note: d.note?.trim() || null } },
+    },
+  });
+  return "Qarz qo'shildi";
+}
+
+/** Qarzga to'lov yoki yangi olingan tovar qarzini kiritish */
+async function addDebtEntry(payload: unknown) {
+  const d = schemas.addDebtEntry.parse(payload);
+  const debt = await db.debt.findUnique({
+    where: { id: d.debtId },
+    select: { id: true, currency: true },
+  });
+  if (!debt) throw new Error("Qarz topilmadi");
+
+  await db.debtEntry.create({
+    data: { debtId: d.debtId, type: d.type, amount: d.amount, note: d.note?.trim() || null },
+  });
+  const result = await recalcDebt(d.debtId);
+
+  const left = Math.round(result.remaining).toLocaleString("ru-RU").replace(/,/g, " ");
+  const unit = debt.currency === "USD" ? "$" : " so'm";
+  return d.type === "PAYMENT"
+    ? `To'lov kiritildi. Qoldiq: ${debt.currency === "USD" ? "$" : ""}${left}${debt.currency === "USD" ? "" : unit}`
+    : `Yangi qarz qo'shildi. Qoldiq: ${debt.currency === "USD" ? "$" : ""}${left}${debt.currency === "USD" ? "" : unit}`;
+}
+
+/** Narx nazoratini qo'lda yangilash — bir chaqiruvda 12 ta dori */
+async function refreshPrices(_payload: unknown) {
+  const result = await refreshPriceWatch(12);
+  if (!result.ok && result.updated === 0) {
+    throw new Error(result.errors[0] ?? "Narx olinmadi");
+  }
+  return `${result.updated} ta dori narxi yangilandi`;
+}
+
 const actions = {
   createEmployee,
   createProduct,
@@ -289,6 +366,9 @@ const actions = {
   createSale,
   markAttendance,
   saveKpi,
+  createDebt,
+  addDebtEntry,
+  refreshPrices,
 };
 const actionPermissions: Record<keyof typeof actions, AppPermission> = {
   createEmployee: "xodimlar",
@@ -298,6 +378,9 @@ const actionPermissions: Record<keyof typeof actions, AppPermission> = {
   createSale: "pos",
   markAttendance: "davomat",
   saveKpi: "kpi",
+  createDebt: "qarzlar",
+  addDebtEntry: "qarzlar",
+  refreshPrices: "narxlar",
 };
 
 export async function POST(req: NextRequest) {

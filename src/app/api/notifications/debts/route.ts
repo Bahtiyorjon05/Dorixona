@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { DEBT_DUE_SOON_DAYS, DEBT_URGENT_DAYS } from "@/lib/queries";
+import { debtAlertMessage, debtSummary } from "@/lib/telegram/digest";
+import { recipientsFor, sendTelegram } from "@/lib/telegram/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
- * Qarz muddati eslatmasi — kuniga bir marta Telegram'ga yuboriladi.
+ * Qarz muddati eslatmasi — Telegram'ga yuboriladi.
  *
- * Vercel Cron chaqiradi (vercel.json). Qo'lda tekshirish uchun:
- *   /api/notifications/debts?token=<FAPTEKA_SITE_TOKEN>
+ * Kim oladi: TELEGRAM_ADMIN_IDS ichidagi adminlar va "qarzlar" ruxsati bo'lgan,
+ * Telegram'i bog'langan xodimlar.
  *
- * Kim oladi: TELEGRAM_ADMIN_IDS ichidagi adminlar.
+ * Qachon: muddat o'tgan yoki ${DEBT_URGENT_DAYS} kundan kam qolgan (qizil),
+ * ${DEBT_DUE_SOON_DAYS} kundan kam qolgan (sariq) qarz bo'lsa.
+ *
+ * Kim chaqiradi: Vercel Cron (vercel.json) va dorixona kompyuteridagi relay
+ * skript. Ikkisi ham chaqirsa ham kuniga bir marta ketadi — quyidagi
+ * "bugun yuborilganmi" tekshiruvi shuni ta'minlaydi.
+ *
+ * Tekshirish uchun (xabar yubormaydi, faqat holatni aytadi):
+ *   /api/notifications/debts?token=<FAPTEKA_SITE_TOKEN>&tekshir=1
+ * Majburan qayta yuborish:
+ *   /api/notifications/debts?token=<...>&majburan=1
  */
 
-const DUE_SOON_DAYS = 5;
+const LOG_SOURCE = "qarz-eslatma";
 
 function allowed(request: NextRequest) {
   // Vercel Cron o'z sarlavhasini qo'yadi; qo'lda chaqirilsa token so'raladi
@@ -27,35 +41,27 @@ function allowed(request: NextRequest) {
   return bearer === expected || request.nextUrl.searchParams.get("token")?.trim() === expected;
 }
 
-function money(amount: number, currency: string) {
-  const rounded = Math.round(amount);
-  return currency === "USD"
-    ? `$${rounded.toLocaleString("ru-RU").replace(/,/g, " ")}`
-    : `${rounded.toLocaleString("ru-RU").replace(/,/g, " ")} so'm`;
+/** Bugun muvaffaqiyatli yuborilganmi — takror xabar bo'lmasin */
+async function alreadySentToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  try {
+    const sent = await db.integrationLog.findFirst({
+      where: { source: LOG_SOURCE, ok: true, createdAt: { gte: today } },
+      select: { id: true, createdAt: true },
+    });
+    return sent;
+  } catch {
+    return null;
+  }
 }
 
-async function sendToAdmins(text: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const admins = (process.env.TELEGRAM_ADMIN_IDS ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  if (!token || !admins.length) return 0;
-
-  let sent = 0;
-  for (const chatId of admins) {
-    try {
-      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text }),
-      });
-      if (response.ok) sent += 1;
-    } catch {
-      // Bitta admin olmasa ham qolganlariga ketaversin
-    }
+async function log(note: string, ok: boolean, rowCount: number) {
+  try {
+    await db.integrationLog.create({ data: { source: LOG_SOURCE, note, ok, rowCount } });
+  } catch {
+    // Jurnal yozilmasa ham asosiy ish buzilmasin
   }
-  return sent;
 }
 
 async function handle(request: NextRequest) {
@@ -63,49 +69,72 @@ async function handle(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Token noto'g'ri" }, { status: 401 });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const edge = new Date(today.getTime() + DUE_SOON_DAYS * 864e5);
+  const params = request.nextUrl.searchParams;
+  const dryRun = params.get("tekshir") === "1" || params.get("debug") === "1";
+  const force = params.get("majburan") === "1" || params.get("force") === "1";
 
-  const debts = await db.debt.findMany({
-    where: { closedAt: null, dueDate: { not: null, lte: edge } },
-    orderBy: { dueDate: "asc" },
-    select: { counterparty: true, totalAmount: true, paidAmount: true, currency: true, dueDate: true },
-  });
+  const [summary, recipients] = await Promise.all([debtSummary(), recipientsFor("qarzlar")]);
 
-  const rows = debts
-    .map((debt) => ({
-      counterparty: debt.counterparty,
-      remaining: Number(debt.totalAmount) - Number(debt.paidAmount),
-      currency: debt.currency,
-      dueDate: debt.dueDate as Date,
-    }))
-    .filter((debt) => debt.remaining > 0.009);
+  const red = summary.overdue.length + summary.urgent.length;
+  const text = debtAlertMessage(summary);
 
-  if (!rows.length) {
-    return NextResponse.json({ ok: true, debts: 0, sent: 0 });
-  }
-
-  const overdue = rows.filter((debt) => debt.dueDate < today);
-  const soon = rows.filter((debt) => debt.dueDate >= today);
-
-  const line = (debt: (typeof rows)[number]) => {
-    const days = Math.round((debt.dueDate.getTime() - today.getTime()) / 864e5);
-    const when = days < 0 ? `${Math.abs(days)} kun o'tdi` : days === 0 ? "bugun" : `${days} kun qoldi`;
-    return `• ${debt.counterparty} — ${money(debt.remaining, debt.currency)} (${when})`;
+  // Nima bo'layotganini bir qarashda ko'rish uchun
+  const holat = {
+    ok: true,
+    jadval: summary.needsMigration ? "yaratilmagan" : "bor",
+    ochiqQarz: summary.openCount,
+    muddatiBor: summary.withDueDate,
+    muddatiYoq: summary.noDueDate.length,
+    muddatiOtgan: summary.overdue.length,
+    shoshilinch: summary.urgent.length,
+    muddatiYaqin: summary.soon.length,
+    chegaralar: { qizil: DEBT_URGENT_DAYS, sariq: DEBT_DUE_SOON_DAYS },
+    oluvchilar: recipients.map((r) => ({ chatId: r.chatId, kim: r.name, manba: r.source })),
+    botToken: Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim()),
+    xabarBor: Boolean(text),
   };
 
-  const text = [
-    "🧮 Qarz eslatmasi",
-    overdue.length ? `\n🔴 Muddati o'tgan:\n${overdue.map(line).join("\n")}` : "",
-    soon.length ? `\n🟡 Muddati yaqin:\n${soon.map(line).join("\n")}` : "",
-    "\nBatafsil: dorixonaa.vercel.app/qarzlar",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  if (dryRun) {
+    return NextResponse.json({ ...holat, rejim: "tekshiruv", xabar: text });
+  }
 
-  const sent = await sendToAdmins(text);
-  return NextResponse.json({ ok: true, debts: rows.length, overdue: overdue.length, sent });
+  if (!text) {
+    // Ogohlantirish yo'q — bekorga xabar yubormaymiz
+    return NextResponse.json({ ...holat, yuborildi: 0, sabab: "ogohlantiradigan qarz yo'q" });
+  }
+
+  if (!recipients.length) {
+    await log("oluvchi yo'q: TELEGRAM_ADMIN_IDS sozlanmagan", false, red);
+    return NextResponse.json({ ...holat, yuborildi: 0, sabab: "oluvchi yo'q" });
+  }
+
+  if (!force) {
+    const sent = await alreadySentToday();
+    if (sent) {
+      return NextResponse.json({
+        ...holat,
+        yuborildi: 0,
+        sabab: `bugun allaqachon yuborilgan (${sent.createdAt.toISOString()})`,
+      });
+    }
+  }
+
+  const results = await sendTelegram(
+    recipients.map((r) => r.chatId),
+    text,
+    { buttonText: "Qarzlarni ochish", section: "debts" },
+  );
+
+  const delivered = results.filter((r) => r.ok).length;
+  const failures = results.filter((r) => !r.ok);
+  await log(
+    `qizil: ${red}, sariq: ${summary.soon.length}, yuborildi: ${delivered}/${results.length}` +
+      (failures.length ? ` | xato: ${failures.map((f) => `${f.chatId} ${f.error}`).join("; ")}` : ""),
+    delivered > 0,
+    red + summary.soon.length,
+  );
+
+  return NextResponse.json({ ...holat, yuborildi: delivered, natijalar: results });
 }
 
 export async function GET(request: NextRequest) {

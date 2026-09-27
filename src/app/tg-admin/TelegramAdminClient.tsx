@@ -69,6 +69,49 @@ type DashboardData = {
     debts?: { id: string; counterparty: string; direction: string; remaining: number }[];
     recent: { id: string; title: string; category: string; amount: number; spentAt: string; isRecurring: boolean }[];
   };
+  debts: {
+    needsMigration: boolean;
+    openCount: number;
+    totals: { firmUzs: number; firmUsd: number; streetUzs: number; streetUsd: number };
+    urgentCount: number;
+    soonCount: number;
+    noDueCount: number;
+    list: {
+      id: string;
+      counterparty: string;
+      kind: "FIRM" | "STREET";
+      currency: "UZS" | "USD";
+      direction: "PAYABLE" | "RECEIVABLE";
+      remaining: number;
+      dueDate: string | null;
+      days: number | null;
+      unit: string | null;
+      level: "red" | "yellow" | "grey";
+    }[];
+  };
+  prices: {
+    needsMigration: boolean;
+    total: number;
+    priced: number;
+    overpriced: number;
+    noUrl: number;
+    lastChecked: string | null;
+    settings: { unit: string; enabled: boolean; percent: number }[];
+    items: {
+      id: string;
+      name: string;
+      competitor: number | null;
+      suggested: number | null;
+      our: number | null;
+      percent: number;
+      ownPercent: number | null;
+      stock: number | null;
+      diff: number | null;
+      checkedAt: string | null;
+      active: boolean;
+      hasUrl: boolean;
+    }[];
+  };
   customers: {
     total: number;
     viaTelegram: number;
@@ -158,7 +201,10 @@ type AdminAction =
   | "createCustomer"
   | "createSale"
   | "markAttendance"
-  | "saveKpi";
+  | "saveKpi"
+  | "createDebt"
+  | "addDebtEntry"
+  | "refreshPrices";
 
 type TelegramWebApp = {
   initData: string;
@@ -220,6 +266,8 @@ const tabs = [
   ["sales", "Savdo", "🛒"],
   ["inventory", "Ombor", "📦"],
   ["expenses", "Xarajat", "🧾"],
+  ["debts", "Qarzlar", "🧮"],
+  ["prices", "Narxlar", "💹"],
   ["customers", "Mijoz", "🪪"],
   ["employees", "Xodim", "👥"],
   ["kpi", "KPI", "🎯"],
@@ -235,6 +283,8 @@ const tabPermission: Partial<Record<TabKey, string>> = {
   sales: "pos",
   inventory: "ombor",
   expenses: "harajatlar",
+  debts: "qarzlar",
+  prices: "narxlar",
   customers: "mijozlar",
   employees: "xodimlar",
   kpi: "kpi",
@@ -250,6 +300,8 @@ const pageMeta: Record<TabKey, { title: string; subtitle: string }> = {
   sales: { title: "Kassa va savdo", subtitle: "Yangi savdo, oxirgi cheklar va POS nazorati" },
   inventory: { title: "Ombor holati", subtitle: "Mahsulotlar, qoldiq va muddat nazorati" },
   expenses: { title: "Harajatlar boshqaruvi", subtitle: "Oylik xarajatlar va kategoriyalar" },
+  debts: { title: "Qarzlar", subtitle: "Firma va ko'cha qarzlari, to'lov muddatlari" },
+  prices: { title: "Narx nazorati", subtitle: "Eng arzon narx + ustama bo'yicha tavsiya" },
   customers: { title: "Mijozlar", subtitle: "Sodiqlik kartalari, ballar va darajalar" },
   employees: { title: "Xodimlar boshqaruvi", subtitle: "Xodimlar ro'yxati va ma'lumotlari" },
   kpi: { title: "KPI", subtitle: "Xodimlar reytingi va bonus hisoblari" },
@@ -444,6 +496,12 @@ export function TelegramAdminClient() {
   const [tab, setTab] = useState<TabKey>("overview");
   const [authHeader, setAuthHeader] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
+
+  // Bot xabaridagi tugma kerakli bo'limni ochadi: /tg-admin?bolim=debts
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("bolim");
+    if (wanted && tabs.some(([key]) => key === wanted)) setTab(wanted as TabKey);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -709,6 +767,24 @@ export function TelegramAdminClient() {
                 <div className="rounded-lg border border-primary bg-primary-light px-3 py-2 text-sm text-fg">
                   {notice}
                 </div>
+              ) : null}
+
+              {canViewSection("qarzlar") && (data.debts.urgentCount > 0 || data.debts.soonCount > 0) ? (
+                <button
+                  onClick={() => setTab("debts")}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
+                    data.debts.urgentCount > 0
+                      ? "border-danger bg-danger-light"
+                      : "border-accent bg-accent-light"
+                  }`}
+                >
+                  <b>
+                    {data.debts.urgentCount > 0
+                      ? `🔴 ${data.debts.urgentCount} ta qarz muddati tugayapti`
+                      : `🟡 ${data.debts.soonCount} ta qarz muddati yaqin`}
+                  </b>
+                  <span className="ml-1 text-muted">— ko&apos;rish uchun bosing</span>
+                </button>
               ) : null}
 
               {canSeeSales || canViewSection("moliya") || canSeeInventory ? (
@@ -1063,18 +1139,6 @@ export function TelegramAdminClient() {
                 ))}
               </Card>
             )}
-            {data.expenses.debts && data.expenses.debts.length > 0 && (
-              <Card title="Qarzlar">
-                {data.expenses.debts.map((q) => (
-                  <Row
-                    key={q.id}
-                    left={q.counterparty}
-                    right={formatMoney(q.remaining)}
-                    sub={q.direction === "PAYABLE" ? "To'lashimiz kerak" : "Olishimiz kerak"}
-                  />
-                ))}
-              </Card>
-            )}
             <Card title="Kategoriya Bo'yicha">
               {data.expenses.categories.map((row) => (
                 <Row key={row.category} left={expenseLabel[row.category] ?? row.category} right={formatMoney(row.amount)} />
@@ -1085,6 +1149,270 @@ export function TelegramAdminClient() {
                 <Row key={expense.id} left={expense.title} right={formatMoney(expense.amount)} sub={`${formatDate(expense.spentAt)} · ${expenseLabel[expense.category] ?? expense.category}${expense.isRecurring ? " · doimiy" : ""}`} />
               ))}
             </Card>
+          </div>
+        )}
+
+        {activeTab === "debts" && (
+          <div className="space-y-3">
+            {data.debts.needsMigration ? (
+              <Card title="Jadval yaratilmagan">
+                <p className="text-sm text-muted">
+                  Supabase&apos;da <code>prisma/manual/qarzlar.sql</code> ni ishga tushirish kerak.
+                </p>
+              </Card>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <Metric label="Ochiq qarz" value={`${data.debts.openCount} ta`} sub={data.debts.noDueCount ? `${data.debts.noDueCount} tasida muddat yo'q` : "muddatlar qo'yilgan"} />
+                  <Metric label="🔴 Shoshilinch" value={`${data.debts.urgentCount} ta`} sub="10 kundan kam" />
+                  <Metric label="🟡 Muddati yaqin" value={`${data.debts.soonCount} ta`} sub="20 kundan kam" />
+                </div>
+
+                {data.debts.urgentCount > 0 && (
+                  <div className="rounded-lg border border-danger bg-danger-light px-3 py-2 text-sm text-fg">
+                    <b>{data.debts.urgentCount} ta qarzning muddati tugayapti.</b> Quyidagi ro&apos;yxatda qizil bilan belgilangan.
+                  </div>
+                )}
+
+                <Card title="Qoldiq summalar">
+                  {data.debts.totals.firmUzs > 0 && <Row left="Firmalarga" right={formatMoney(data.debts.totals.firmUzs)} sub="tovar qarzi" />}
+                  {data.debts.totals.firmUsd > 0 && <Row left="Firmalarga" right={`$${formatNumber(data.debts.totals.firmUsd)}`} sub="tovar qarzi, dollarda" />}
+                  {data.debts.totals.streetUzs > 0 && <Row left="Ko'chadan" right={formatMoney(data.debts.totals.streetUzs)} sub="naqd qarz" />}
+                  {data.debts.totals.streetUsd > 0 && <Row left="Ko'chadan" right={`$${formatNumber(data.debts.totals.streetUsd)}`} sub="naqd qarz, dollarda" />}
+                  {data.debts.openCount === 0 && <p className="text-sm text-muted">Ochiq qarz yo&apos;q ✅</p>}
+                </Card>
+
+                {canEditSection("qarzlar") ? (
+                  <>
+                    <ActionCard title="To'lov kiritish">
+                      <form
+                        className="space-y-2"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const form = event.currentTarget;
+                          const fd = new FormData(form);
+                          void submitAction(
+                            "addDebtEntry",
+                            {
+                              debtId: String(fd.get("debtId") ?? ""),
+                              type: String(fd.get("type") ?? "PAYMENT"),
+                              amount: Number(fd.get("amount") ?? 0),
+                              note: String(fd.get("note") ?? "") || undefined,
+                            },
+                            form,
+                          );
+                        }}
+                      >
+                        <Field label="Qarz">
+                          <select name="debtId" required className={controlClass}>
+                            <option value="">Tanlang</option>
+                            {data.debts.list.map((q) => (
+                              <option key={q.id} value={q.id}>
+                                {q.counterparty} — {q.currency === "USD" ? `$${formatNumber(q.remaining)}` : formatMoney(q.remaining)}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Field label="Turi">
+                            <select name="type" defaultValue="PAYMENT" className={controlClass}>
+                              <option value="PAYMENT">To'lov qildim</option>
+                              <option value="CHARGE">Yana qarz oldim</option>
+                            </select>
+                          </Field>
+                          <Field label="Summa">
+                            <input name="amount" type="number" min="1" step="0.01" required className={controlClass} />
+                          </Field>
+                        </div>
+                        <Field label="Izoh">
+                          <input name="note" placeholder="ixtiyoriy" className={controlClass} />
+                        </Field>
+                        <button className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={saving === "addDebtEntry"}>
+                          {saving === "addDebtEntry" ? "Saqlanmoqda..." : "Saqlash"}
+                        </button>
+                      </form>
+                    </ActionCard>
+
+                    <ActionCard title="Yangi qarz">
+                      <form
+                        className="space-y-2"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const form = event.currentTarget;
+                          const fd = new FormData(form);
+                          void submitAction(
+                            "createDebt",
+                            {
+                              counterparty: String(fd.get("counterparty") ?? ""),
+                              kind: String(fd.get("kind") ?? "FIRM"),
+                              currency: String(fd.get("currency") ?? "UZS"),
+                              direction: String(fd.get("direction") ?? "PAYABLE"),
+                              amount: Number(fd.get("amount") ?? 0),
+                              dueDate: String(fd.get("dueDate") ?? "") || undefined,
+                              note: String(fd.get("note") ?? "") || undefined,
+                            },
+                            form,
+                          );
+                        }}
+                      >
+                        <Field label="Kim">
+                          <input name="counterparty" required placeholder="Firma yoki ism" className={controlClass} />
+                        </Field>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Field label="Turi">
+                            <select name="kind" defaultValue="FIRM" className={controlClass}>
+                              <option value="FIRM">Firmadan (tovar)</option>
+                              <option value="STREET">Ko'chadan (naqd)</option>
+                            </select>
+                          </Field>
+                          <Field label="Valyuta">
+                            <select name="currency" defaultValue="UZS" className={controlClass}>
+                              <option value="UZS">so'm</option>
+                              <option value="USD">dollar</option>
+                            </select>
+                          </Field>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Field label="Yo'nalish">
+                            <select name="direction" defaultValue="PAYABLE" className={controlClass}>
+                              <option value="PAYABLE">Biz qarzdormiz</option>
+                              <option value="RECEIVABLE">Bizga qarzdor</option>
+                            </select>
+                          </Field>
+                          <Field label="Summa">
+                            <input name="amount" type="number" min="1" step="0.01" required className={controlClass} />
+                          </Field>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Field label="To'lash muddati">
+                            <input name="dueDate" type="date" className={controlClass} />
+                          </Field>
+                          <Field label="Izoh">
+                            <input name="note" placeholder="ixtiyoriy" className={controlClass} />
+                          </Field>
+                        </div>
+                        <button className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={saving === "createDebt"}>
+                          {saving === "createDebt" ? "Saqlanmoqda..." : "Qarz qo'shish"}
+                        </button>
+                      </form>
+                    </ActionCard>
+                  </>
+                ) : (
+                  <ReadOnlyCard />
+                )}
+
+                <Card title="Ochiq qarzlar">
+                  {data.debts.list.length === 0 ? (
+                    <p className="text-sm text-muted">Ochiq qarz yo&apos;q ✅</p>
+                  ) : (
+                    data.debts.list.map((q) => (
+                      <div key={q.id} className="border-b border-edge py-2 last:border-b-0">
+                        <div className="flex items-start justify-between gap-3 text-sm">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${q.level === "red" ? "bg-danger" : q.level === "yellow" ? "bg-accent" : "bg-muted/40"}`} />
+                            <span className="truncate font-medium text-fg">{q.counterparty}</span>
+                          </div>
+                          <span className={`shrink-0 text-right font-semibold ${q.level === "red" ? "text-danger" : "text-fg"}`}>
+                            {q.currency === "USD" ? `$${formatNumber(q.remaining)}` : formatMoney(q.remaining)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted">
+                          {q.kind === "FIRM" ? "Firma" : "Ko'cha"}
+                          {q.direction === "RECEIVABLE" ? " · bizga qarzdor" : ""}
+                          {q.unit ? ` · ${q.unit}` : ""}
+                          {" · "}
+                          {q.days === null
+                            ? "muddat qo'yilmagan"
+                            : q.days < 0
+                              ? `${Math.abs(q.days)} kun o'tdi`
+                              : q.days === 0
+                                ? "bugun"
+                                : `${q.days} kun qoldi`}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </Card>
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === "prices" && (
+          <div className="space-y-3">
+            {data.prices.needsMigration ? (
+              <Card title="Jadval yaratilmagan">
+                <p className="text-sm text-muted">
+                  Supabase&apos;da <code>prisma/manual/narx-nazorati.sql</code>, so&apos;ng{" "}
+                  <code>prisma/manual/narx-royxati.sql</code> ni ishga tushirish kerak.
+                </p>
+              </Card>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  <Metric label="Kuzatilayotgan" value={`${data.prices.total} ta`} sub={data.prices.noUrl ? `${data.prices.noUrl} tasida havola yo'q` : "hammasida havola bor"} />
+                  <Metric label="Narxi olingan" value={`${data.prices.priced} ta`} sub="solishtirish mumkin" />
+                  <Metric label="⚠️ Qimmat turibdi" value={`${data.prices.overpriced} ta`} sub="narxni tushirish kerak" />
+                  <Metric label="Oxirgi tekshiruv" value={data.prices.lastChecked ? formatTime(data.prices.lastChecked) : "—"} sub={data.prices.lastChecked ? formatDate(data.prices.lastChecked) : "hali tekshirilmagan"} />
+                </div>
+
+                <Card title="Dorixona sozlamalari">
+                  {data.prices.settings.length === 0 ? (
+                    <p className="text-sm text-muted">Sozlama yo&apos;q.</p>
+                  ) : (
+                    data.prices.settings.map((s) => (
+                      <Row
+                        key={s.unit}
+                        left={s.unit}
+                        right={s.enabled ? `+${s.percent}%` : "o'chirilgan"}
+                        sub={s.enabled ? "ustama yoqilgan" : "tavsiya berilmaydi"}
+                      />
+                    ))
+                  )}
+                  {canEditSection("narxlar") ? (
+                    <button
+                      onClick={() => void submitAction("refreshPrices", {})}
+                      disabled={saving === "refreshPrices"}
+                      className="mt-3 w-full rounded-lg bg-primary py-2 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {saving === "refreshPrices" ? "Tekshirilmoqda..." : "Narxlarni yangilash"}
+                    </button>
+                  ) : null}
+                  <p className="mt-2 text-xs text-muted">
+                    Foizni va har bir dorining alohida ustamasini web saytdagi Narx nazorati bo&apos;limida o&apos;zgartirasiz.
+                  </p>
+                </Card>
+
+                <Card title="Narxlar — qimmat turganlar birinchi">
+                  {data.prices.items.length === 0 ? (
+                    <p className="text-sm text-muted">Ro&apos;yxat bo&apos;sh.</p>
+                  ) : (
+                    data.prices.items.slice(0, 60).map((item) => (
+                      <div key={item.id} className="border-b border-edge py-2 last:border-b-0">
+                        <div className="flex items-start justify-between gap-3 text-sm">
+                          <span className={`min-w-0 truncate font-medium ${item.active ? "text-fg" : "text-muted line-through"}`}>
+                            {item.name}
+                          </span>
+                          <span className={`shrink-0 text-right font-semibold ${(item.diff ?? 0) > 0 ? "text-danger" : "text-fg"}`}>
+                            {item.suggested === null ? "—" : formatNumber(item.suggested)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted">
+                          {item.competitor === null
+                            ? "raqobatchi narxi yo'q"
+                            : `Arzon apteka ${formatNumber(item.competitor)} · +${item.percent}%`}
+                          {item.our !== null ? ` · bizda ${formatNumber(item.our)}` : ""}
+                          {(item.diff ?? 0) > 0 ? ` · ${formatNumber(item.diff ?? 0)} qimmat` : ""}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {data.prices.items.length > 60 && (
+                    <p className="pt-2 text-xs text-muted">Yana {data.prices.items.length - 60} ta — web saytda to&apos;liq ro&apos;yxat bor.</p>
+                  )}
+                </Card>
+              </>
+            )}
           </div>
         )}
 

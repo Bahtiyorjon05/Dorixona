@@ -34,6 +34,9 @@ $ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
 # Narx nazorati: har ishga tushganda bir necha dorining narxi yangilanadi.
 # Ro'yxat uch soatda to'liq aylanadi.
 $PriceUrl = "https://dorixonaa.vercel.app/api/prices/refresh"
+# Qarz eslatmasi: muddati yaqin qarzlar Telegram'ga yuboriladi.
+# Server kuniga bir marta yuboradi, shuning uchun bu turtki xavfsiz.
+$DebtUrl = "https://dorixonaa.vercel.app/api/notifications/debts"
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
 $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
 # Kirim va yetkazib beruvchiga qaytarish omborga (filial 1) yoziladi,
@@ -119,7 +122,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v12 boshlandi (narx nazorati ham yangilanadi)"
+Write-Log "relay v13 boshlandi (narx nazorati + qarz eslatmasi)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
@@ -176,5 +179,20 @@ if (-not $Only) {
     Write-Log ("OK    narx nazorati  {0}" -f $answer)
   } catch {
     Write-Log ("XATO  narx nazorati  {0}" -f (Get-ErrorText $_))
+  }
+}
+
+# ---- Qarz eslatmasi -------------------------------------------------------
+# Muddati yaqin qarzlarni Telegram'ga yuboradi. Vercel Cron ishlamay qolsa
+# ham eslatma kelsin - shu sababli bu yerdan ham turtki beramiz. Server
+# kuniga bir martadan ortiq yubormaydi.
+if (-not $Only) {
+  try {
+    $debts = New-Object System.Net.WebClient
+    $debts.Headers.Add("Authorization", "Bearer $Token")
+    $answer = [System.Text.Encoding]::UTF8.GetString($debts.UploadData($DebtUrl, "POST", [byte[]]@()))
+    Write-Log ("OK    qarz eslatmasi  {0}" -f $answer)
+  } catch {
+    Write-Log ("XATO  qarz eslatmasi  {0}" -f (Get-ErrorText $_))
   }
 }

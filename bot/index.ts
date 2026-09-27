@@ -1,3 +1,11 @@
+// Mahalliy ishlab chiqish uchun bot (long polling, `npm run bot`).
+//
+// DIQQAT: ishlab turgan bot - Vercel'dagi webhook
+// (src/app/api/telegram/bot/route.ts). Tezkor buyruqlar (/qarzlar, /savdo,
+// /ombor, /narxlar, /hisobot) va qarz eslatmasi o'sha yerda. Bu skriptni
+// ishga tushirsangiz Telegram yangilanishlarni shu yerga yuboradi va
+// webhook to'xtaydi - shuning uchun faqat mahalliy sinov uchun ishlatiladi.
+
 import { readFileSync } from "node:fs";
 import { config as loadEnv, parse as parseEnv } from "dotenv";
 import { Bot, InlineKeyboard, Keyboard, type Context } from "grammy";

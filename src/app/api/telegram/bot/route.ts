@@ -8,6 +8,15 @@ import {
   tierDiscount,
 } from "@/lib/loyalty";
 import { getTelegramWebAppUrl } from "@/lib/telegram-auth";
+import { readUserAccess } from "@/lib/permission-db";
+import type { AppPermission } from "@/lib/permissions";
+import {
+  debtMessage,
+  digestMessage,
+  priceMessage,
+  salesMessage,
+  stockMessage,
+} from "@/lib/telegram/digest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,14 +37,21 @@ function isAdmin(id?: number) {
 }
 
 /** Telegram'i akkauntga bog'langan faol xodimmi? */
-async function isLinkedStaff(id?: number) {
-  if (!id) return false;
+async function linkedStaff(id?: number) {
+  if (!id) return null;
   try {
-    const user = await db.user.findUnique({ where: { telegramId: BigInt(id) } });
-    return Boolean(user && user.isActive);
+    const user = await db.user.findUnique({
+      where: { telegramId: BigInt(id) },
+      select: { id: true, fullName: true, role: true, isActive: true },
+    });
+    return user && user.isActive ? user : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function isLinkedStaff(id?: number) {
+  return Boolean(await linkedStaff(id));
 }
 
 /** Panel ko'ra oladiganmi: admin yoki bog'langan xodim */
@@ -43,21 +59,87 @@ async function isStaff(id?: number) {
   return isAdmin(id) || (await isLinkedStaff(id));
 }
 
-async function requireAdmin(ctx: Context) {
-  if (!ctx.from) return false;
-  const admins = adminIds();
-  if (admins.size === 0) {
-    await ctx.reply(
-      "Admin Mini App uchun Vercel env ichiga TELEGRAM_ADMIN_IDS qo'shing.\n" +
-        `Sizning Telegram ID: ${ctx.from.id}`,
-    );
+/**
+ * Buyruq uchun ruxsat tekshiruvi. Admin hammasini ko'radi; xodim faqat
+ * o'ziga berilgan bo'limni. Ruxsat bo'lmasa qisqa javob qaytariladi.
+ */
+async function guard(ctx: Context, permission: AppPermission) {
+  const id = ctx.from?.id;
+  if (isAdmin(id)) return true;
+
+  const user = await linkedStaff(id);
+  if (!user) {
+    await ctx.reply("Bu buyruq faqat dorixona xodimlari uchun. /start bosib kiring.");
     return false;
   }
-  if (!admins.has(ctx.from.id)) {
-    await ctx.reply("Bu panel faqat adminlar uchun.");
+  if (user.role === "OWNER") return true;
+
+  const access = await readUserAccess(user.id, user.role);
+  if (!access.permissions.includes(permission)) {
+    await ctx.reply("Bu bo'limga ruxsatingiz yo'q. Ruxsatni admin beradi.");
     return false;
   }
   return true;
+}
+
+/** Mini App'ni kerakli bo'limda ochadigan havola */
+function webAppUrl(section?: string) {
+  const base = getTelegramWebAppUrl();
+  if (!base || !section) return base;
+  try {
+    const url = new URL(base);
+    url.searchParams.set("bolim", section);
+    return url.toString();
+  } catch {
+    return base;
+  }
+}
+
+/** Uzun javoblarni Telegram chegarasiga (4096) sig'dirib yuborish */
+async function replyLong(ctx: Context, text: string, keyboard?: InlineKeyboard) {
+  const limit = 3900;
+  if (text.length <= limit) {
+    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+    return;
+  }
+
+  const chunks: string[] = [];
+  let rest = text;
+  while (rest.length > limit) {
+    const cut = rest.lastIndexOf("\n", limit);
+    const at = cut > limit / 2 ? cut : limit;
+    chunks.push(rest.slice(0, at));
+    rest = rest.slice(at);
+  }
+  chunks.push(rest);
+
+  for (let i = 0; i < chunks.length; i += 1) {
+    await ctx.reply(chunks[i], {
+      parse_mode: "HTML",
+      reply_markup: i === chunks.length - 1 ? keyboard : undefined,
+    });
+  }
+}
+
+/** Bo'limni Mini App'da ochish tugmasi */
+function openButton(label: string, section: string) {
+  const url = webAppUrl(section);
+  return url ? new InlineKeyboard().webApp(label, url) : undefined;
+}
+
+/** Admin/xodim uchun asosiy menyu */
+function mainMenu() {
+  const url = webAppUrl();
+  const keyboard = new InlineKeyboard()
+    .text("🧮 Qarzlar", "m:qarzlar")
+    .text("🛒 Savdo", "m:savdo")
+    .row()
+    .text("📦 Ombor", "m:ombor")
+    .text("💹 Narxlar", "m:narxlar")
+    .row()
+    .text("📊 Jamlanma", "m:hisobot");
+  if (url) keyboard.row().webApp("📱 To'liq panelni ochish", url);
+  return keyboard;
 }
 
 async function sendAdminPanel(ctx: Context) {
@@ -72,21 +154,24 @@ async function sendAdminPanel(ctx: Context) {
   }
 
   if (isAdmin(ctx.from?.id)) {
-    const keyboard = new InlineKeyboard().webApp("Admin panelni ochish", url);
     await ctx.reply(
-      "Dorixona admin Mini App tayyor.\n\n" +
-        "Web ilovadagi Moliya, Ombor, Savdo, Mijozlar, Xodimlar, KPI, Davomat, Hisobotlar va Sozlamalar shu panel ichida ko'rinadi.",
-      { reply_markup: keyboard },
+      "💊 <b>Evomed apteka — admin paneli</b>\n\n" +
+        "Tezkor ma'lumot uchun tugmani bosing yoki buyruqdan foydalaning:\n" +
+        "/qarzlar · /savdo · /ombor · /narxlar · /hisobot\n\n" +
+        "To'liq panelda Moliya, Ombor, Savdo, Qarzlar, Narx nazorati, Mijozlar, " +
+        "Xodimlar, KPI, Davomat va Hisobotlar bor.",
+      { parse_mode: "HTML", reply_markup: mainMenu() },
     );
     return;
   }
 
   // Bog'langan xodim — to'g'ridan-to'g'ri panel
-  if (await isLinkedStaff(ctx.from?.id)) {
-    const keyboard = new InlineKeyboard().webApp("Xodim panelini ochish", url);
-    await ctx.reply("Xush kelibsiz! Panelni ochish uchun tugmani bosing.", {
-      reply_markup: keyboard,
-    });
+  const staff = await linkedStaff(ctx.from?.id);
+  if (staff) {
+    await ctx.reply(
+      `Xush kelibsiz, ${staff.fullName}!\n\nO'zingizga berilgan bo'limlar panelda ko'rinadi.`,
+      { reply_markup: mainMenu() },
+    );
     return;
   }
 
@@ -99,6 +184,34 @@ async function sendAdminPanel(ctx: Context) {
       "Mijoz bo'lsangiz: /balans — bonus ballari, /tarix — xaridlar.",
     { reply_markup: keyboard },
   );
+}
+
+/** Buyruq va tugma bir xil ishlashi uchun umumiy ro'yxat */
+const sections: {
+  key: string;
+  permission: AppPermission;
+  label: string;
+  section: string;
+  text: () => Promise<string>;
+}[] = [
+  { key: "qarzlar", permission: "qarzlar", label: "Qarzlarni ochish", section: "debts", text: debtMessage },
+  { key: "savdo", permission: "savdo", label: "Savdoni ochish", section: "sales", text: salesMessage },
+  { key: "ombor", permission: "ombor", label: "Omborni ochish", section: "inventory", text: stockMessage },
+  { key: "narxlar", permission: "narxlar", label: "Narxlarni ochish", section: "prices", text: priceMessage },
+  { key: "hisobot", permission: "moliya", label: "Panelni ochish", section: "overview", text: digestMessage },
+];
+
+async function sendSection(ctx: Context, key: string) {
+  const item = sections.find((s) => s.key === key);
+  if (!item) return;
+  if (!(await guard(ctx, item.permission))) return;
+  try {
+    const text = await item.text();
+    await replyLong(ctx, text, openButton(item.label, item.section));
+  } catch (error) {
+    console.error(`Telegram /${key} xatosi:`, error);
+    await ctx.reply("Ma'lumot olinmadi. Birozdan keyin qayta urinib ko'ring.");
+  }
 }
 
 function registerBotHandlers(bot: Bot) {
@@ -246,16 +359,53 @@ function registerBotHandlers(bot: Bot) {
     await ctx.reply(`🕘 So'nggi harakatlar:\n\n${lines.join("\n")}\n\nJoriy balans: ${customer.points} ball`);
   });
 
-  bot.command(["admin", "panel", "dashboard"], sendAdminPanel);
+  bot.command(["admin", "panel", "dashboard", "menyu"], sendAdminPanel);
+
+  // ─── Xodim/admin buyruqlari ───
+  bot.command("qarzlar", (ctx) => sendSection(ctx, "qarzlar"));
+  bot.command("savdo", (ctx) => sendSection(ctx, "savdo"));
+  bot.command("ombor", (ctx) => sendSection(ctx, "ombor"));
+  bot.command("narxlar", (ctx) => sendSection(ctx, "narxlar"));
+  bot.command("hisobot", (ctx) => sendSection(ctx, "hisobot"));
+
+  // Menyu tugmalari
+  bot.callbackQuery(/^m:(.+)$/, async (ctx) => {
+    const key = ctx.match?.[1];
+    await ctx.answerCallbackQuery();
+    if (key) await sendSection(ctx, key);
+  });
+
+  bot.command("id", async (ctx) => {
+    await ctx.reply(
+      `Sizning Telegram ID: <code>${ctx.from?.id}</code>\n\n` +
+        "Admin bo'lish uchun shu raqamni Vercel env ichidagi TELEGRAM_ADMIN_IDS ga qo'shish kerak.",
+      { parse_mode: "HTML" },
+    );
+  });
 
   bot.command("help", async (ctx) => {
-    const adminLine = isAdmin(ctx.from?.id) ? "/panel — admin Mini App\n" : "";
+    if (await isStaff(ctx.from?.id)) {
+      await ctx.reply(
+        "💊 <b>Evomed apteka boti</b>\n\n" +
+          "<b>Tezkor buyruqlar</b>\n" +
+          "/qarzlar — ochiq qarzlar va muddatlar\n" +
+          "/savdo — bugungi va oylik savdo, naqd/karta\n" +
+          "/ombor — kam qoldiq va muddati yaqin dorilar\n" +
+          "/narxlar — raqobatchidan qimmat turgan dorilar\n" +
+          "/hisobot — kunlik jamlanma\n" +
+          "/panel — to'liq Mini App\n" +
+          "/id — Telegram ID\n\n" +
+          "Qarz muddati 10 kundan kam qolsa bot o'zi ogohlantiradi.",
+        { parse_mode: "HTML", reply_markup: mainMenu() },
+      );
+      return;
+    }
+
     await ctx.reply(
       "Dorixona sodiqlik boti 💊\n\n" +
         "/start — ro'yxatdan o'tish\n" +
         "/balans — bonus ballaringiz va daraja\n" +
         "/tarix — so'nggi harakatlar\n" +
-        adminLine +
         "/help — yordam",
     );
   });

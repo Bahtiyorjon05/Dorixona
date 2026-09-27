@@ -160,6 +160,47 @@ Bot   → "Rahmat! Siz ro'yxatdan o'tdingiz 🎉
          Sizning bonus kartangiz: #FP-00123"
 ```
 
+### Admin va xodim buyruqlari
+Bot bitta — lekin kim yozayotganiga qarab boshqacha javob beradi. Adminlar
+`TELEGRAM_ADMIN_IDS` orqali, xodimlar Mini App'ga bir marta email/parol bilan
+kirganda Telegram'i akkauntga bog'lanib aniqlanadi.
+
+| Buyruq | Nima ko'rsatadi | Ruxsat |
+| --- | --- | --- |
+| `/panel` | To'liq Mini App | — |
+| `/qarzlar` | Ochiq qarzlar, muddatlar, qoldiq summalar | `qarzlar` |
+| `/savdo` | Bugungi va oylik savdo, naqd/karta ajratilgan | `savdo` |
+| `/ombor` | Kam qoldiq va muddati yaqin dorilar | `ombor` |
+| `/narxlar` | Raqobatchidan qimmat turgan dorilar | `narxlar` |
+| `/hisobot` | Kunlik jamlanma (savdo + qarz + ombor) | `moliya` |
+| `/id` | Telegram ID (admin qilish uchun) | — |
+
+Xodim faqat o'ziga berilgan bo'limni ko'radi; ruxsati bo'lmasa bot qisqa rad
+javobini qaytaradi.
+
+### Qarz eslatmasi
+Muddati yaqin qarzlar Telegram'ga o'zi keladi:
+
+- 🔴 muddati o'tgan yoki **10 kundan kam** qolgan
+- 🟡 **20 kundan kam** qolgan
+
+Kim oladi: adminlar + `qarzlar` ruxsati bo'lgan, Telegram'i bog'langan xodimlar.
+
+Ikki joydan chaqiriladi — Vercel Cron (`vercel.json`, kuniga bir marta) va
+dorixona kompyuteridagi relay skript. Server kuniga bir martadan ortiq
+yubormaydi, shuning uchun takror xabar bo'lmaydi.
+
+Nega kelmayapti degan savol tug'ilsa, holatni ko'rsatadigan tekshiruv bor
+(xabar yubormaydi):
+
+```
+/api/notifications/debts?token=<FAPTEKA_SITE_TOKEN>&tekshir=1
+```
+
+Javobda: qarzlar jadvali bormi, nechta ochiq qarzda muddat qo'yilgan, kimlarga
+ketishi kerak va bot tokeni sozlanganmi — hammasi ko'rinadi. Majburan qayta
+yuborish: `&majburan=1`.
+
 ### Eslatma
 - Mijoz ma'lumotlari (telefon) **shaxsiy ma'lumot** — ruxsat (consent) so'raladi va xavfsiz saqlanadi.
 
