@@ -122,7 +122,24 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v13 boshlandi (narx nazorati + qarz eslatmasi)"
+Write-Log "relay v14 boshlandi (xatoda qaysi tomon ishlamagani yoziladi)"
+
+# ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
+# Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
+# noaniq qolardi: API o'chiqmi yoki internetmi.
+try {
+  $ping = New-Object System.Net.WebClient
+  $probe = "{0}?pDateFrom={1}&pDateTo={1}&pFilial_id=2&pReport_id=4" -f $ApiUrl, (Get-Date).ToString("dd.MM.yyyy")
+  [void]$ping.DownloadData($probe)
+  Write-Log "OK    F-Apteka API javob berdi"
+} catch {
+  Write-Log ("XATO  F-Apteka API javob bermadi: {0}" -f (Get-ErrorText $_))
+  Write-Log ("      Manzil: {0}" -f $ApiUrl)
+  Write-Log "      Tekshiring: 1) ServiceReports / API dasturi ishlab turibdimi"
+  Write-Log "                  2) cmd da: netstat -ano | findstr :8081  -> LISTENING bo'lsin"
+  Write-Log "                  3) brauzerda shu manzilni ochib ko'ring, XML chiqishi kerak"
+  exit 1
+}
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
@@ -142,20 +159,28 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
       $label = "$erpDate F=$filial $report (#$reportId)"
       $CostSuffix = ""
       if ($CostOnly -or $CostOnlyReports -contains $report) { $CostSuffix = "&costOnly=1" }
+      # Ikki qadam alohida ushlanadi, shunda xato qaysi tomondan
+      # kelgani darrov ko'rinadi: F-Apteka API mi yoki ERP sayti mi.
+      $xml = $null
+      $contentType = "text/xml"
       try {
         $api = New-Object System.Net.WebClient
         $source = "{0}?pDateFrom={1}&pDateTo={1}&pFilial_id={2}&pReport_id={3}" -f $ApiUrl, $apiDate, $filial, $reportId
         $xml = $api.DownloadData($source)
-        $contentType = $api.ResponseHeaders["Content-Type"]
-        if (-not $contentType) { $contentType = "text/xml" }
+        if ($api.ResponseHeaders["Content-Type"]) { $contentType = $api.ResponseHeaders["Content-Type"] }
+      } catch {
+        Write-Log ("XATO  {0}  F-APTEKA: {1}" -f $label, (Get-ErrorText $_))
+        continue
+      }
 
-        # Bo'sh javobni (o'sha kuni hujjat yo'q) serverga yubormaymiz -
-        # 120 kunlik tortishda shu keraksiz so'rovlar butun vaqtni yeb qo'yadi.
-        if ($xml.Length -lt 40) {
-          Write-Log ("BOSH  {0}" -f $label)
-          continue
-        }
+      # Bo'sh javobni (o'sha kuni hujjat yo'q) serverga yubormaymiz -
+      # 120 kunlik tortishda shu keraksiz so'rovlar butun vaqtni yeb qo'yadi.
+      if ($xml.Length -lt 40) {
+        Write-Log ("BOSH  {0}" -f $label)
+        continue
+      }
 
+      try {
         $erp = New-Object System.Net.WebClient
         $erp.Headers.Add("Authorization", "Bearer $Token")
         $erp.Headers.Add("Content-Type", $contentType)
@@ -163,7 +188,7 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
         $answer = [System.Text.Encoding]::UTF8.GetString($erp.UploadData($target, "POST", $xml))
         Write-Log ("OK    {0}  {1} bayt  {2}" -f $label, $xml.Length, $answer)
       } catch {
-        Write-Log ("XATO  {0}  {1}" -f $label, (Get-ErrorText $_))
+        Write-Log ("XATO  {0}  ERP: {1}" -f $label, (Get-ErrorText $_))
       }
     }
   }

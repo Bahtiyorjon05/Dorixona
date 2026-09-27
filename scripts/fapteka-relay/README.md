@@ -32,6 +32,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-rela
 Har hisobot uchun `OK` yoki `XATO` qatori chiqadi. Hammasi
 `D:\FAptekaRelay\relay.log` ga ham yoziladi.
 
+Skript ishni F-Apteka API'sini bir marta chaqirib tekshirishdan boshlaydi.
+Javob bermasa, kunlarni aylanib o'tirmaydi — nima qilish kerakligini yozib
+to'xtaydi. Xato chiqsa, qaysi tomondan kelgani ko'rsatiladi:
+
+| Yozuv | Ma'nosi |
+| --- | --- |
+| `XATO ... F-APTEKA: ...` | dorixona kompyuteridagi API javob bermadi |
+| `XATO ... ERP: ...` | ERP sayti (Vercel) qabul qilmadi |
+| `BOSH ...` | o'sha kuni hujjat bo'lmagan — normal holat |
+
+`F-APTEKA: Невозможно соединиться с удаленным сервером` chiqsa, hisobot
+xizmati o'chiq. `netstat -ano | findstr :8081` da `LISTENING` bo'lishi kerak.
+
 **5. Avtomatik ishga tushirish.** `cmd` ni **administrator sifatida** oching:
 
 ```
