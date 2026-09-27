@@ -256,7 +256,7 @@ export function MonthlyFinancePanel({
                 <Input name="stockValue" type="number" step="0.1" min={0} defaultValue={toMln(editing.stockValue)} placeholder="1282" />
               </Field>
               <Field label="Qayta baholash (mln)">
-                <Input name="revaluation" type="number" step="0.1" min={0} defaultValue={toMln(editing.revaluation)} placeholder="34" />
+                <Input name="revaluation" type="number" step="any" min={0} defaultValue={toMln(editing.revaluation)} placeholder="34" />
               </Field>
             </div>
             <Field label="Bank qoldig'i (mln) — ixtiyoriy">

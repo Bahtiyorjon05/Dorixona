@@ -532,3 +532,33 @@ model PriceSetting {
   costPercent Decimal @default(0) @db.Decimal(5, 2)
   updatedAt DateTime @default(now()) @updatedAt
 }
+
+/// SITE.exe dan kelgan oxirgi chakana narx (dorixona × dori).
+/// Keyingi push'da narx o'zgargani shu bilan solishtiriladi.
+model FaptekaPrice {
+  /// F-Apteka otdel: 2 = Yunusobod, 3 = Shayxontohur
+  otdel     String
+  /// F-Apteka tovar ID (SITE.exe "I")
+  fid       String
+  price     Decimal  @db.Decimal(16, 2)
+  qty       Decimal  @db.Decimal(14, 4)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@id([otdel, fid])
+}
+
+/// Pereotsenka: dorixonada dori narxi o'zgargan payt. Summa = qoldiq × (yangi − eski)
+model Revaluation {
+  id       String   @id @default(cuid())
+  unit     String
+  otdel    String
+  fid      String
+  name     String
+  oldPrice Decimal  @db.Decimal(16, 2)
+  newPrice Decimal  @db.Decimal(16, 2)
+  qty      Decimal  @db.Decimal(14, 4)
+  amount   Decimal  @db.Decimal(16, 2)
+  at       DateTime @default(now())
+
+  @@index([unit, at])
+}

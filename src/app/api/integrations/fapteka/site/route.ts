@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { decodeXmlBuffer, parseFaptekaXml } from "@/lib/integrations/fapteka/client";
 import { syncOtdelStockValue } from "@/lib/integrations/fapteka/otdel-stock";
+import { syncRevaluationFromSite } from "@/lib/revaluation";
 import { syncFaptekaSiteRows } from "@/lib/integrations/fapteka/sync";
 
 export const runtime = "nodejs";
@@ -105,6 +106,22 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Otdel astatkasi yozilmadi", error);
   }
+  // Narx o'zgargan dorilardan pereotsenka hisoblanadi (oylik harajat)
+  let revaluationNote = "";
+  try {
+    const revaluation = await syncRevaluationFromSite(rows);
+    if (revaluation.changes.length) {
+      revaluationNote =
+        " | pereotsenka: " +
+        revaluation.changes.map((c) => `${c.unit} ${c.count} ta ${Math.round(c.amount)}`).join(", ") +
+        " | oy jami: " +
+        revaluation.monthTotals.map((t) => `${t.unit} ${Math.round(t.amount)}`).join(", ");
+    }
+    if (revaluation.skippedIncoming) revaluationNote += ` | kirim bilan narx o'zgardi: ${revaluation.skippedIncoming}`;
+  } catch (error) {
+    revaluationNote = ` | pereotsenka xato: ${error instanceof Error ? error.message.slice(0, 200) : "?"}`;
+  }
+
   console.info("F-Apteka SITE.exe push", {
     receivedRows: summary.receivedRows,
     productsUpserted: summary.productsUpserted,
@@ -128,7 +145,8 @@ export async function POST(request: NextRequest) {
         sample: JSON.stringify(rows[0] ?? {}).slice(0, 2000),
         note: `upsert=${summary.productsUpserted}, skip=${summary.skippedRows}` +
           (otdels ? ` | ${otdels}` : " | otdel yo'q") +
-          (stockByUnit.length ? ` | astatka: ${stockByUnit.join(", ")}` : ""),
+          (stockByUnit.length ? ` | astatka: ${stockByUnit.join(", ")}` : "") +
+          revaluationNote,
         ok: summary.ok,
       },
     });
