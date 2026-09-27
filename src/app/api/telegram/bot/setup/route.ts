@@ -43,11 +43,36 @@ const staffCommands = [
   { command: "help", description: "Yordam" },
 ];
 
+/**
+ * Kalit: TELEGRAM_WEBHOOK_SETUP_KEY, bo'lmasa CRON_SECRET yoki
+ * FAPTEKA_SITE_TOKEN ham bo'ladi. Vercel env'ga kirish imkoni bo'lmaganda
+ * qo'lda webhook sozlab bo'lmay qolmasin.
+ */
+function allowed(url: URL) {
+  const given = url.searchParams.get("key")?.trim();
+  if (!given) return false;
+  const keys = [
+    process.env.TELEGRAM_WEBHOOK_SETUP_KEY,
+    process.env.CRON_SECRET,
+    process.env.FAPTEKA_SITE_TOKEN,
+  ]
+    .map((key) => key?.trim())
+    .filter(Boolean);
+  return keys.includes(given);
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const setupKey = process.env.TELEGRAM_WEBHOOK_SETUP_KEY;
-  if (!setupKey || url.searchParams.get("key") !== setupKey) {
-    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!allowed(url)) {
+    return Response.json(
+      {
+        ok: false,
+        error: "Kalit noto'g'ri",
+        yordam:
+          "key= parametriga TELEGRAM_WEBHOOK_SETUP_KEY, CRON_SECRET yoki FAPTEKA_SITE_TOKEN dan birini yozing",
+      },
+      { status: 401 },
+    );
   }
 
   const token = process.env.TELEGRAM_BOT_TOKEN;

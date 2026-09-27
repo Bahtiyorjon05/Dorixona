@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { fetchFaptekaReport, getFaptekaConfig, numberValue, dateValue, type FaptekaRow } from "./client";
 import type { Filial } from "@/lib/filial";
 import { categoryFromName, FAPTEKA_DEFAULT_CATEGORY } from "./category";
-import { buildIncomingExpenseEntries } from "./expense-helpers";
+import { buildIncomingExpenseEntries, expenseGroupKey } from "./expense-helpers";
 import {
   FAPTEKA_EXPENSE_MARK,
   FAPTEKA_EXPENSE_PREFIX_OLD,
@@ -33,6 +33,8 @@ export type FaptekaSyncSummary = {
   expensesCreated: number;
   saleRows: number;
   salesUpserted: number;
+  /** Kirim qaysi dorixonalarga yozildi: "Yunusobod: 12, Umumiy: 3" */
+  expenseUnits?: string;
   errors: string[];
 };
 
@@ -358,6 +360,14 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
     productNames(input.branchId, rows),
   ]);
 
+  // Qaysi dorixonaga kelgani: qatordagi O (otdel) bo'yicha. Kirim omborga
+  // (filial 1) so'ralgani uchun so'rovning o'zi filialni bilmaydi — lekin
+  // hujjat qatorlarida otdel ko'rsatilgan bo'lsa, harajat aniq dorixonaga
+  // yoziladi. Ko'rsatilmagan bo'lsa avvalgidek "Umumiy" bo'lib qoladi.
+  const otdels = otdelUnitMap();
+  const unitOf = (row: FaptekaRow) =>
+    otdels.get((row.O ?? "").trim()) ?? input.scope?.unit ?? null;
+
   // Hujjat ichida nima kelgani: nom -> summa. Harajat nomida eng kattalari
   // ko'rsatiladi, shunda ro'yxatga qaraboq nima olinganini bilish mumkin.
   const itemsByDoc = new Map<string, Map<string, number>>();
@@ -365,10 +375,10 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
     const faptekaId = rowId(row, "G");
     const name = faptekaId ? names.get(faptekaSku(faptekaId)) : undefined;
     if (!name) continue;
-    const docId = docIdOf(row);
-    const items = itemsByDoc.get(docId) ?? new Map<string, number>();
+    const key = expenseGroupKey(docIdOf(row), unitOf(row));
+    const items = itemsByDoc.get(key) ?? new Map<string, number>();
     items.set(name, (items.get(name) ?? 0) + stockCount(row.Q || 1) * costPerUnit(row));
-    itemsByDoc.set(docId, items);
+    itemsByDoc.set(key, items);
   }
 
   const entries = buildIncomingExpenseEntries(
@@ -378,6 +388,7 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
       price: costPerUnit(row),
       spentAt: dateValue(row.D) ?? new Date(input.dateFrom),
       supplier: suppliers.get((row.I ?? "").trim()),
+      unit: unitOf(row),
     })),
   );
 
@@ -399,18 +410,32 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
         title: faptekaExpenseTitle({
           docId: entry.docId,
           supplier: entry.supplier,
-          items: itemsByDoc.get(entry.docId),
+          items: itemsByDoc.get(expenseGroupKey(entry.docId, entry.unit)),
         }),
         category: "GOODS" as const,
         amount: entry.amount,
         spentAt: entry.spentAt,
         isRecurring: false,
-        unit: input.scope?.unit ?? null,
+        unit: entry.unit,
         branchId: input.branchId,
       })),
     }),
   ]);
   input.summary.expensesCreated += entries.length;
+
+  // Jurnalda ko'rinsin: kirim qaysi dorixonalarga yozildi. "Umumiy" chiqsa,
+  // demak F-Apteka qatorlarida otdel (O) yo'q.
+  const perUnit = new Map<string, number>();
+  for (const entry of entries) {
+    const key = entry.unit ?? "Umumiy";
+    perUnit.set(key, (perUnit.get(key) ?? 0) + 1);
+  }
+  if (perUnit.size > 0) {
+    input.summary.expenseUnits = Array.from(perUnit.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([unit, count]) => `${unit}: ${count}`)
+      .join(", ");
+  }
 }
 
 async function syncMovements(input: StepInput) {

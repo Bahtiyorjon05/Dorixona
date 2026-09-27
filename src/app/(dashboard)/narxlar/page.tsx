@@ -12,7 +12,7 @@ export default async function NarxlarPage() {
     <div>
       <PageHeader
         title="Narx nazorati"
-        subtitle="Toshkentdagi eng arzon narx + ustama — talabchan dorilar bo'yicha"
+        subtitle="Kam sotilayotgan dorilarga Toshkentdagi eng arzon narx + ustama"
       />
 
       {d.needsMigration && (
@@ -25,16 +25,16 @@ export default async function NarxlarPage() {
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
-          icon="💊"
-          label="Kuzatilayotgan dori"
-          value={formatNumber(d.total)}
-          sub={`${d.linked} tasi ombor bilan bog'langan`}
+          icon="🐌"
+          label="Kam sotilayotgan"
+          value={formatNumber(d.slowCount)}
+          sub="Ustama shularga qo'llanadi"
         />
         <MetricCard
-          icon="🔻"
-          label="Raqobatchi narxi bor"
-          value={formatNumber(d.priced)}
-          sub="Solishtirish mumkin"
+          icon="🔥"
+          label="Topiviy dorilar"
+          value={formatNumber(d.topCount)}
+          sub={`Oyiga ${d.topPerMonth} donadan ko'p`}
         />
         <MetricCard
           icon="⚠️"
@@ -52,15 +52,36 @@ export default async function NarxlarPage() {
       </div>
 
       <Card title="Dorilar ro'yxati" icon="💹">
-        <PricePanel items={d.items} settings={d.settings} percent={d.percent} />
+        <PricePanel
+          items={d.items}
+          settings={d.settings}
+          percent={d.percent}
+          salesDays={d.salesDays}
+          topPerMonth={d.topPerMonth}
+        />
       </Card>
 
-      <p className="mt-4 text-xs text-muted">
-        Narxlar arzonapteka.uz dagi ochiq sahifalardan olinadi — o&apos;sha yerda Toshkent bo&apos;yicha
-        eng arzon taklif ko&apos;rsatiladi. Ro&apos;yxat har uch soatda o&apos;zi yangilanadi.
-        Tavsiya narxni F-Apteka&apos;da qo&apos;lda qo&apos;yasiz: F-Apteka tashqaridan narx yozishga
-        ruxsat bermaydi.
-      </p>
+      <div className="mt-4 space-y-1.5 text-xs text-muted">
+        <p>
+          Dorilar savdo ma&apos;lumotiga qarab ikkiga bo&apos;linadi: oxirgi {d.salesDays} kunda
+          oyiga {d.topPerMonth} donadan ko&apos;p sotilgani <b>topiviy</b>, qolgani{" "}
+          <b>kam sotilayotgan</b>. Avtomatik ustama kam sotilayotganlarga kerak — ular turib
+          qolmasin deb raqobatchining eng arzon narxiga yaqin qo&apos;yiladi.
+          {d.unmatchedCount > 0 && (
+            <>
+              {" "}
+              {formatNumber(d.unmatchedCount)} ta dori ombor bilan bog&apos;lanmagan, savdosi
+              ko&apos;rinmaydi — ular &laquo;Bog&apos;lanmagan&raquo; ro&apos;yxatida.
+            </>
+          )}
+        </p>
+        <p>
+          Narxlar arzonapteka.uz dagi ochiq sahifalardan olinadi — o&apos;sha yerda Toshkent
+          bo&apos;yicha eng arzon taklif ko&apos;rsatiladi. Ro&apos;yxat har uch soatda o&apos;zi
+          yangilanadi. Tavsiya narxni F-Apteka&apos;da qo&apos;lda qo&apos;yasiz: F-Apteka
+          tashqaridan narx yozishga ruxsat bermaydi.
+        </p>
+      </div>
     </div>
   );
 }

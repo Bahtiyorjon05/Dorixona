@@ -95,6 +95,9 @@ type DashboardData = {
     priced: number;
     overpriced: number;
     noUrl: number;
+    slowCount: number;
+    topCount: number;
+    topPerMonth: number;
     lastChecked: string | null;
     settings: { unit: string; enabled: boolean; percent: number }[];
     items: {
@@ -110,6 +113,8 @@ type DashboardData = {
       checkedAt: string | null;
       active: boolean;
       hasUrl: boolean;
+      perMonth: number | null;
+      group: "top" | "slow" | "unmatched";
     }[];
   };
   customers: {
@@ -1350,8 +1355,8 @@ export function TelegramAdminClient() {
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                  <Metric label="Kuzatilayotgan" value={`${data.prices.total} ta`} sub={data.prices.noUrl ? `${data.prices.noUrl} tasida havola yo'q` : "hammasida havola bor"} />
-                  <Metric label="Narxi olingan" value={`${data.prices.priced} ta`} sub="solishtirish mumkin" />
+                  <Metric label="🐌 Kam sotilayotgan" value={`${data.prices.slowCount} ta`} sub="ustama shularga" />
+                  <Metric label="🔥 Topiviy" value={`${data.prices.topCount} ta`} sub={`oyiga ${data.prices.topPerMonth} donadan ko'p`} />
                   <Metric label="⚠️ Qimmat turibdi" value={`${data.prices.overpriced} ta`} sub="narxni tushirish kerak" />
                   <Metric label="Oxirgi tekshiruv" value={data.prices.lastChecked ? formatTime(data.prices.lastChecked) : "—"} sub={data.prices.lastChecked ? formatDate(data.prices.lastChecked) : "hali tekshirilmagan"} />
                 </div>
@@ -1383,34 +1388,40 @@ export function TelegramAdminClient() {
                   </p>
                 </Card>
 
-                <Card title="Narxlar — qimmat turganlar birinchi">
-                  {data.prices.items.length === 0 ? (
-                    <p className="text-sm text-muted">Ro&apos;yxat bo&apos;sh.</p>
-                  ) : (
-                    data.prices.items.slice(0, 60).map((item) => (
-                      <div key={item.id} className="border-b border-edge py-2 last:border-b-0">
-                        <div className="flex items-start justify-between gap-3 text-sm">
-                          <span className={`min-w-0 truncate font-medium ${item.active ? "text-fg" : "text-muted line-through"}`}>
-                            {item.name}
-                          </span>
-                          <span className={`shrink-0 text-right font-semibold ${(item.diff ?? 0) > 0 ? "text-danger" : "text-fg"}`}>
-                            {item.suggested === null ? "—" : formatNumber(item.suggested)}
-                          </span>
+                {(["slow", "top"] as const).map((grp) => {
+                  const rows = data.prices.items.filter((item) => item.group === grp);
+                  if (rows.length === 0) return null;
+                  return (
+                    <Card
+                      key={grp}
+                      title={grp === "slow" ? "🐌 Kam sotilayotgan — ustama shularga" : "🔥 Topiviy dorilar"}
+                    >
+                      {rows.slice(0, 40).map((item) => (
+                        <div key={item.id} className="border-b border-edge py-2 last:border-b-0">
+                          <div className="flex items-start justify-between gap-3 text-sm">
+                            <span className={`min-w-0 truncate font-medium ${item.active ? "text-fg" : "text-muted line-through"}`}>
+                              {item.name}
+                            </span>
+                            <span className={`shrink-0 text-right font-semibold ${(item.diff ?? 0) > 0 ? "text-danger" : "text-fg"}`}>
+                              {item.suggested === null ? "—" : formatNumber(item.suggested)}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-xs text-muted">
+                            {item.perMonth === null ? "savdosi ko'rinmaydi" : `${item.perMonth} dona/oy`}
+                            {item.competitor === null
+                              ? " · raqobatchi narxi yo'q"
+                              : ` · Arzon apteka ${formatNumber(item.competitor)} · +${item.percent}%`}
+                            {item.our !== null ? ` · bizda ${formatNumber(item.our)}` : ""}
+                            {(item.diff ?? 0) > 0 ? ` · ${formatNumber(item.diff ?? 0)} qimmat` : ""}
+                          </div>
                         </div>
-                        <div className="mt-0.5 text-xs text-muted">
-                          {item.competitor === null
-                            ? "raqobatchi narxi yo'q"
-                            : `Arzon apteka ${formatNumber(item.competitor)} · +${item.percent}%`}
-                          {item.our !== null ? ` · bizda ${formatNumber(item.our)}` : ""}
-                          {(item.diff ?? 0) > 0 ? ` · ${formatNumber(item.diff ?? 0)} qimmat` : ""}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  {data.prices.items.length > 60 && (
-                    <p className="pt-2 text-xs text-muted">Yana {data.prices.items.length - 60} ta — web saytda to&apos;liq ro&apos;yxat bor.</p>
-                  )}
-                </Card>
+                      ))}
+                      {rows.length > 40 && (
+                        <p className="pt-2 text-xs text-muted">Yana {rows.length - 40} ta — web saytda to&apos;liq ro&apos;yxat bor.</p>
+                      )}
+                    </Card>
+                  );
+                })}
               </>
             )}
           </div>

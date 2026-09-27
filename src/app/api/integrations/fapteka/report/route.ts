@@ -233,6 +233,7 @@ export async function POST(request: NextRequest) {
     note:
       `${label} | chek=${summary.salesUpserted}, harakat=${summary.movementsCreated}, ` +
       `harajat=${summary.expensesCreated}, ${Date.now() - startedAt}ms` +
+      (summary.expenseUnits ? ` | kirim filiali: ${summary.expenseUnits}` : "") +
       (summary.errors.length ? ` | ${summary.errors.join("; ").slice(0, 500)}` : ""),
     ok: summary.ok,
   });

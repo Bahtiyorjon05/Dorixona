@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
-import { utcMonthStart } from "@/lib/queries";
+import { PRICE_SALES_DAYS, TOP_SELLER_PER_MONTH, utcMonthStart } from "@/lib/queries";
+import { Prisma } from "@/generated/prisma/client";
 import { debtSummary, type DebtRow } from "@/lib/telegram/digest";
 
 export const runtime = "nodejs";
@@ -594,10 +595,23 @@ async function getPrices() {
   const products = skus.length
     ? await db.product.findMany({
         where: { sku: { in: skus }, isActive: true },
-        select: { sku: true, salePrice: true, stock: true },
+        select: { id: true, sku: true, salePrice: true, stock: true },
       })
     : [];
   const bySku = new Map(products.map((p) => [p.sku, p]));
+
+  // Topiviy/kam sotilayotganni ajratish uchun oxirgi 90 kunlik savdo
+  const salesFrom = new Date(Date.now() - PRICE_SALES_DAYS * 864e5);
+  const productIds = products.map((p) => p.id);
+  const soldRows = productIds.length
+    ? await db.$queryRaw<{ productId: string; qty: number }[]>`
+        SELECT si."productId" AS "productId", COALESCE(SUM(si.quantity), 0)::float8 AS qty
+        FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+        WHERE s."createdAt" >= ${salesFrom} AND si."productId" IN (${Prisma.join(productIds)})
+        GROUP BY 1`
+    : [];
+  const soldById = new Map(soldRows.map((row) => [row.productId, num(row.qty)]));
+  const months = PRICE_SALES_DAYS / 30;
 
   const items = rows.map((r) => {
     const product = r.sku ? bySku.get(r.sku) : undefined;
@@ -605,6 +619,8 @@ async function getPrices() {
     const percent = r.percent === null ? defaultPercent : num(r.percent);
     const suggested = competitor === null ? null : Math.round(competitor * (1 + percent / 100));
     const our = product ? num(product.salePrice) : null;
+    const perMonth = product ? (soldById.get(product.id) ?? 0) / months : null;
+    const group = !product ? "unmatched" : (perMonth ?? 0) >= TOP_SELLER_PER_MONTH ? "top" : "slow";
     return {
       id: r.id,
       name: r.name,
@@ -618,6 +634,8 @@ async function getPrices() {
       checkedAt: r.checkedAt ? r.checkedAt.toISOString() : null,
       active: r.active,
       hasUrl: Boolean(r.sourceUrl),
+      perMonth: perMonth === null ? null : +perMonth.toFixed(1),
+      group: group as "top" | "slow" | "unmatched",
     };
   });
 
@@ -632,6 +650,9 @@ async function getPrices() {
     priced: items.filter((i) => i.competitor !== null).length,
     overpriced: items.filter((i) => (i.diff ?? 0) > 0).length,
     noUrl: items.filter((i) => !i.hasUrl).length,
+    slowCount: items.filter((i) => i.group === "slow").length,
+    topCount: items.filter((i) => i.group === "top").length,
+    topPerMonth: TOP_SELLER_PER_MONTH,
     lastChecked: lastChecked ? lastChecked.toISOString() : null,
     settings: settings.map((s) => ({ unit: s.unit, enabled: s.enabled, percent: num(s.percent) })),
     // Qimmat turganlar birinchi — panelda shu muhim
@@ -664,6 +685,9 @@ function emptyPrices() {
     priced: 0,
     overpriced: 0,
     noUrl: 0,
+    slowCount: 0,
+    topCount: 0,
+    topPerMonth: TOP_SELLER_PER_MONTH,
     lastChecked: null,
     settings: [],
     items: [],

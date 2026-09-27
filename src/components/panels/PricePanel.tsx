@@ -31,17 +31,32 @@ type Item = {
   diff: number | null;
   diffPercent: number | null;
   active: boolean;
+  /** Oxirgi 90 kunda sotilgan dona; ombor bilan bog'lanmagan bo'lsa null */
+  sold: number | null;
+  perMonth: number | null;
+  group: PriceGroup;
 };
+
+type PriceGroup = "top" | "slow" | "unmatched";
 
 type Setting = { unit: string; enabled: boolean; percent: number };
 
 type Filter = "all" | "over" | "under" | "missing";
+type Group = PriceGroup | "all";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "Hammasi" },
   { key: "over", label: "Qimmat turibdi" },
   { key: "under", label: "Arzon turibdi" },
   { key: "missing", label: "Narx yo'q" },
+];
+
+/** Savdo bo'yicha ikki jadval: ustama kam sotilayotganlarga kerak */
+const GROUPS: { key: Group; label: string; hint: string }[] = [
+  { key: "slow", label: "Kam sotilayotgan", hint: "Ustama shu ro'yxatga qo'llanadi" },
+  { key: "top", label: "Topiviy dorilar", hint: "Ko'p sotilayotganlar — kuzatib turiladi" },
+  { key: "unmatched", label: "Bog'lanmagan", hint: "Ombordan topilmadi, savdosi ko'rinmaydi" },
+  { key: "all", label: "Hammasi", hint: "" },
 ];
 
 function money(value: number | null) {
@@ -148,12 +163,17 @@ export function PricePanel({
   items,
   settings,
   percent,
+  salesDays,
+  topPerMonth,
 }: {
   items: Item[];
   settings: Setting[];
   percent: number;
+  salesDays: number;
+  topPerMonth: number;
 }) {
   const router = useRouter();
+  const [group, setGroup] = useState<Group>("slow");
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -161,18 +181,35 @@ export function PricePanel({
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
+  const counts = useMemo(
+    () => ({
+      slow: items.filter((item) => item.group === "slow").length,
+      top: items.filter((item) => item.group === "top").length,
+      unmatched: items.filter((item) => item.group === "unmatched").length,
+      all: items.length,
+    }),
+    [items],
+  );
+
   const shown = useMemo(() => {
     const text = search.trim().toLowerCase();
     return items
       .filter((item) => {
+        if (group !== "all" && item.group !== group) return false;
         if (text && !item.name.toLowerCase().includes(text)) return false;
         if (filter === "over") return (item.diff ?? 0) > 0;
         if (filter === "under") return item.diff !== null && item.diff < 0;
         if (filter === "missing") return item.competitor === null || item.our === null;
         return true;
       })
-      .sort((a, b) => (b.diff ?? -Infinity) - (a.diff ?? -Infinity));
-  }, [items, filter, search]);
+      .sort((a, b) => {
+        // Topiviy jadvalda eng ko'p sotilgani yuqorida, qolganida eng qimmati
+        if (group === "top") return (b.perMonth ?? 0) - (a.perMonth ?? 0);
+        return (b.diff ?? -Infinity) - (a.diff ?? -Infinity);
+      });
+  }, [items, group, filter, search]);
+
+  const activeGroup = GROUPS.find((option) => option.key === group);
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, done?: () => void) {
     setError("");
@@ -194,6 +231,38 @@ export function PricePanel({
           <SettingRow key={setting.unit} setting={setting} />
         ))}
       </div>
+
+      {/* Savdo bo'yicha ikki jadval: kam sotilayotgan va topiviy */}
+      <div className="rounded-lg border border-edge bg-surface p-1">
+        <div className="flex flex-wrap gap-1">
+          {GROUPS.map((option) => {
+            const count = counts[option.key];
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setGroup(option.key)}
+                className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition ${
+                  group === option.key
+                    ? "bg-card text-fg shadow-sm"
+                    : "text-muted hover:text-fg"
+                }`}
+              >
+                {option.label}
+                <span className="ml-1.5 text-muted">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeGroup?.hint && (
+        <p className="-mt-2 text-xs text-muted">
+          {activeGroup.hint}
+          {group !== "unmatched" &&
+            ` · oxirgi ${salesDays} kun savdosi bo'yicha; oyiga ${topPerMonth} donadan ko'p sotilsa topiviy.`}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1">
@@ -242,6 +311,7 @@ export function PricePanel({
           <thead>
             <tr>
               <th>Dori</th>
+              <th>Sotilgan</th>
               <th>Bizda</th>
               <th>Raqobatchi</th>
               <th>Ustama %</th>
@@ -254,7 +324,7 @@ export function PricePanel({
           <tbody>
             {shown.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-6 text-center text-muted">
+                <td colSpan={9} className="py-6 text-center text-muted">
                   Hech narsa topilmadi.
                 </td>
               </tr>
@@ -275,6 +345,18 @@ export function PricePanel({
                     )}
                     {!item.productName && (
                       <div className="text-xs text-muted">Omborda topilmadi</div>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap text-xs">
+                    {item.perMonth === null ? (
+                      <span className="text-muted">—</span>
+                    ) : (
+                      <>
+                        <span className={item.group === "top" ? "font-semibold text-primary" : undefined}>
+                          {item.perMonth}
+                        </span>
+                        <span className="text-muted"> dona/oy</span>
+                      </>
                     )}
                   </td>
                   <td className="whitespace-nowrap">{money(item.our)}</td>

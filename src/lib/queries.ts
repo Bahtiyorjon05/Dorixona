@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { activeBranch } from "@/lib/actions/_shared";
 import { monthName } from "@/lib/format";
@@ -1277,6 +1277,20 @@ export async function getDashboardData() {
  * alohida sozlanadi). Narx F-Apteka'da qo'lda o'zgartiriladi — bizda
  * yozish imkoni yo'q, shuning uchun ERP faqat ko'rsatadi.
  */
+/**
+ * Narx nazorati: dori "topiviy" (ko'p sotiladigan) yoki "kam sotilayotgan"
+ * ekanini savdo ma'lumotidan aniqlaymiz.
+ *
+ * Avtomatik ustama kam sotilayotganlarga kerak — ular turib qolmasin deb
+ * raqobatchining eng arzon narxiga yaqin qo'yiladi. Topiviy dorilar esa
+ * o'zi ketyapti, ular alohida jadvalda kuzatiladi.
+ */
+export type PriceGroup = "top" | "slow" | "unmatched";
+
+export const PRICE_SALES_DAYS = 90;
+/** Oyiga shuncha dona va undan ko'p sotilsa — topiviy */
+export const TOP_SELLER_PER_MONTH = 10;
+
 export async function getPriceWatchData() {
   const branchId = await getBranchId();
   const filial = await currentFilial();
@@ -1298,10 +1312,24 @@ export async function getPriceWatchData() {
   const products = skus.length
     ? await db.product.findMany({
         where: { branchId, sku: { in: skus } },
-        select: { sku: true, name: true, salePrice: true, costPrice: true, stock: true },
+        select: { id: true, sku: true, name: true, salePrice: true, costPrice: true, stock: true },
       })
     : [];
   const bySku = new Map(products.map((product) => [product.sku, product]));
+
+  // Oxirgi PRICE_SALES_DAYS kunda har bir doridan qancha sotilgan
+  const salesFrom = new Date(Date.now() - PRICE_SALES_DAYS * 864e5);
+  const productIds = products.map((product) => product.id);
+  const soldRows = productIds.length
+    ? await db.$queryRaw<{ productId: string; qty: number }[]>`
+        SELECT si."productId" AS "productId", COALESCE(SUM(si.quantity), 0)::float8 AS qty
+        FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+        WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${salesFrom}
+          AND si."productId" IN (${Prisma.join(productIds)})
+        GROUP BY 1`
+    : [];
+  const soldById = new Map(soldRows.map((row) => [row.productId, num(row.qty)]));
+  const months = PRICE_SALES_DAYS / 30;
 
   const active = filial === "Umumiy" ? settings[0] : settings.find((s) => s.unit === filial);
   const percent = active ? num(active.percent) : 5;
@@ -1316,6 +1344,13 @@ export async function getPriceWatchData() {
     const suggested = competitor === null ? null : Math.round(competitor * (1 + rowPercent / 100));
     // Bizning narx tavsiyadan qanchaga farq qiladi
     const diff = our !== null && suggested !== null ? our - suggested : null;
+
+    // Savdo bo'yicha guruh: ombor bilan bog'lanmagani "unmatched",
+    // qolgani oyiga necha dona sotilganiga qarab bo'linadi
+    const sold = product ? soldById.get(product.id) ?? 0 : null;
+    const perMonth = sold === null ? null : sold / months;
+    const group: PriceGroup =
+      product === undefined ? "unmatched" : (perMonth ?? 0) >= TOP_SELLER_PER_MONTH ? "top" : "slow";
 
     return {
       id: row.id,
@@ -1334,6 +1369,9 @@ export async function getPriceWatchData() {
       diff,
       diffPercent: diff !== null && suggested ? (diff / suggested) * 100 : null,
       active: row.active,
+      sold,
+      perMonth: perMonth === null ? null : +perMonth.toFixed(1),
+      group,
     };
   });
 
@@ -1356,5 +1394,10 @@ export async function getPriceWatchData() {
     priced: withPrice.length,
     overpriced: overpriced.length,
     lastChecked,
+    salesDays: PRICE_SALES_DAYS,
+    topPerMonth: TOP_SELLER_PER_MONTH,
+    slowCount: items.filter((item) => item.group === "slow").length,
+    topCount: items.filter((item) => item.group === "top").length,
+    unmatchedCount: items.filter((item) => item.group === "unmatched").length,
   };
 }
