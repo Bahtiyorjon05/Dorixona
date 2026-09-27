@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SearchBox, matchesSearch } from "@/components/SearchBox";
 import { markActivity, useIdleLock } from "@/lib/idle-lock";
 
 type MiniAppResponse = {
@@ -513,6 +514,9 @@ export function TelegramAdminClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<AdminAction | null>(null);
   const [tab, setTab] = useState<TabKey>("overview");
+  // Ro'yxatlar ustidagi qidiruv. Bir vaqtda bitta bo'lim ko'rinadi,
+  // shuning uchun bitta holat yetarli - bo'lim almashganda tozalanadi.
+  const [listQuery, setListQuery] = useState("");
   const [authHeader, setAuthHeader] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
 
@@ -535,6 +539,11 @@ export function TelegramAdminClient() {
       setNeedsLogin(true);
     },
   });
+
+  // Bo'lim almashsa qidiruv tozalanadi, aks holda yangi ro'yxat bo'sh ko'rinardi
+  useEffect(() => {
+    setListQuery("");
+  }, [tab]);
 
   // Bot xabaridagi tugma kerakli bo'limni ochadi: /tg-admin?bolim=debts
   useEffect(() => {
@@ -1080,14 +1089,17 @@ export function TelegramAdminClient() {
             )}
             {data.inventory.products && data.inventory.products.length > 0 && (
               <Card title="Mahsulotlar (eng qimmat qoldiq)">
-                {data.inventory.products.map((product) => (
+                <SearchBox value={listQuery} onChange={setListQuery} placeholder="Dori nomi..." className="mb-2" />
+                {data.inventory.products
+                  .filter((product) => matchesSearch(listQuery, product.name, product.category))
+                  .map((product) => (
                   <Row
                     key={product.id}
                     left={product.name}
                     right={`${formatNumber(product.stock)} dona`}
                     sub={`${product.category} · ${formatMoney(product.salePrice)}`}
                   />
-                ))}
+                  ))}
               </Card>
             )}
             <Card title="Kam Qoldiq">
@@ -1340,10 +1352,13 @@ export function TelegramAdminClient() {
                 )}
 
                 <Card title="Ochiq qarzlar">
+                  <SearchBox value={listQuery} onChange={setListQuery} placeholder="Kim qarzdor..." className="mb-2" />
                   {data.debts.list.length === 0 ? (
                     <p className="text-sm text-muted">Ochiq qarz yo&apos;q ✅</p>
                   ) : (
-                    data.debts.list.map((q) => (
+                    data.debts.list
+                      .filter((debt) => matchesSearch(listQuery, debt.counterparty, debt.unit))
+                      .map((q) => (
                       <div key={q.id} className="border-b border-edge py-2 last:border-b-0">
                         <div className="flex items-start justify-between gap-3 text-sm">
                           <div className="flex min-w-0 items-center gap-2">
@@ -1418,6 +1433,8 @@ export function TelegramAdminClient() {
                   ) : null}
                 </Card>
 
+                <SearchBox value={listQuery} onChange={setListQuery} placeholder="Dori nomi..." />
+
                 {([
                   { key: "slow" as const, title: "🐌 Kam sotilayotgan — turib qolgan tovar", rows: data.prices.slowItems },
                   { key: "top" as const, title: "🔥 Topiviy dorilar", rows: data.prices.topItems },
@@ -1425,7 +1442,9 @@ export function TelegramAdminClient() {
                   if (block.rows.length === 0) return null;
                   return (
                     <Card key={block.key} title={block.title}>
-                      {block.rows.map((item) => (
+                      {block.rows
+                        .filter((item) => matchesSearch(listQuery, item.name))
+                        .map((item) => (
                         <div key={item.id} className="border-b border-edge py-2 last:border-b-0">
                           <div className="flex items-start justify-between gap-3 text-sm">
                             <span className="min-w-0 truncate font-medium text-fg">{item.name}</span>
@@ -1497,7 +1516,10 @@ export function TelegramAdminClient() {
               <Row left="Oltin" right={`${data.customers.tiers.gold} ta`} />
             </Card>
             <Card title="Top Mijozlar">
-              {data.customers.top.map((customer) => (
+              <SearchBox value={listQuery} onChange={setListQuery} placeholder="Ism yoki telefon..." className="mb-2" />
+              {data.customers.top
+                .filter((customer) => matchesSearch(listQuery, customer.name, customer.phone))
+                .map((customer) => (
                 <Row key={customer.id} left={customer.name} right={formatMoney(customer.totalSpent)} sub={`${tierLabel[customer.tier]} · ${customer.points} ball · ${customer.phone}`} />
               ))}
             </Card>
@@ -1549,7 +1571,10 @@ export function TelegramAdminClient() {
               <ReadOnlyCard />
             )}
             <Card title="Xodimlar">
-              {data.employees.list.map((employee) => (
+              <SearchBox value={listQuery} onChange={setListQuery} placeholder="Ism yoki lavozim..." className="mb-2" />
+              {data.employees.list
+                .filter((employee) => matchesSearch(listQuery, employee.fullName, employee.position))
+                .map((employee) => (
                 <Row key={employee.id} left={employee.fullName} right={employee.kpi === null ? "-" : `${employee.kpi}`} sub={`${employee.position} · ${employeeStatus[employee.status]} · ${formatMoney(employee.baseSalary)}`} />
               ))}
             </Card>
@@ -1668,7 +1693,10 @@ export function TelegramAdminClient() {
               <ReadOnlyCard />
             )}
             <Card title="Bugungi Davomat">
-              {data.attendance.records.map((record) => (
+              <SearchBox value={listQuery} onChange={setListQuery} placeholder="Xodim ismi..." className="mb-2" />
+              {data.attendance.records
+                .filter((record) => matchesSearch(listQuery, record.name))
+                .map((record) => (
                 <Row key={record.employeeId} left={record.name} right={record.status ? attendanceStatus[record.status] : "Belgilanmagan"} sub={`Kelish: ${formatTime(record.checkIn)} · ${record.lateMinutes} daq · penalti ${record.penalty}`} />
               ))}
             </Card>
