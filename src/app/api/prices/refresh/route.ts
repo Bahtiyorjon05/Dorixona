@@ -36,7 +36,9 @@ async function handle(request: NextRequest) {
       data: {
         source: "narx-nazorati",
         rowCount: result.checked,
-        note: `yangilandi: ${result.updated}` + (result.errors.length ? ` | ${result.errors.slice(0, 3).join("; ")}` : ""),
+        note:
+          `yangilandi: ${result.updated}, omborga bog'landi: ${result.linked}` +
+          (result.errors.length ? ` | ${result.errors.slice(0, 3).join("; ")}` : ""),
         ok: result.ok,
       },
     });

@@ -108,7 +108,7 @@ export async function refreshPricesNow(): Promise<ActionResult> {
     await requireUser();
     const result = await refreshPriceWatch(12);
     revalidateAll();
-    if (!result.ok && result.updated === 0) {
+    if (!result.ok && result.updated === 0 && result.linked === 0) {
       return { ok: false, error: result.errors[0] ?? "Narx olinmadi" };
     }
     return { ok: true };

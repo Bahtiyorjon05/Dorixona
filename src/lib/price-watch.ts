@@ -59,10 +59,70 @@ async function findOurProduct(name: string) {
 }
 
 /**
+ * Kuzatilayotgan dorilarni ombor bilan bog'laydi.
+ *
+ * Avval bog'lash faqat raqobatchi narxi olingandan keyin bo'lardi. Ro'yxat
+ * uch soatda 12 tadan aylanadi, shuning uchun ko'p dori uzoq vaqt "omborda
+ * topilmadi" bo'lib turardi — savdosi ko'rinmagani uchun topiviy/kam
+ * sotilayotganga ham ajralmasdi. Endi bog'lash narxdan mustaqil: bir
+ * so'rovda hamma tovar olinadi va nomi bo'yicha xotirada solishtiriladi.
+ */
+export async function linkPriceWatchProducts() {
+  const unlinked = await db.priceWatch.findMany({
+    where: { sku: null },
+    select: { id: true, name: true },
+  });
+  if (!unlinked.length) return { checked: 0, linked: 0 };
+
+  const products = await db.product.findMany({
+    where: { isActive: true, sku: { startsWith: "FA:" } },
+    select: { sku: true, name: true, stock: true },
+  });
+
+  // Nomi eng ko'p qoldiqlisi tanlanadi — bir dori bir necha qadoqda bo'lishi mumkin
+  const best = new Map<string, { sku: string; stock: number }>();
+  for (const product of products) {
+    const key = product.name.trim().toUpperCase();
+    const current = best.get(key);
+    if (!current || product.stock > current.stock) {
+      best.set(key, { sku: product.sku as string, stock: product.stock });
+    }
+  }
+  const keys = Array.from(best.keys());
+
+  let linked = 0;
+  for (const row of unlinked) {
+    const name = row.name.trim().toUpperCase();
+    // Avval to'liq mos kelgani, bo'lmasa shu nom bilan boshlanadigani
+    const exact = best.get(name);
+    let match = exact;
+    if (!match) {
+      let bestStock = -1;
+      for (const key of keys) {
+        if (!key.startsWith(name)) continue;
+        const candidate = best.get(key);
+        if (candidate && candidate.stock > bestStock) {
+          bestStock = candidate.stock;
+          match = candidate;
+        }
+      }
+    }
+    if (!match) continue;
+    await db.priceWatch.update({ where: { id: row.id }, data: { sku: match.sku } });
+    linked += 1;
+  }
+
+  return { checked: unlinked.length, linked };
+}
+
+/**
  * Eskirgan yozuvlarni yangilaydi. Bir chaqiruvda ozdan olamiz —
  * Vercel'ning 60 soniyasiga sig'sin va sayt ham bosim ko'rmasin.
  */
 export async function refreshPriceWatch(limit = 12) {
+  // Bog'lash narx olinishini kutmaydi — savdo bo'yicha ajratish darrov ishlasin
+  const linkResult = await linkPriceWatchProducts().catch(() => ({ checked: 0, linked: 0 }));
+
   const staleEdge = new Date(Date.now() - PRICE_STALE_HOURS * 3600 * 1000);
 
   const items = await db.priceWatch.findMany({
@@ -104,5 +164,11 @@ export async function refreshPriceWatch(limit = 12) {
     await sleep(REQUEST_DELAY_MS);
   }
 
-  return { ok: errors.length === 0, checked: items.length, updated, errors };
+  return {
+    ok: errors.length === 0,
+    checked: items.length,
+    updated,
+    linked: linkResult.linked,
+    errors,
+  };
 }
