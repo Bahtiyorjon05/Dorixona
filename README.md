@@ -184,6 +184,20 @@ bo'lib keladi va u webhook'ning `allowed_updates` ro'yxatida bo'lmasa umuman
 yetib kelmaydi — tugma jim turadi. Pastki klaviatura esa oddiy xabar yuboradi,
 shuning uchun hech qanday sozlashsiz ishlayveradi.
 
+### Bot profili
+Bot surati va bo'sh suhbat rasmi ERP logotipidan yasaladi:
+
+```
+node scripts/generate-bot-avatar.mjs
+```
+
+Chiqadi: `public/icons/bot-avatar.png` (512x512) va `public/icons/bot-cover.png`
+(640x360). Avatar alohida yasaladi, chunki Telegram profil suratini doira qilib
+qirqadi — belgi kichraytirilib markazga suriladi, yurakning uchi kesilmaydi.
+
+Deploy bo'lgach, ikkalasi ham to'g'ridan-to'g'ri ochiladi:
+`/icons/bot-avatar.png` va `/icons/bot-cover.png`.
+
 ### Qarz eslatmasi
 Muddati yaqin qarzlar Telegram'ga o'zi keladi:
 
