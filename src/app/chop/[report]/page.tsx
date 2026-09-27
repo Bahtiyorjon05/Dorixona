@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { formatNumber } from "@/lib/format";
+import { formatDate, formatNumber, formatTime } from "@/lib/format";
 import { buildReport, REPORTS, type ReportKind } from "@/lib/reports";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -22,7 +22,7 @@ export default async function ChopPage({
           <div className="flex items-center gap-2 text-lg font-semibold text-primary">💊 Dorixona</div>
           <h1 className="mt-2 text-xl font-semibold">{data.title}</h1>
           <p className="text-sm text-muted">
-            Sana: {now.toLocaleDateString("uz-UZ")} {now.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}
+            Sana: {formatDate(now)} {formatTime(now)}
           </p>
         </div>
         <PrintButton auto />

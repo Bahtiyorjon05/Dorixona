@@ -1,4 +1,32 @@
 // O'zbekcha formatlash yordamchilari
+//
+// DIQQAT: sana va soat HAR DOIM Toshkent vaqtida ko'rsatiladi.
+// Sayt Vercel'da UTC bo'yicha ishlaydi, shuning uchun server tomonda
+// chizilgan sahifada d.getHours() 5 soat orqada chiqardi — "oxirgi
+// tekshiruv" kabi joylarda soat noto'g'ri ko'rinardi. Sanada esa bundan
+// ham yomoni: kechqurun yozilgan sana bir kun orqaga siljib ketardi.
+
+/** Dorixona vaqti. Boshqa shaharga ko'chsa env orqali o'zgartiriladi. */
+const TZ = process.env.NEXT_PUBLIC_APP_TIMEZONE?.trim() || "Asia/Tashkent";
+
+/** Sanani Toshkent vaqtidagi kun/oy/yilga ajratadi */
+function partsIn(date: Date) {
+  // en-CA "2026-09-27" ko'rinishida beradi — ajratish oson
+  const [year, month, day] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(date)
+    .split("-")
+    .map(Number);
+  return { year, month, day };
+}
+
+function toDate(value: Date | string): Date {
+  return typeof value === "string" ? new Date(value) : value;
+}
 
 const UZ_MONTHS = [
   "yanvar",
@@ -40,20 +68,26 @@ export function formatCompact(value: number | string): string {
   return String(Math.round(n));
 }
 
-/** Sana: "5 iyun, 2024" */
+/** Sana: "5 iyun, 2024" (Toshkent vaqti) */
 export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return `${d.getDate()} ${UZ_MONTHS[d.getMonth()]}, ${d.getFullYear()}`;
+  const { year, month, day } = partsIn(toDate(date));
+  return `${day} ${UZ_MONTHS[month - 1]}, ${year}`;
 }
 
-/** Vaqt: "08:52" */
+/** Vaqt: "08:52" (Toshkent vaqti) */
 export function formatTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleTimeString("uz-UZ", {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  });
+  }).format(toDate(date));
+}
+
+/** Sana va soat: "27 sentabr, 2026 14:20" */
+export function formatDateTime(date: Date | string): string {
+  const d = toDate(date);
+  return `${formatDate(d)} ${formatTime(d)}`;
 }
 
 /** Oy nomi: 6 -> "iyun" */
@@ -62,7 +96,9 @@ export function monthName(month: number): string {
 }
 
 export function weekdayShort(date: Date): string {
-  return UZ_WEEKDAYS[date.getDay()];
+  // Hafta kuni ham Toshkent sanasidan olinadi
+  const { year, month, day } = partsIn(date);
+  return UZ_WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
 }
 
 /** Foiz: 8.2 -> "8.2%" */

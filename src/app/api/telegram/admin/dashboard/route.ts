@@ -10,6 +10,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const num = (value: unknown) => Number(value ?? 0);
+
+const UZ_MONTHS_SHORT = ["Yan", "Fev", "Mar", "Apr", "May", "Iyn", "Iyl", "Avg", "Sen", "Okt", "Noy", "Dek"];
 const M = (value: unknown) => num(value) / 1_000_000;
 
 function startOfDay(date = new Date()) {
@@ -107,7 +109,8 @@ async function getFinance(period?: Date) {
     const month = startOfMonth(-5 + i);
     const rev = seriesRows.find((row) => new Date(row.m).getTime() === month.getTime());
     return {
-      label: month.toLocaleDateString("uz-UZ", { month: "short" }),
+      // Oy nomi massivdan olinadi: toLocaleDateString UTC'da oldingi oyni ko'rsatardi
+      label: UZ_MONTHS_SHORT[month.getMonth()],
       savdo: +(rev ? M(rev.rev) : 0).toFixed(1),
       xarajat: +(expMap.get(month.getTime()) ?? 0).toFixed(1),
     };

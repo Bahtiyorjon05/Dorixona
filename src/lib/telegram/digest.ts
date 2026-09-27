@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
+import { formatDate, formatDateTime } from "@/lib/format";
 import {
   DEBT_DUE_SOON_DAYS,
   DEBT_URGENT_DAYS,
@@ -296,7 +297,7 @@ export async function stockMessage() {
       : "\n✅ Kam qoldiq yo'q",
     expiring.length
       ? `\n🟡 Muddati yaqin (60 kun):\n${expiring
-          .map((p) => `• ${esc(p.name)} — ${p.expiryDate?.toLocaleDateString("uz-UZ") ?? "-"}`)
+          .map((p) => `• ${esc(p.name)} — ${p.expiryDate ? formatDate(p.expiryDate) : "-"}`)
           .join("\n")}`
       : "",
   ];
@@ -396,7 +397,7 @@ export async function priceMessage() {
           .map((item) => `• ${esc(item.name)} — ${(item.perMonth ?? 0).toFixed(0)} dona/oy`)
           .join("\n")}`
       : "",
-    lastChecked ? `\nOxirgi tekshiruv: ${lastChecked.toLocaleString("uz-UZ")}` : "\nHali tekshirilmagan",
+    lastChecked ? `\nOxirgi tekshiruv: ${formatDateTime(lastChecked)}` : "\nHali tekshirilmagan",
   ];
 
   return parts.filter(Boolean).join("\n");
@@ -420,7 +421,7 @@ export async function digestMessage() {
 
   const red = debts.overdue.length + debts.urgent.length;
   const parts = [
-    `📊 <b>Kunlik jamlanma</b> — ${today.toLocaleDateString("uz-UZ")}`,
+    `📊 <b>Kunlik jamlanma</b> — ${formatDate(today)}`,
     `\nBugungi savdo: <b>${money(todaySplit.net)}</b>`,
     pay.known ? `Naqd ${som(pay.cash)} · Karta ${som(pay.card)}` : "",
     `Oy boshidan: ${money(monthSplit.net)}`,

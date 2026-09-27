@@ -354,14 +354,24 @@ function formatMoney(value: number) {
   return `${formatNumber(value)} so'm`;
 }
 
+// Dorixona vaqti — telefon boshqa mintaqada bo'lsa ham soat to'g'ri chiqsin
+const TZ = "Asia/Tashkent";
+
 function formatDate(value: string | null) {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("uz-UZ", { day: "2-digit", month: "2-digit" });
+  return new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "2-digit", month: "2-digit" }).format(
+    new Date(value),
+  );
 }
 
 function formatTime(value: string | null) {
   if (!value) return "-";
-  return new Date(value).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
 }
 
 function trend(value: number) {

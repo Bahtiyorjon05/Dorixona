@@ -1,5 +1,5 @@
 import { getAttendanceData, getFinanceData, getKpiData } from "@/lib/queries";
-import { monthName } from "@/lib/format";
+import { formatTime, monthName } from "@/lib/format";
 
 export type ReportData = {
   filename: string;
@@ -65,7 +65,7 @@ export async function buildReport(kind: ReportKind): Promise<ReportData> {
     rows: d.records.map((r) => [
       r.name,
       r.status ? (STATUS[r.status] ?? r.status) : "Belgilanmagan",
-      r.checkIn ? new Date(r.checkIn).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" }) : "—",
+      r.checkIn ? formatTime(new Date(r.checkIn)) : "—",
       r.lateMinutes,
       r.penalty,
     ]),
