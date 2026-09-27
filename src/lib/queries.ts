@@ -1311,7 +1311,9 @@ export async function getPriceWatchData() {
     const product = row.sku ? bySku.get(row.sku) : undefined;
     const competitor = row.competitorPrice === null ? null : num(row.competitorPrice);
     const our = product ? num(product.salePrice) : null;
-    const suggested = competitor === null ? null : Math.round(competitor * (1 + percent / 100));
+    // Doriga alohida ustama qo'yilgan bo'lsa, u dorixona foizidan ustun
+    const rowPercent = row.percent === null ? percent : num(row.percent);
+    const suggested = competitor === null ? null : Math.round(competitor * (1 + rowPercent / 100));
     // Bizning narx tavsiyadan qanchaga farq qiladi
     const diff = our !== null && suggested !== null ? our - suggested : null;
 
@@ -1326,6 +1328,8 @@ export async function getPriceWatchData() {
       cost: product ? num(product.costPrice) : null,
       stock: product?.stock ?? null,
       productName: product?.name ?? null,
+      percent: rowPercent,
+      ownPercent: row.percent === null ? null : num(row.percent),
       suggested,
       diff,
       diffPercent: diff !== null && suggested ? (diff / suggested) * 100 : null,

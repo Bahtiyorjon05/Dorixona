@@ -508,6 +508,8 @@ model PriceWatch {
   checkedAt       DateTime?
   /// Bizning tovar (Product.sku), topilgan bo'lsa
   sku             String?
+  /// Shu doriga alohida ustama; bo'sh bo'lsa dorixona sozlamasi ishlatiladi
+  percent         Decimal?  @db.Decimal(5, 2)
   active          Boolean   @default(true)
 
   createdAt DateTime @default(now())

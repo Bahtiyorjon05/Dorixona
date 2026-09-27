@@ -37,3 +37,7 @@ ON CONFLICT ("unit") DO NOTHING;
 
 SELECT (SELECT COUNT(*) FROM "PriceWatch") AS "kuzatilayotgan_dorilar",
        (SELECT COUNT(*) FROM "PriceSetting") AS "dorixona_sozlamalari";
+
+-- ─── Qo'shimcha: ayrim doriga alohida ustama ───────────────────────────
+-- Bo'sh bo'lsa dorixona sozlamasidagi foiz ishlatiladi.
+ALTER TABLE "PriceWatch" ADD COLUMN IF NOT EXISTS "percent" DECIMAL(5,2);

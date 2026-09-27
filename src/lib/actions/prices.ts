@@ -76,6 +76,21 @@ export async function setPriceWatchUrl(id: string, sourceUrl: string): Promise<A
   }
 }
 
+/** Ayrim doriga alohida ustama; bo'sh bo'lsa dorixona sozlamasi ishlatiladi */
+export async function setPriceWatchPercent(id: string, percent: number | null): Promise<ActionResult> {
+  try {
+    await requireUser();
+    if (percent !== null && (!Number.isFinite(percent) || percent < 0 || percent > 100)) {
+      return { ok: false, error: "Foiz 0 va 100 orasida bo'lishi kerak" };
+    }
+    await db.priceWatch.update({ where: { id }, data: { percent } });
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function togglePriceWatch(id: string, active: boolean): Promise<ActionResult> {
   try {
     await requireUser();

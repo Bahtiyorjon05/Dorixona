@@ -9,6 +9,7 @@ import {
   addPriceWatch,
   refreshPricesNow,
   savePriceSetting,
+  setPriceWatchPercent,
   setPriceWatchUrl,
   togglePriceWatch,
 } from "@/lib/actions/prices";
@@ -24,6 +25,8 @@ type Item = {
   cost: number | null;
   stock: number | null;
   productName: string | null;
+  percent: number;
+  ownPercent: number | null;
   suggested: number | null;
   diff: number | null;
   diffPercent: number | null;
@@ -43,6 +46,36 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 function money(value: number | null) {
   return value === null ? "—" : formatNumber(value);
+}
+
+/** Bitta doriga alohida ustama; bo'sh qoldirilsa dorixona foizi ishlatiladi */
+function PercentCell({ item, fallback }: { item: Item; fallback: number }) {
+  const router = useRouter();
+  const [value, setValue] = useState(item.ownPercent === null ? "" : String(item.ownPercent));
+  const [pending, start] = useTransition();
+
+  function save(next: string) {
+    const trimmed = next.trim();
+    const percent = trimmed === "" ? null : Number(trimmed);
+    if (percent !== null && !Number.isFinite(percent)) return;
+    if (percent === item.ownPercent) return;
+    start(async () => {
+      await setPriceWatchPercent(item.id, percent);
+      router.refresh();
+    });
+  }
+
+  return (
+    <input
+      value={value}
+      disabled={pending}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={(event) => save(event.target.value)}
+      placeholder={String(fallback)}
+      title="Bo'sh qoldirilsa dorixona ustamasi qo'llanadi"
+      className="w-14 rounded-lg border border-edge bg-card px-2 py-1 text-right text-sm outline-none focus:border-primary disabled:opacity-50"
+    />
+  );
 }
 
 /** Ustama sozlamasi — har dorixona uchun alohida yoqiladi */
@@ -211,7 +244,8 @@ export function PricePanel({
               <th>Dori</th>
               <th>Bizda</th>
               <th>Raqobatchi</th>
-              <th>Tavsiya (+{percent}%)</th>
+              <th>Ustama %</th>
+              <th>Tavsiya</th>
               <th>Farq</th>
               <th>Tekshirilgan</th>
               <th></th>
@@ -220,7 +254,7 @@ export function PricePanel({
           <tbody>
             {shown.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-muted">
+                <td colSpan={8} className="py-6 text-center text-muted">
                   Hech narsa topilmadi.
                 </td>
               </tr>
@@ -263,6 +297,9 @@ export function PricePanel({
                         havola qo&apos;shish
                       </button>
                     )}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <PercentCell item={item} fallback={percent} />
                   </td>
                   <td className="whitespace-nowrap font-semibold">{money(item.suggested)}</td>
                   <td className="whitespace-nowrap">
