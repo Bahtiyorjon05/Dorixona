@@ -1,4 +1,4 @@
-import { getAttendanceData, getFinanceData, getKpiData } from "@/lib/queries";
+import { getAttendanceData, getFinanceData, getKpiData, getPriceWatchData } from "@/lib/queries";
 import { formatTime, monthName } from "@/lib/format";
 
 export type ReportData = {
@@ -9,12 +9,54 @@ export type ReportData = {
   rows: (string | number)[][];
 };
 
-export const REPORTS = ["kpi", "finance", "attendance"] as const;
+export const REPORTS = ["kpi", "finance", "attendance", "narxlar"] as const;
 export type ReportKind = (typeof REPORTS)[number];
 
 export async function buildReport(kind: ReportKind): Promise<ReportData> {
   const now = new Date();
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  if (kind === "narxlar") {
+    // Narxni tushirish kerak bo'lganlar: tavsiyadan qimmat turgan dorilar.
+    // Ro'yxat F-Apteka'da qo'lda tuzatish uchun - eng ko'p farqlisi tepada.
+    const [slow, top] = await Promise.all([
+      getPriceWatchData({ group: "slow", page: 1 }),
+      getPriceWatchData({ group: "top", page: 1 }),
+    ]);
+    const rows = [...slow.items, ...top.items]
+      .filter((item) => (item.diff ?? 0) > 0)
+      .sort((a, b) => (b.diff ?? 0) - (a.diff ?? 0));
+
+    return {
+      filename: `narx-tuzatish-${stamp}`,
+      sheet: "Narxlar",
+      title: "Narxni tushirish kerak bo'lgan dorilar",
+      columns: [
+        "Dori",
+        "Guruh",
+        "Sotilgan (dona/oy)",
+        "Qoldiq",
+        "Tan narx",
+        "Hozirgi narx",
+        "Asos",
+        "Ustama %",
+        "Tavsiya narx",
+        "Farq",
+      ],
+      rows: rows.map((item) => [
+        item.name,
+        item.group === "top" ? "Topiviy" : "Kam sotilayotgan",
+        item.perMonth,
+        item.stock,
+        Math.round(item.cost),
+        Math.round(item.our),
+        item.basis === "competitor" ? "Arzonapteka" : "Tan narx",
+        item.percent,
+        item.suggested ?? 0,
+        Math.round(item.diff ?? 0),
+      ]),
+    };
+  }
 
   if (kind === "kpi") {
     const d = await getKpiData();

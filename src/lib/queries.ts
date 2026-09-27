@@ -1333,6 +1333,8 @@ export async function getPriceWatchData(query: PriceQuery = {}) {
 
   const active = filial === "Umumiy" ? settings[0] : settings.find((s) => s.unit === filial);
   const percent = active ? num(active.percent) : 5;
+  // Tan narxli dorilarga umumiy ustama; jadval eski bo'lsa 0
+  const costPercent = active ? num((active as { costPercent?: unknown }).costPercent ?? 0) : 0;
   const enabled = active ? active.enabled : true;
 
   const group = query.group ?? "slow";
@@ -1407,13 +1409,19 @@ export async function getPriceWatchData(query: PriceQuery = {}) {
              -- Aks holda tavsiya = tan narx bo'lib, hamma dori "qimmat"
              -- bo'lib chiqardi — chakana narx tan narxdan yuqori-ku.
              COUNT(*) FILTER (
-               WHERE (w."competitorPrice" IS NOT NULL OR w.percent IS NOT NULL)
+               WHERE (
+                       w."competitorPrice" IS NOT NULL
+                       OR w.percent IS NOT NULL
+                       OR ${costPercent}::numeric > 0
+                     )
                  AND COALESCE(w."competitorPrice", p."costPrice") > 0
                  AND p."salePrice" > ROUND(
                    COALESCE(w."competitorPrice", p."costPrice") * (
                      1 + COALESCE(
                        w.percent,
-                       CASE WHEN w."competitorPrice" IS NOT NULL THEN ${percent}::numeric ELSE 0 END
+                       CASE WHEN w."competitorPrice" IS NOT NULL
+                            THEN ${percent}::numeric
+                            ELSE ${costPercent}::numeric END
                      ) / 100
                    )
                  )
@@ -1435,11 +1443,11 @@ export async function getPriceWatchData(query: PriceQuery = {}) {
     const basis: PriceBasis = competitor !== null ? "competitor" : "cost";
     // Raqobatchi narxi bor doriga dorixona foizi, qolganiga 0 — foizni
     // dorixona o'zi qo'yadi
-    const usedPercent = own ?? (basis === "competitor" ? percent : 0);
+    const usedPercent = own ?? (basis === "competitor" ? percent : costPercent);
     const baseValue = basis === "competitor" ? (competitor as number) : cost;
     // Tan narxli doriga foiz qo'yilmaguncha tavsiya berilmaydi: aks holda
     // tavsiya tan narxning o'zi bo'lib, har bir dori "qimmat" bo'lib chiqadi
-    const hasTarget = basis === "competitor" || own !== null;
+    const hasTarget = basis === "competitor" || own !== null || costPercent > 0;
     const suggested =
       hasTarget && baseValue > 0 ? Math.round(baseValue * (1 + usedPercent / 100)) : null;
     const diff = suggested === null ? null : our - suggested;
@@ -1485,7 +1493,13 @@ export async function getPriceWatchData(query: PriceQuery = {}) {
     filial,
     percent,
     enabled,
-    settings: settings.map((s) => ({ unit: s.unit, enabled: s.enabled, percent: num(s.percent) })),
+    costPercent,
+    settings: settings.map((s) => ({
+      unit: s.unit,
+      enabled: s.enabled,
+      percent: num(s.percent),
+      costPercent: num((s as { costPercent?: unknown }).costPercent ?? 0),
+    })),
     items,
     group,
     search,

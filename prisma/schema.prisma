@@ -525,7 +525,10 @@ model PriceSetting {
   /// Dorixona nomi: Yunusobod, Shayxontohur
   unit      String   @id
   enabled   Boolean  @default(true)
-  /// Ustama foizi (5 = 5%)
+  /// Arzonaptekada kuzatiladigan doriga ustama (5 = 5%)
   percent   Decimal  @default(5) @db.Decimal(5, 2)
+  /// Qolgan dorilarga: tan narx ustiga qo'shiladigan foiz. 0 bo'lsa
+  /// tavsiya berilmaydi — dorixona o'zi foiz qo'yguncha kutiladi.
+  costPercent Decimal @default(0) @db.Decimal(5, 2)
   updatedAt DateTime @default(now()) @updatedAt
 }

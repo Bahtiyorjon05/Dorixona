@@ -41,3 +41,8 @@ SELECT (SELECT COUNT(*) FROM "PriceWatch") AS "kuzatilayotgan_dorilar",
 -- ─── Qo'shimcha: ayrim doriga alohida ustama ───────────────────────────
 -- Bo'sh bo'lsa dorixona sozlamasidagi foiz ishlatiladi.
 ALTER TABLE "PriceWatch" ADD COLUMN IF NOT EXISTS "percent" DECIMAL(5,2);
+
+-- ─── Qo'shimcha: tan narxli dorilarga umumiy ustama ────────────────────
+-- Arzonaptekada kuzatilmaydigan dorilar tan narxdan hisoblanadi.
+-- Bu ustun shularga umumiy foiz beradi; 0 bo'lsa tavsiya berilmaydi.
+ALTER TABLE "PriceSetting" ADD COLUMN IF NOT EXISTS "costPercent" DECIMAL(5,2) NOT NULL DEFAULT 0;

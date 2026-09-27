@@ -10,7 +10,10 @@ import { fail, requireUser, type ActionResult } from "./_shared";
 const settingSchema = z.object({
   unit: z.string().min(2),
   enabled: z.boolean(),
+  /** Arzonaptekada kuzatiladigan doriga ustama */
   percent: z.number().min(0).max(100),
+  /** Qolgan dorilarga: tan narx ustiga qo'shiladigan foiz */
+  costPercent: z.number().min(0).max(1000).default(0),
 });
 
 function revalidateAll() {
@@ -24,8 +27,13 @@ export async function savePriceSetting(input: z.input<typeof settingSchema>): Pr
     const data = settingSchema.parse(input);
     await db.priceSetting.upsert({
       where: { unit: data.unit },
-      update: { enabled: data.enabled, percent: data.percent },
-      create: { unit: data.unit, enabled: data.enabled, percent: data.percent },
+      update: { enabled: data.enabled, percent: data.percent, costPercent: data.costPercent },
+      create: {
+        unit: data.unit,
+        enabled: data.enabled,
+        percent: data.percent,
+        costPercent: data.costPercent,
+      },
     });
     revalidateAll();
     return { ok: true };

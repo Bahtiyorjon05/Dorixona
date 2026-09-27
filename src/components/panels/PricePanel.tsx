@@ -36,7 +36,7 @@ type Item = {
   group: "top" | "slow";
 };
 
-type Setting = { unit: string; enabled: boolean; percent: number };
+type Setting = { unit: string; enabled: boolean; percent: number; costPercent: number };
 type Group = "slow" | "top" | "all";
 
 /** Savdo bo'yicha ikki jadval — dorixona ikkisini alohida ko'radi */
@@ -99,39 +99,32 @@ function SettingRow({ setting }: { setting: Setting }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(setting.enabled);
   const [percent, setPercent] = useState(String(setting.percent));
+  const [costPercent, setCostPercent] = useState(String(setting.costPercent));
   const [pending, start] = useTransition();
 
-  function save(nextEnabled: boolean, nextPercent: string) {
-    const value = Number(nextPercent);
-    if (!Number.isFinite(value)) return;
+  function save(next: { enabled?: boolean; percent?: string; costPercent?: string }) {
+    const nextEnabled = next.enabled ?? enabled;
+    const value = Number(next.percent ?? percent);
+    const costValue = Number(next.costPercent ?? costPercent);
+    if (!Number.isFinite(value) || !Number.isFinite(costValue)) return;
     start(async () => {
-      await savePriceSetting({ unit: setting.unit, enabled: nextEnabled, percent: value });
+      await savePriceSetting({
+        unit: setting.unit,
+        enabled: nextEnabled,
+        percent: value,
+        costPercent: costValue,
+      });
       router.refresh();
     });
   }
 
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-edge bg-surface px-3 py-2.5">
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{setting.unit}</div>
-        {!enabled && <div className="text-xs text-muted">O&apos;chirilgan</div>}
-      </div>
+  const field =
+    "w-16 rounded-lg border border-edge bg-card px-2 py-1 text-right text-sm outline-none focus:border-primary disabled:opacity-50";
 
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-xs text-muted">
-          <input
-            type="number"
-            min={0}
-            max={100}
-            step="0.5"
-            value={percent}
-            disabled={pending || !enabled}
-            onChange={(event) => setPercent(event.target.value)}
-            onBlur={(event) => save(enabled, event.target.value)}
-            className="w-16 rounded-lg border border-edge bg-card px-2 py-1 text-right text-sm outline-none focus:border-primary disabled:opacity-50"
-          />
-          %
-        </label>
+  return (
+    <div className="rounded-lg border border-edge bg-surface px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium">{setting.unit}</div>
 
         {/* Yoqish/o'chirish kalitchasi */}
         <button
@@ -143,7 +136,7 @@ function SettingRow({ setting }: { setting: Setting }) {
           onClick={() => {
             const next = !enabled;
             setEnabled(next);
-            save(next, percent);
+            save({ enabled: next });
           }}
           className={`relative h-6 w-11 shrink-0 rounded-full transition ${
             enabled ? "bg-primary" : "bg-edge"
@@ -156,6 +149,48 @@ function SettingRow({ setting }: { setting: Setting }) {
           />
         </button>
       </div>
+
+      <div className="mt-2 space-y-1.5">
+        <label className="flex items-center justify-between gap-2 text-xs text-muted">
+          <span>Arzonapteka narxiga</span>
+          <span className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.5"
+              value={percent}
+              disabled={pending || !enabled}
+              onChange={(event) => setPercent(event.target.value)}
+              onBlur={(event) => save({ percent: event.target.value })}
+              className={field}
+            />
+            %
+          </span>
+        </label>
+
+        <label className="flex items-center justify-between gap-2 text-xs text-muted">
+          <span>Tan narxga (qolgan dorilar)</span>
+          <span className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              max={1000}
+              step="1"
+              value={costPercent}
+              disabled={pending || !enabled}
+              onChange={(event) => setCostPercent(event.target.value)}
+              onBlur={(event) => save({ costPercent: event.target.value })}
+              className={field}
+            />
+            %
+          </span>
+        </label>
+      </div>
+
+      {!enabled && (
+        <div className="mt-1.5 text-xs text-muted">O&apos;chirilgan — tavsiya berilmaydi</div>
+      )}
     </div>
   );
 }
@@ -286,14 +321,24 @@ export function PricePanel({
           )}
         </form>
 
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => run(() => refreshPricesNow())}
-          className="btn btn-primary btn-sm"
-        >
-          {pending ? "Yangilanmoqda…" : "Narxlarni yangilash"}
-        </button>
+        <div className="flex gap-2">
+          {/* F-Apteka'da qo'lda tuzatish uchun ro'yxat */}
+          <a
+            href="/api/export/narxlar?format=xlsx"
+            className="btn btn-ghost btn-sm"
+            title="Narxni tushirish kerak bo'lganlar ro'yxati"
+          >
+            Excelga
+          </a>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => refreshPricesNow())}
+            className="btn btn-primary btn-sm"
+          >
+            {pending ? "Yangilanmoqda…" : "Narxlarni yangilash"}
+          </button>
+        </div>
       </div>
 
       <FormError message={error} />
