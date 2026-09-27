@@ -1205,7 +1205,17 @@ export async function getDashboardData() {
   const nextMonth = startOfMonth(1);
   const in30 = new Date(today.getTime() + 30 * 864e5);
 
-  const [todayRows, yesterdayRows, monthRows, stock, lowStock, expiring, lastSync] = await Promise.all([
+  const [
+    todayRows,
+    yesterdayRows,
+    monthRows,
+    stock,
+    lowStock,
+    expiring,
+    lastSync,
+    todayPay,
+    monthExpense,
+  ] = await Promise.all([
     db.$queryRaw<{ turnover: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
@@ -1243,6 +1253,14 @@ export async function getDashboardData() {
     db.integrationLog
       .findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true, source: true, note: true } })
       .catch(() => null),
+    // Bugungi naqd va karta — 30-hisobotdan
+    paymentBreakdown(today, tomorrow, unit),
+    db.expense
+      .aggregate({
+        _sum: { amount: true },
+        where: { spentAt: { gte: monthStart, lt: nextMonth }, ...(unit ? { unit } : {}) },
+      })
+      .catch(() => ({ _sum: { amount: 0 } })),
   ]);
 
   const todaySales = num(todayRows[0]?.turnover);
@@ -1265,6 +1283,11 @@ export async function getDashboardData() {
       expiryDate: p.expiryDate as Date,
     })),
     lastSync: lastSync ? { at: lastSync.createdAt, source: lastSync.source, note: lastSync.note } : null,
+    // Bugungi tushum to'lov turlari bo'yicha
+    cash: todayPay.cash,
+    card: todayPay.card,
+    payKnown: todayPay.known,
+    monthExpense: num(monthExpense._sum.amount),
   };
 }
 

@@ -212,6 +212,22 @@ Raqam Xodimlar bo'limida kiritiladi — ro'yxatda ism ostida ko'rinadi, yo'q
 bo'lsa "telefon yo'q" deb turadi. Xodimning ERP logini bo'lmasa, bot buni
 aytadi va admin Sozlamalardan akkaunt ochishi kerak bo'ladi.
 
+### Telegram eslatmalari
+Uchta avtomatik xabar bor. Hammasini dorixona kompyuteridagi relay chaqiradi
+(har 15 daqiqada), vaqtini esa server o'zi hal qiladi — kerakli soat bo'lgandan
+keyin kuniga bir marta yuboriladi.
+
+| Xabar | Qachon | Kim oladi | Endpoint |
+| --- | --- | --- | --- |
+| Qarz eslatmasi | muddati yaqin qarz bo'lsa | `qarzlar` | `/api/notifications/debts` |
+| Kunlik xulosa | 21:00 dan keyin | `moliya` | `/api/notifications/kunlik` |
+| Ombor ogohlantirishi | 09:00 dan keyin | `ombor` | `/api/notifications/ombor` |
+
+Ombor xabari faqat tugab qolgan yoki muddati 30 kun ichida tugaydigan dori
+bo'lsa yuboriladi. Har birida `?tekshir=1` holatni ko'rsatadi (xabar
+yubormaydi), `?majburan=1` esa soat va "bugun yuborilgan" tekshiruvini
+chetlab o'tadi.
+
 ### Qarz eslatmasi
 Muddati yaqin qarzlar Telegram'ga o'zi keladi:
 

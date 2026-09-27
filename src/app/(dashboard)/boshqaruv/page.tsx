@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge, Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
 import { formatDate, formatNumber, formatTime } from "@/lib/format";
 import { InstallApp } from "@/components/InstallApp";
-import { getDashboardData, getDebtsData } from "@/lib/queries";
+import { getDashboardData, getDebtsData, getPriceWatchData } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/harajatlar", label: "Harajatlar" },
   { href: "/qarzlar", label: "Qarzlar" },
   { href: "/ombor", label: "Ombor" },
+  { href: "/narxlar", label: "Narx nazorati" },
   { href: "/analitika", label: "Analitika" },
 ];
 
@@ -20,8 +21,14 @@ function money(amount: number, currency: "UZS" | "USD") {
 }
 
 export default async function BoshqaruvPage() {
-  const [d, debts] = await Promise.all([getDashboardData(), getDebtsData()]);
+  const [d, debts, prices] = await Promise.all([
+    getDashboardData(),
+    getDebtsData(),
+    // Narxni tushirish kerak bo'lganlar soni uchun — birinchi sahifa yetarli
+    getPriceWatchData({ group: "slow", page: 1 }).catch(() => null),
+  ]);
   const margin = d.monthTurnover > 0 ? (d.monthProfit / d.monthTurnover) * 100 : 0;
+  const netProfit = d.monthProfit - d.monthExpense;
 
   return (
     <div>
@@ -55,7 +62,17 @@ export default async function BoshqaruvPage() {
         </Link>
       )}
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {prices && prices.overpriced > 0 && (
+        <Link
+          href="/narxlar?guruh=slow"
+          className="mb-5 block rounded-lg border border-edge bg-accent-light p-3 text-sm"
+        >
+          💹 <b>{formatNumber(prices.overpriced)} ta dori tavsiyadan qimmat turibdi</b> — narxni
+          tushirish kerak
+        </Link>
+      )}
+
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <MetricCard
           icon="🧾"
           label="Bugungi savdo"
@@ -75,13 +92,19 @@ export default async function BoshqaruvPage() {
             )
           }
         />
+        <MetricCard
+          icon="💵"
+          label="Bugun naqd / karta"
+          value={d.payKnown ? formatNumber(d.cash) : "—"}
+          sub={d.payKnown ? `Karta ${formatNumber(d.card)}` : "F-Apteka'dan kelmagan"}
+        />
         <MetricCard icon="📊" label="Shu oy tushum" value={formatNumber(d.monthTurnover)} />
         <MetricCard
           icon="📈"
           label="Shu oy foyda"
           value={formatNumber(d.monthProfit)}
           valueColor="var(--c-primary)"
-          sub={`Marja ${margin.toFixed(1)}%`}
+          sub={`Marja ${margin.toFixed(1)}% · xarajatdan keyin ${formatNumber(netProfit)}`}
         />
         <MetricCard
           icon="📦"

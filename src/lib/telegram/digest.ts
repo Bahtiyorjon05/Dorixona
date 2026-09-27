@@ -384,3 +384,47 @@ export async function digestMessage() {
 
   return parts.filter(Boolean).join("\n");
 }
+
+/**
+ * Ombor ogohlantirishi — ertalabki xabar uchun.
+ *
+ * Aytadigan narsa bo'lmasa null: tugab qolgan ham, muddati yaqin ham
+ * bo'lmasa bekorga xabar yubormaymiz.
+ */
+export async function stockAlert() {
+  const soon = new Date(Date.now() + 30 * 864e5);
+  const [low, expiring] = await Promise.all([
+    db.product.findMany({
+      where: { isActive: true, stock: { lte: 3 } },
+      orderBy: { stock: "asc" },
+      take: 15,
+      select: { name: true, stock: true },
+    }),
+    db.product.findMany({
+      where: { isActive: true, expiryDate: { not: null, lte: soon }, stock: { gt: 0 } },
+      orderBy: { expiryDate: "asc" },
+      take: 10,
+      select: { name: true, expiryDate: true, stock: true },
+    }),
+  ]);
+
+  if (!low.length && !expiring.length) {
+    return { text: null, low: 0, expiring: 0 };
+  }
+
+  const parts = [
+    "📦 <b>Ombor ogohlantirishi</b>",
+    low.length
+      ? `\n🔴 Tugab qolgan (${low.length} ta):\n${low
+          .map((p) => `• ${esc(p.name)} — ${p.stock === 0 ? "tugagan" : `${p.stock} dona`}`)
+          .join("\n")}`
+      : "",
+    expiring.length
+      ? `\n🟡 Muddati 30 kun ichida (${expiring.length} ta):\n${expiring
+          .map((p) => `• ${esc(p.name)} — ${p.expiryDate ? formatDate(p.expiryDate) : "-"} · ${p.stock} dona`)
+          .join("\n")}`
+      : "",
+  ];
+
+  return { text: parts.filter(Boolean).join("\n"), low: low.length, expiring: expiring.length };
+}

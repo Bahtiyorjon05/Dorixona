@@ -37,6 +37,12 @@ $PriceUrl = "https://dorixonaa.vercel.app/api/prices/refresh"
 # Qarz eslatmasi: muddati yaqin qarzlar Telegram'ga yuboriladi.
 # Server kuniga bir marta yuboradi, shuning uchun bu turtki xavfsiz.
 $DebtUrl = "https://dorixonaa.vercel.app/api/notifications/debts"
+# Kunlik xulosa (kechqurun) va ombor ogohlantirishi (ertalab). Qaysi
+# paytda yuborishni server o'zi hal qiladi, bu yerda faqat turtki beramiz.
+$NoticeUrls = [ordered]@{
+  "kunlik xulosa"      = "https://dorixonaa.vercel.app/api/notifications/kunlik"
+  "ombor eslatmasi"    = "https://dorixonaa.vercel.app/api/notifications/ombor"
+}
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
 $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
 # Kirim va yetkazib beruvchiga qaytarish omborga (filial 1) yoziladi,
@@ -122,7 +128,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v15 boshlandi (bo'sh javob ishonchli aniqlanadi)"
+Write-Log "relay v16 boshlandi (kunlik xulosa va ombor eslatmasi ham)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -227,5 +233,16 @@ if (-not $Only) {
     Write-Log ("OK    qarz eslatmasi  {0}" -f $answer)
   } catch {
     Write-Log ("XATO  qarz eslatmasi  {0}" -f (Get-ErrorText $_))
+  }
+
+  foreach ($notice in $NoticeUrls.Keys) {
+    try {
+      $api = New-Object System.Net.WebClient
+      $api.Headers.Add("Authorization", "Bearer $Token")
+      $answer = [System.Text.Encoding]::UTF8.GetString($api.UploadData($NoticeUrls[$notice], "POST", [byte[]]@()))
+      Write-Log ("OK    {0}  {1}" -f $notice, $answer)
+    } catch {
+      Write-Log ("XATO  {0}  {1}" -f $notice, (Get-ErrorText $_))
+    }
   }
 }
