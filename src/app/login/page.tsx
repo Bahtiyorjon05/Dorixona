@@ -1,5 +1,6 @@
 import { authenticate } from "@/lib/actions/auth";
 import { Logo } from "@/components/Logo";
+import { LoginSubmit } from "./LoginSubmit";
 
 export default async function LoginPage({
   searchParams,
@@ -44,6 +45,7 @@ export default async function LoginPage({
               name="password"
               type="password"
               required
+              autoFocus
               className="w-full rounded-lg border border-edge bg-card px-3 py-2 text-sm outline-none focus:border-primary"
               placeholder="••••••••"
             />
@@ -55,12 +57,7 @@ export default async function LoginPage({
             </p>
           )}
 
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
-          >
-            Kirish
-          </button>
+          <LoginSubmit />
         </form>
       </div>
     </div>
