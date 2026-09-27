@@ -45,8 +45,15 @@ export async function GET(request: NextRequest) {
     select: { createdAt: true, source: true, rowCount: true, note: true, keys: true, sample: true, ok: true },
   });
 
-  // Kirim hisobotida otdel ustuni bormi — "Umumiy" muammosining javobi shu
-  const incoming = rows.find((row) => row.note?.includes("incoming") && row.keys);
+  // Kirim hisobotida (1-hisobot) filial ustuni bormi — "Umumiy" muammosining javobi.
+  //
+  // DIQQAT: "O" harfi hisobotdan hisobotga boshqa ma'no beradi. SITE.exe
+  // qoldig'ida O = otdel (filial), 20-hisobotda esa O = tashkilot
+  // (yetkazib beruvchi). Shuning uchun faqat 1-hisobot qaraladi va u
+  // yerda O umuman yo'q — filialni bilish imkoni yo'q.
+  const incoming = rows.find(
+    (row) => row.keys && /\bincoming F=/.test(row.note ?? ""),
+  );
   const otdelBor = incoming?.keys ? /(^|,)\s*O\s*:/.test(incoming.keys) : null;
 
   return NextResponse.json({
@@ -56,7 +63,9 @@ export async function GET(request: NextRequest) {
         ? "kirim jurnali topilmadi — relay ishlagandan keyin qayta qarang"
         : otdelBor
           ? "bor — harajat aniq dorixonaga yoziladi"
-          : "YO'Q — F-Apteka kirimda filialni bermayapti, shuning uchun Umumiy",
+          : "YO'Q — 1-hisobotda filial ustuni yo'q, shuning uchun harajat Umumiy bo'lib qoladi",
+    eslatma:
+      "20-hisobotdagi O — yetkazib beruvchi tashkilot, filial emas. Faqat 1-hisobot hisobga olinadi.",
     otdelMosligi: Object.fromEntries(otdelUnitMap()),
     yozuvlar: rows.map((row) => ({
       vaqt: row.createdAt.toISOString(),

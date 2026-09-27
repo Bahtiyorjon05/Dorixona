@@ -360,10 +360,17 @@ async function syncIncomingExpenses(input: StepInput & { report: FaptekaReportKe
     productNames(input.branchId, rows),
   ]);
 
-  // Qaysi dorixonaga kelgani: qatordagi O (otdel) bo'yicha. Kirim omborga
-  // (filial 1) so'ralgani uchun so'rovning o'zi filialni bilmaydi — lekin
-  // hujjat qatorlarida otdel ko'rsatilgan bo'lsa, harajat aniq dorixonaga
-  // yoziladi. Ko'rsatilmagan bo'lsa avvalgidek "Umumiy" bo'lib qoladi.
+  // Qaysi dorixonaga kelgani.
+  //
+  // TEKSHIRILDI (27.09.2026): 1-hisobot qatorlarida filial ustuni YO'Q —
+  // kelgan maydonlar D, N, I, G, S, E, Q, P, SP, SN, V, SR, IK. Shuning
+  // uchun filial so'rovning o'zidan olinadi (pFilial_id). Hozir kirim
+  // faqat ombor (filial 1) nomidan so'raladi, shuning uchun "Umumiy"
+  // bo'lib qoladi; relay filial 2 va 3 dan ham so'raydigan bo'lsa,
+  // harajat o'sha dorixonaga yoziladi.
+  //
+  // DIQQAT: 20-hisobotdagi O — yetkazib beruvchi tashkilot, filial emas.
+  // Ikkisini adashtirmaslik kerak.
   const otdels = otdelUnitMap();
   const unitOf = (row: FaptekaRow) =>
     otdels.get((row.O ?? "").trim()) ?? input.scope?.unit ?? null;
