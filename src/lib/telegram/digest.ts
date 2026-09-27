@@ -1,12 +1,10 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { Prisma } from "@/generated/prisma/client";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   DEBT_DUE_SOON_DAYS,
   DEBT_URGENT_DAYS,
-  PRICE_SALES_DAYS,
-  TOP_SELLER_PER_MONTH,
+  getPriceWatchData,
   paymentBreakdown,
   salesSplit,
 } from "@/lib/queries";
@@ -305,99 +303,53 @@ export async function stockMessage() {
   return parts.filter(Boolean).join("\n");
 }
 
-/** /narxlar — raqobatchidan qimmat turgan dorilar */
+/** /narxlar — ombordagi hamma dori bo'yicha qisqacha */
 export async function priceMessage() {
-  let rows;
   let settings;
   try {
-    [rows, settings] = await Promise.all([
-      db.priceWatch.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-      db.priceSetting.findMany({ orderBy: { unit: "asc" } }),
-    ]);
+    settings = await db.priceSetting.findMany({ orderBy: { unit: "asc" } });
   } catch {
     return "Narx nazorati jadvali hali yaratilmagan. Supabase'da <code>prisma/manual/narx-nazorati.sql</code> ni ishga tushirish kerak.";
   }
 
-  const defaultPercent = settings.length ? num(settings[0].percent) : 5;
-  const skus = rows.map((row) => row.sku).filter((sku): sku is string => Boolean(sku));
-  const products = skus.length
-    ? await db.product.findMany({
-        where: { sku: { in: skus }, isActive: true },
-        select: { id: true, sku: true, salePrice: true },
-      })
-    : [];
-  const bySku = new Map(products.map((p) => [p.sku, p]));
+  const [slow, top] = await Promise.all([
+    getPriceWatchData({ group: "slow" }),
+    getPriceWatchData({ group: "top" }),
+  ]);
 
-  // Topiviy va kam sotilayotganni ajratish uchun oxirgi 90 kunlik savdo
-  const salesFrom = new Date(Date.now() - PRICE_SALES_DAYS * 864e5);
-  const productIds = products.map((p) => p.id);
-  const soldRows = productIds.length
-    ? await db.$queryRaw<{ productId: string; qty: number }[]>`
-        SELECT si."productId" AS "productId", COALESCE(SUM(si.quantity), 0)::float8 AS qty
-        FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-        WHERE s."createdAt" >= ${salesFrom} AND si."productId" IN (${Prisma.join(productIds)})
-        GROUP BY 1`
-    : [];
-  const soldById = new Map(soldRows.map((row) => [row.productId, num(row.qty)]));
-  const months = PRICE_SALES_DAYS / 30;
-
-  const items = rows.map((row) => {
-    const product = row.sku ? bySku.get(row.sku) : undefined;
-    const competitor = row.competitorPrice === null ? null : num(row.competitorPrice);
-    const percent = row.percent === null ? defaultPercent : num(row.percent);
-    const suggested = competitor === null ? null : Math.round(competitor * (1 + percent / 100));
-    const our = product ? num(product.salePrice) : null;
-    const perMonth = product ? (soldById.get(product.id) ?? 0) / months : null;
-    return {
-      name: row.name,
-      competitor,
-      suggested,
-      our,
-      perMonth,
-      slow: Boolean(product) && (perMonth ?? 0) < TOP_SELLER_PER_MONTH,
-      top: Boolean(product) && (perMonth ?? 0) >= TOP_SELLER_PER_MONTH,
-      diff: our !== null && suggested !== null ? our - suggested : null,
-    };
-  });
-
-  // Ustama kam sotilayotganlarga kerak — ogohlantirish ham shulardan
-  const overpriced = items
-    .filter((item) => item.slow && (item.diff ?? 0) > 0)
+  // Qimmat turganlar - sahifadagi birinchi 50 tadan; to'lig'i saytda
+  const overpriced = slow.items
+    .filter((item) => (item.diff ?? 0) > 0)
     .sort((a, b) => (b.diff ?? 0) - (a.diff ?? 0));
-  const topSellers = items
-    .filter((item) => item.top)
-    .sort((a, b) => (b.perMonth ?? 0) - (a.perMonth ?? 0));
-  const lastChecked = rows.reduce<Date | null>(
-    (latest, row) => (row.checkedAt && (!latest || row.checkedAt > latest) ? row.checkedAt : latest),
-    null,
-  );
 
   const settingLines = settings.map(
     (s) => `• ${esc(s.unit)}: ${s.enabled ? `yoqilgan, ${num(s.percent)}%` : "o'chirilgan"}`,
   );
 
-  const slowCount = items.filter((item) => item.slow).length;
   const parts = [
     `💹 <b>Narx nazorati</b>`,
-    `\nKuzatiladi: ${rows.length} ta · narxi olingan: ${items.filter((i) => i.competitor !== null).length} ta`,
-    `🐌 Kam sotilayotgan: ${slowCount} ta · 🔥 topiviy: ${topSellers.length} ta`,
+    `\nOmborda: ${som(slow.total)} ta dori`,
+    `🐌 Kam sotilayotgan: ${som(slow.slowCount)} ta · 🔥 topiviy: ${som(slow.topCount)} ta`,
+    `Arzonaptekadan narx olinadi: ${som(slow.competitorCount)} ta`,
     settingLines.length ? `\n${settingLines.join("\n")}` : "",
     overpriced.length
-      ? `\n⚠️ Narxni tushirish kerak (${overpriced.length} ta, kam sotilayotganlardan):\n${overpriced
+      ? `\n⚠️ Narxni tushirish kerak (kam sotilayotganlardan):\n${overpriced
           .slice(0, 10)
           .map(
             (item) =>
-              `• ${esc(item.name)} — bizda ${som(item.our ?? 0)}, tavsiya ${som(item.suggested ?? 0)}`,
+              `• ${esc(item.name)} — bizda ${som(item.our)}, tavsiya ${som(item.suggested ?? 0)}`,
           )
           .join("\n")}`
-      : "\n✅ Kam sotilayotganlarning hammasi tavsiya narxdan past",
-    topSellers.length
-      ? `\n🔥 Eng ko'p sotilayotgan:\n${topSellers
+      : "\n✅ Kam sotilayotganlarda tavsiyadan qimmati yo'q",
+    top.items.length
+      ? `\n🔥 Eng ko'p sotilayotgan:\n${top.items
           .slice(0, 5)
-          .map((item) => `• ${esc(item.name)} — ${(item.perMonth ?? 0).toFixed(0)} dona/oy`)
+          .map((item) => `• ${esc(item.name)} — ${item.perMonth.toFixed(0)} dona/oy`)
           .join("\n")}`
       : "",
-    lastChecked ? `\nOxirgi tekshiruv: ${formatDateTime(lastChecked)}` : "\nHali tekshirilmagan",
+    slow.lastChecked
+      ? `\nOxirgi tekshiruv: ${formatDateTime(slow.lastChecked)}`
+      : "\nHali tekshirilmagan",
   ];
 
   return parts.filter(Boolean).join("\n");

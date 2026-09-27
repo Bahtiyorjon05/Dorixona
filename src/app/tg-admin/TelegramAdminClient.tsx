@@ -11,6 +11,21 @@ type MiniAppResponse = {
   data?: DashboardData;
 };
 
+type PriceRow = {
+  id: string;
+  name: string;
+  competitor: number | null;
+  suggested: number | null;
+  our: number;
+  cost: number;
+  percent: number;
+  basis: "competitor" | "cost";
+  stock: number;
+  diff: number | null;
+  perMonth: number;
+  group: "top" | "slow";
+};
+
 type DashboardData = {
   finance: {
     todaySales: number;
@@ -92,30 +107,15 @@ type DashboardData = {
   prices: {
     needsMigration: boolean;
     total: number;
-    priced: number;
-    overpriced: number;
-    noUrl: number;
     slowCount: number;
     topCount: number;
+    competitorCount: number;
     topPerMonth: number;
+    overpriced: number;
     lastChecked: string | null;
     settings: { unit: string; enabled: boolean; percent: number }[];
-    items: {
-      id: string;
-      name: string;
-      competitor: number | null;
-      suggested: number | null;
-      our: number | null;
-      percent: number;
-      ownPercent: number | null;
-      stock: number | null;
-      diff: number | null;
-      checkedAt: string | null;
-      active: boolean;
-      hasUrl: boolean;
-      perMonth: number | null;
-      group: "top" | "slow" | "unmatched";
-    }[];
+    slowItems: PriceRow[];
+    topItems: PriceRow[];
   };
   customers: {
     total: number;
@@ -1365,8 +1365,8 @@ export function TelegramAdminClient() {
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                  <Metric label="🐌 Kam sotilayotgan" value={`${data.prices.slowCount} ta`} sub="ustama shularga" />
-                  <Metric label="🔥 Topiviy" value={`${data.prices.topCount} ta`} sub={`oyiga ${data.prices.topPerMonth} donadan ko'p`} />
+                  <Metric label="🐌 Kam sotilayotgan" value={`${formatNumber(data.prices.slowCount)} ta`} sub="turib qolgan tovar" />
+                  <Metric label="🔥 Topiviy" value={`${formatNumber(data.prices.topCount)} ta`} sub={`oyiga ${data.prices.topPerMonth} donadan ko'p`} />
                   <Metric label="⚠️ Qimmat turibdi" value={`${data.prices.overpriced} ta`} sub="narxni tushirish kerak" />
                   <Metric label="Oxirgi tekshiruv" value={data.prices.lastChecked ? formatTime(data.prices.lastChecked) : "—"} sub={data.prices.lastChecked ? formatDate(data.prices.lastChecked) : "hali tekshirilmagan"} />
                 </div>
@@ -1398,40 +1398,40 @@ export function TelegramAdminClient() {
                   </p>
                 </Card>
 
-                {(["slow", "top"] as const).map((grp) => {
-                  const rows = data.prices.items.filter((item) => item.group === grp);
-                  if (rows.length === 0) return null;
+                {([
+                  { key: "slow" as const, title: "🐌 Kam sotilayotgan — turib qolgan tovar", rows: data.prices.slowItems },
+                  { key: "top" as const, title: "🔥 Topiviy dorilar", rows: data.prices.topItems },
+                ]).map((block) => {
+                  if (block.rows.length === 0) return null;
                   return (
-                    <Card
-                      key={grp}
-                      title={grp === "slow" ? "🐌 Kam sotilayotgan — ustama shularga" : "🔥 Topiviy dorilar"}
-                    >
-                      {rows.slice(0, 40).map((item) => (
+                    <Card key={block.key} title={block.title}>
+                      {block.rows.map((item) => (
                         <div key={item.id} className="border-b border-edge py-2 last:border-b-0">
                           <div className="flex items-start justify-between gap-3 text-sm">
-                            <span className={`min-w-0 truncate font-medium ${item.active ? "text-fg" : "text-muted line-through"}`}>
-                              {item.name}
-                            </span>
+                            <span className="min-w-0 truncate font-medium text-fg">{item.name}</span>
                             <span className={`shrink-0 text-right font-semibold ${(item.diff ?? 0) > 0 ? "text-danger" : "text-fg"}`}>
                               {item.suggested === null ? "—" : formatNumber(item.suggested)}
                             </span>
                           </div>
                           <div className="mt-0.5 text-xs text-muted">
-                            {item.perMonth === null ? "savdosi ko'rinmaydi" : `${item.perMonth} dona/oy`}
-                            {item.competitor === null
-                              ? " · raqobatchi narxi yo'q"
-                              : ` · Arzon apteka ${formatNumber(item.competitor)} · +${item.percent}%`}
-                            {item.our !== null ? ` · bizda ${formatNumber(item.our)}` : ""}
+                            {item.perMonth} dona/oy · {item.stock} dona qoldiq
+                            {item.basis === "competitor"
+                              ? ` · Arzonapteka ${formatNumber(item.competitor ?? 0)} +${item.percent}%`
+                              : ` · tan narx ${formatNumber(item.cost)} +${item.percent}%`}
+                            {` · bizda ${formatNumber(item.our)}`}
                             {(item.diff ?? 0) > 0 ? ` · ${formatNumber(item.diff ?? 0)} qimmat` : ""}
                           </div>
                         </div>
                       ))}
-                      {rows.length > 40 && (
-                        <p className="pt-2 text-xs text-muted">Yana {rows.length - 40} ta — web saytda to&apos;liq ro&apos;yxat bor.</p>
-                      )}
                     </Card>
                   );
                 })}
+
+                <p className="text-xs text-muted">
+                  Ustama foizini web saytdagi Narx nazorati bo&apos;limida qo&apos;yasiz.
+                  Arzonaptekadan narx olinadigan {data.prices.competitorCount} ta doriga
+                  raqobatchi narxi asos bo&apos;ladi, qolganiga tan narx.
+                </p>
               </>
             )}
           </div>

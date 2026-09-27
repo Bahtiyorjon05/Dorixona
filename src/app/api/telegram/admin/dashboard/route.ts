@@ -2,8 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
-import { PRICE_SALES_DAYS, TOP_SELLER_PER_MONTH, utcMonthStart } from "@/lib/queries";
-import { Prisma } from "@/generated/prisma/client";
+import { TOP_SELLER_PER_MONTH, getPriceWatchData, utcMonthStart } from "@/lib/queries";
 import { debtSummary, type DebtRow } from "@/lib/telegram/digest";
 
 export const runtime = "nodejs";
@@ -579,88 +578,46 @@ async function getDebts() {
   };
 }
 
-/** Narx nazorati — raqobatchi narxi, tavsiya va bizning narx */
+/** Narx nazorati — ombordagi hamma dori, savdosiga qarab ikkiga bo'lingan */
 async function getPrices() {
-  let rows: Awaited<ReturnType<typeof db.priceWatch.findMany>> = [];
-  let settings: Awaited<ReturnType<typeof db.priceSetting.findMany>> = [];
-  let needsMigration = false;
   try {
-    [rows, settings] = await Promise.all([
-      db.priceWatch.findMany({ orderBy: { name: "asc" } }),
-      db.priceSetting.findMany({ orderBy: { unit: "asc" } }),
+    const [slow, top] = await Promise.all([
+      getPriceWatchData({ group: "slow" }),
+      getPriceWatchData({ group: "top" }),
     ]);
-  } catch {
-    needsMigration = true;
-  }
 
-  const defaultPercent = settings.length ? num(settings[0].percent) : 5;
-  const skus = rows.map((r) => r.sku).filter((sku): sku is string => Boolean(sku));
-  const products = skus.length
-    ? await db.product.findMany({
-        where: { sku: { in: skus }, isActive: true },
-        select: { id: true, sku: true, salePrice: true, stock: true },
-      })
-    : [];
-  const bySku = new Map(products.map((p) => [p.sku, p]));
+    const row = (item: (typeof slow.items)[number]) => ({
+      id: item.productId,
+      name: item.name,
+      competitor: item.competitor,
+      suggested: item.suggested,
+      our: item.our,
+      cost: item.cost,
+      percent: item.percent,
+      basis: item.basis,
+      stock: item.stock,
+      diff: item.diff,
+      perMonth: item.perMonth,
+      group: item.group,
+    });
 
-  // Topiviy/kam sotilayotganni ajratish uchun oxirgi 90 kunlik savdo
-  const salesFrom = new Date(Date.now() - PRICE_SALES_DAYS * 864e5);
-  const productIds = products.map((p) => p.id);
-  const soldRows = productIds.length
-    ? await db.$queryRaw<{ productId: string; qty: number }[]>`
-        SELECT si."productId" AS "productId", COALESCE(SUM(si.quantity), 0)::float8 AS qty
-        FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-        WHERE s."createdAt" >= ${salesFrom} AND si."productId" IN (${Prisma.join(productIds)})
-        GROUP BY 1`
-    : [];
-  const soldById = new Map(soldRows.map((row) => [row.productId, num(row.qty)]));
-  const months = PRICE_SALES_DAYS / 30;
-
-  const items = rows.map((r) => {
-    const product = r.sku ? bySku.get(r.sku) : undefined;
-    const competitor = r.competitorPrice === null ? null : num(r.competitorPrice);
-    const percent = r.percent === null ? defaultPercent : num(r.percent);
-    const suggested = competitor === null ? null : Math.round(competitor * (1 + percent / 100));
-    const our = product ? num(product.salePrice) : null;
-    const perMonth = product ? (soldById.get(product.id) ?? 0) / months : null;
-    const group = !product ? "unmatched" : (perMonth ?? 0) >= TOP_SELLER_PER_MONTH ? "top" : "slow";
     return {
-      id: r.id,
-      name: r.name,
-      competitor,
-      suggested,
-      our,
-      percent,
-      ownPercent: r.percent === null ? null : num(r.percent),
-      stock: product?.stock ?? null,
-      diff: our !== null && suggested !== null ? our - suggested : null,
-      checkedAt: r.checkedAt ? r.checkedAt.toISOString() : null,
-      active: r.active,
-      hasUrl: Boolean(r.sourceUrl),
-      perMonth: perMonth === null ? null : +perMonth.toFixed(1),
-      group: group as "top" | "slow" | "unmatched",
+      needsMigration: slow.needsMigration,
+      total: slow.total,
+      slowCount: slow.slowCount,
+      topCount: slow.topCount,
+      competitorCount: slow.competitorCount,
+      topPerMonth: slow.topPerMonth,
+      overpriced: slow.overpriced,
+      lastChecked: slow.lastChecked ? slow.lastChecked.toISOString() : null,
+      settings: slow.settings,
+      // Sahifaning birinchi qismi yetarli — to'lig'i web saytda
+      slowItems: slow.items.slice(0, 40).map(row),
+      topItems: top.items.slice(0, 40).map(row),
     };
-  });
-
-  const lastChecked = rows.reduce<Date | null>(
-    (latest, r) => (r.checkedAt && (!latest || r.checkedAt > latest) ? r.checkedAt : latest),
-    null,
-  );
-
-  return {
-    needsMigration,
-    total: rows.length,
-    priced: items.filter((i) => i.competitor !== null).length,
-    overpriced: items.filter((i) => (i.diff ?? 0) > 0).length,
-    noUrl: items.filter((i) => !i.hasUrl).length,
-    slowCount: items.filter((i) => i.group === "slow").length,
-    topCount: items.filter((i) => i.group === "top").length,
-    topPerMonth: TOP_SELLER_PER_MONTH,
-    lastChecked: lastChecked ? lastChecked.toISOString() : null,
-    settings: settings.map((s) => ({ unit: s.unit, enabled: s.enabled, percent: num(s.percent) })),
-    // Qimmat turganlar birinchi — panelda shu muhim
-    items: items.sort((a, b) => (b.diff ?? -Infinity) - (a.diff ?? -Infinity)),
-  };
+  } catch {
+    return emptyPrices();
+  }
 }
 
 type GrantedAccess = Extract<RequestAccess, { ok: true }>;
@@ -685,15 +642,33 @@ function emptyPrices() {
   return {
     needsMigration: false,
     total: 0,
-    priced: 0,
-    overpriced: 0,
-    noUrl: 0,
     slowCount: 0,
     topCount: 0,
+    competitorCount: 0,
     topPerMonth: TOP_SELLER_PER_MONTH,
-    lastChecked: null,
-    settings: [],
-    items: [],
+    overpriced: 0,
+    lastChecked: null as string | null,
+    settings: [] as { unit: string; enabled: boolean; percent: number }[],
+    slowItems: [] as ReturnType<typeof emptyRow>[],
+    topItems: [] as ReturnType<typeof emptyRow>[],
+  };
+}
+
+/** Faqat tur uchun — bo'sh javobdagi qator ko'rinishi */
+function emptyRow() {
+  return {
+    id: "",
+    name: "",
+    competitor: null as number | null,
+    suggested: null as number | null,
+    our: 0,
+    cost: 0,
+    percent: 0,
+    basis: "cost" as "competitor" | "cost",
+    stock: 0,
+    diff: null as number | null,
+    perMonth: 0,
+    group: "slow" as "top" | "slow",
   };
 }
 

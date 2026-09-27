@@ -1,18 +1,31 @@
 import { Card, MetricCard, PageHeader } from "@/components/ui";
 import { PricePanel } from "@/components/panels/PricePanel";
 import { formatDate, formatNumber, formatTime } from "@/lib/format";
-import { getPriceWatchData } from "@/lib/queries";
+import { getPriceWatchData, type PriceGroup } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function NarxlarPage() {
-  const d = await getPriceWatchData();
+function parseGroup(value?: string): PriceGroup | "all" {
+  return value === "top" || value === "all" ? value : "slow";
+}
+
+export default async function NarxlarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ guruh?: string; q?: string; sahifa?: string }>;
+}) {
+  const sp = await searchParams;
+  const d = await getPriceWatchData({
+    group: parseGroup(sp.guruh),
+    search: sp.q,
+    page: Number(sp.sahifa) || 1,
+  });
 
   return (
     <div>
       <PageHeader
         title="Narx nazorati"
-        subtitle="Kam sotilayotgan dorilarga Toshkentdagi eng arzon narx + ustama"
+        subtitle="Ombordagi hamma dori — savdosiga qarab ikkiga bo'lingan"
       />
 
       {d.needsMigration && (
@@ -28,7 +41,7 @@ export default async function NarxlarPage() {
           icon="🐌"
           label="Kam sotilayotgan"
           value={formatNumber(d.slowCount)}
-          sub="Ustama shularga qo'llanadi"
+          sub="Turib qolgan tovar"
         />
         <MetricCard
           icon="🔥"
@@ -41,7 +54,7 @@ export default async function NarxlarPage() {
           label="Biznikidan qimmat"
           value={formatNumber(d.overpriced)}
           valueColor={d.overpriced > 0 ? "var(--c-danger)" : undefined}
-          sub="Narxni tushirish kerak"
+          sub="Tavsiyadan yuqori narx"
         />
         <MetricCard
           icon="🕐"
@@ -55,7 +68,13 @@ export default async function NarxlarPage() {
         <PricePanel
           items={d.items}
           settings={d.settings}
-          percent={d.percent}
+          group={d.group}
+          search={d.search}
+          page={d.page}
+          pageSize={d.pageSize}
+          total={d.total}
+          topCount={d.topCount}
+          slowCount={d.slowCount}
           salesDays={d.salesDays}
           topPerMonth={d.topPerMonth}
         />
@@ -65,21 +84,21 @@ export default async function NarxlarPage() {
         <p>
           Dorilar savdo ma&apos;lumotiga qarab ikkiga bo&apos;linadi: oxirgi {d.salesDays} kunda
           oyiga {d.topPerMonth} donadan ko&apos;p sotilgani <b>topiviy</b>, qolgani{" "}
-          <b>kam sotilayotgan</b>. Avtomatik ustama kam sotilayotganlarga kerak — ular turib
-          qolmasin deb raqobatchining eng arzon narxiga yaqin qo&apos;yiladi.
-          {d.unmatchedCount > 0 && (
-            <>
-              {" "}
-              {formatNumber(d.unmatchedCount)} ta dori ombor bilan bog&apos;lanmagan, savdosi
-              ko&apos;rinmaydi — ular &laquo;Bog&apos;lanmagan&raquo; ro&apos;yxatida.
-            </>
-          )}
+          <b>kam sotilayotgan</b>.
         </p>
         <p>
-          Narxlar arzonapteka.uz dagi ochiq sahifalardan olinadi — o&apos;sha yerda Toshkent
-          bo&apos;yicha eng arzon taklif ko&apos;rsatiladi. Ro&apos;yxat har uch soatda o&apos;zi
-          yangilanadi. Tavsiya narxni F-Apteka&apos;da qo&apos;lda qo&apos;yasiz: F-Apteka
-          tashqaridan narx yozishga ruxsat bermaydi.
+          Tavsiya narx ikki xil hisoblanadi. arzonapteka.uz da kuzatiladigan{" "}
+          {formatNumber(d.competitorCount)} ta doriga — <b>Toshkentdagi eng arzon narx + ustama</b>{" "}
+          (dorixona foizi). Qolgan hamma doriga — <b>tan narx + ustama</b>, foizi 0 dan boshlanadi
+          va uni jadvaldagi &laquo;Ustama %&raquo; katakchasiga o&apos;zingiz yozasiz. Foiz
+          yozilmaguncha tavsiya ko&apos;rsatilmaydi — aks holda tavsiya tan narxning o&apos;zi
+          bo&apos;lib qolardi. Bitta doriga yozilgan foiz dorixona foizidan ustun turadi.
+        </p>
+        <p>
+          &laquo;Asos&raquo; ustunidagi <b>Tan narx</b> yozuvini bossangiz, o&apos;sha doriga
+          arzonapteka havolasini biriktirasiz — shundan keyin tavsiya raqobatchi narxidan
+          hisoblanadi. Narxni F-Apteka&apos;da qo&apos;lda qo&apos;yasiz: F-Apteka tashqaridan
+          narx yozishga ruxsat bermaydi.
         </p>
       </div>
     </div>

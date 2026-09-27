@@ -1,61 +1,52 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui";
 import { Field, FormError, Input, Modal, SubmitButton } from "@/components/Modal";
 import { formatDate, formatNumber, formatTime } from "@/lib/format";
 import {
-  addPriceWatch,
   refreshPricesNow,
   savePriceSetting,
-  setPriceWatchPercent,
+  setDrugPercent,
   setPriceWatchUrl,
-  togglePriceWatch,
 } from "@/lib/actions/prices";
 
 type Item = {
-  id: string;
+  /** PriceWatch qatori; dori uchun sozlama hali yo'q bo'lsa null */
+  id: string | null;
+  productId: string;
+  sku: string | null;
   name: string;
   sourceUrl: string | null;
-  sourceTitle: string | null;
   competitor: number | null;
   checkedAt: string | Date | null;
-  our: number | null;
-  cost: number | null;
-  stock: number | null;
-  productName: string | null;
+  our: number;
+  cost: number;
+  stock: number;
+  /** Tavsiya nimadan hisoblangan */
+  basis: "competitor" | "cost";
   percent: number;
   ownPercent: number | null;
   suggested: number | null;
   diff: number | null;
   diffPercent: number | null;
-  active: boolean;
-  /** Oxirgi 90 kunda sotilgan dona; ombor bilan bog'lanmagan bo'lsa null */
-  sold: number | null;
-  perMonth: number | null;
-  group: PriceGroup;
+  sold: number;
+  perMonth: number;
+  group: "top" | "slow";
 };
 
-type PriceGroup = "top" | "slow" | "unmatched";
-
 type Setting = { unit: string; enabled: boolean; percent: number };
+type Group = "slow" | "top" | "all";
 
-type Filter = "all" | "over" | "under" | "missing";
-type Group = PriceGroup | "all";
-
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "Hammasi" },
-  { key: "over", label: "Qimmat turibdi" },
-  { key: "under", label: "Arzon turibdi" },
-  { key: "missing", label: "Narx yo'q" },
-];
-
-/** Savdo bo'yicha ikki jadval: ustama kam sotilayotganlarga kerak */
+/** Savdo bo'yicha ikki jadval — dorixona ikkisini alohida ko'radi */
 const GROUPS: { key: Group; label: string; hint: string }[] = [
-  { key: "slow", label: "Kam sotilayotgan", hint: "Ustama shu ro'yxatga qo'llanadi" },
-  { key: "top", label: "Topiviy dorilar", hint: "Ko'p sotilayotganlar — kuzatib turiladi" },
-  { key: "unmatched", label: "Bog'lanmagan", hint: "Ombordan topilmadi, savdosi ko'rinmaydi" },
+  {
+    key: "slow",
+    label: "Kam sotilayotgan",
+    hint: "Turib qolgan tovar — narxni tushirish shu yerdan boshlanadi",
+  },
+  { key: "top", label: "Topiviy dorilar", hint: "Ko'p sotilayotganlar" },
   { key: "all", label: "Hammasi", hint: "" },
 ];
 
@@ -63,11 +54,21 @@ function money(value: number | null) {
   return value === null ? "—" : formatNumber(value);
 }
 
-/** Bitta doriga alohida ustama; bo'sh qoldirilsa dorixona foizi ishlatiladi */
-function PercentCell({ item, fallback }: { item: Item; fallback: number }) {
+/**
+ * Bitta doriga ustama foizi.
+ *
+ * arzonapteka.uz da kuzatiladigan doriga dorixona foizi (odatda 5%)
+ * o'zi qo'yiladi, qolganiga 0 — foizni shu katakchada yozasiz.
+ */
+function PercentCell({ item }: { item: Item }) {
   const router = useRouter();
   const [value, setValue] = useState(item.ownPercent === null ? "" : String(item.ownPercent));
   const [pending, start] = useTransition();
+
+  // Sahifa almashganda katakcha yangi doriga moslanishi kerak
+  useEffect(() => {
+    setValue(item.ownPercent === null ? "" : String(item.ownPercent));
+  }, [item.ownPercent, item.productId]);
 
   function save(next: string) {
     const trimmed = next.trim();
@@ -75,7 +76,7 @@ function PercentCell({ item, fallback }: { item: Item; fallback: number }) {
     if (percent !== null && !Number.isFinite(percent)) return;
     if (percent === item.ownPercent) return;
     start(async () => {
-      await setPriceWatchPercent(item.id, percent);
+      await setDrugPercent({ watchId: item.id, sku: item.sku, name: item.name, percent });
       router.refresh();
     });
   }
@@ -86,8 +87,12 @@ function PercentCell({ item, fallback }: { item: Item; fallback: number }) {
       disabled={pending}
       onChange={(event) => setValue(event.target.value)}
       onBlur={(event) => save(event.target.value)}
-      placeholder={String(fallback)}
-      title="Bo'sh qoldirilsa dorixona ustamasi qo'llanadi"
+      placeholder={String(item.percent)}
+      title={
+        item.basis === "competitor"
+          ? "Bo'sh qoldirilsa dorixona ustamasi qo'llanadi"
+          : "Tan narxga qo'shiladigan foiz"
+      }
       className="w-14 rounded-lg border border-edge bg-card px-2 py-1 text-right text-sm outline-none focus:border-primary disabled:opacity-50"
     />
   );
@@ -113,7 +118,9 @@ function SettingRow({ setting }: { setting: Setting }) {
     <div className="flex items-center justify-between gap-3 rounded-lg border border-edge bg-surface px-3 py-2.5">
       <div className="min-w-0">
         <div className="text-sm font-medium">{setting.unit}</div>
-        <div className="text-xs text-muted">{enabled ? "Ustama qo'llanadi" : "O'chirilgan"}</div>
+        <div className="text-xs text-muted">
+          {enabled ? "Arzonaptekadagi dorilarga qo'llanadi" : "O'chirilgan"}
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -162,54 +169,54 @@ function SettingRow({ setting }: { setting: Setting }) {
 export function PricePanel({
   items,
   settings,
-  percent,
+  group,
+  search,
+  page,
+  pageSize,
+  total,
+  topCount,
+  slowCount,
   salesDays,
   topPerMonth,
 }: {
   items: Item[];
   settings: Setting[];
-  percent: number;
+  group: Group;
+  search: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  topCount: number;
+  slowCount: number;
   salesDays: number;
   topPerMonth: number;
 }) {
   const router = useRouter();
-  const [group, setGroup] = useState<Group>("slow");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [search, setSearch] = useState("");
-  const [addOpen, setAddOpen] = useState(false);
+  const params = useSearchParams();
+  const [query, setQuery] = useState(search);
   const [linking, setLinking] = useState<Item | null>(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+  const [navigating, startNav] = useTransition();
 
-  const counts = useMemo(
-    () => ({
-      slow: items.filter((item) => item.group === "slow").length,
-      top: items.filter((item) => item.group === "top").length,
-      unmatched: items.filter((item) => item.group === "unmatched").length,
-      all: items.length,
-    }),
-    [items],
-  );
-
-  const shown = useMemo(() => {
-    const text = search.trim().toLowerCase();
-    return items
-      .filter((item) => {
-        if (group !== "all" && item.group !== group) return false;
-        if (text && !item.name.toLowerCase().includes(text)) return false;
-        if (filter === "over") return (item.diff ?? 0) > 0;
-        if (filter === "under") return item.diff !== null && item.diff < 0;
-        if (filter === "missing") return item.competitor === null || item.our === null;
-        return true;
-      })
-      .sort((a, b) => {
-        // Topiviy jadvalda eng ko'p sotilgani yuqorida, qolganida eng qimmati
-        if (group === "top") return (b.perMonth ?? 0) - (a.perMonth ?? 0);
-        return (b.diff ?? -Infinity) - (a.diff ?? -Infinity);
-      });
-  }, [items, group, filter, search]);
-
-  const activeGroup = GROUPS.find((option) => option.key === group);
+  // Ro'yxat katta — filtr va sahifa serverda, manzil satrida saqlanadi
+  function go(next: { guruh?: Group; q?: string; sahifa?: number }) {
+    const url = new URLSearchParams(params.toString());
+    if (next.guruh !== undefined) {
+      url.set("guruh", next.guruh);
+      url.delete("sahifa");
+    }
+    if (next.q !== undefined) {
+      if (next.q) url.set("q", next.q);
+      else url.delete("q");
+      url.delete("sahifa");
+    }
+    if (next.sahifa !== undefined) {
+      if (next.sahifa > 1) url.set("sahifa", String(next.sahifa));
+      else url.delete("sahifa");
+    }
+    startNav(() => router.push(`/narxlar?${url.toString()}`, { scroll: false }));
+  }
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, done?: () => void) {
     setError("");
@@ -224,6 +231,13 @@ export function PricePanel({
     });
   }
 
+  const activeGroup = GROUPS.find((option) => option.key === group);
+  const counts: Record<Group, number> = { slow: slowCount, top: topCount, all: total };
+  const shownTotal = counts[group];
+  const lastPage = Math.max(1, Math.ceil(shownTotal / pageSize));
+  const from = shownTotal === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, shownTotal);
+
   return (
     <div className="space-y-4">
       <div className="grid gap-2 sm:grid-cols-2">
@@ -232,156 +246,148 @@ export function PricePanel({
         ))}
       </div>
 
-      {/* Savdo bo'yicha ikki jadval: kam sotilayotgan va topiviy */}
+      {/* Savdo bo'yicha ikki jadval */}
       <div className="rounded-lg border border-edge bg-surface p-1">
         <div className="flex flex-wrap gap-1">
-          {GROUPS.map((option) => {
-            const count = counts[option.key];
-            return (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setGroup(option.key)}
-                className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition ${
-                  group === option.key
-                    ? "bg-card text-fg shadow-sm"
-                    : "text-muted hover:text-fg"
-                }`}
-              >
-                {option.label}
-                <span className="ml-1.5 text-muted">{count}</span>
-              </button>
-            );
-          })}
+          {GROUPS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => go({ guruh: option.key })}
+              className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition ${
+                group === option.key ? "bg-card text-fg shadow-sm" : "text-muted hover:text-fg"
+              }`}
+            >
+              {option.label}
+              <span className="ml-1.5 text-muted">{formatNumber(counts[option.key])}</span>
+            </button>
+          ))}
         </div>
       </div>
 
       {activeGroup?.hint && (
         <p className="-mt-2 text-xs text-muted">
-          {activeGroup.hint}
-          {group !== "unmatched" &&
-            ` · oxirgi ${salesDays} kun savdosi bo'yicha; oyiga ${topPerMonth} donadan ko'p sotilsa topiviy.`}
+          {activeGroup.hint} · oxirgi {salesDays} kun savdosi bo&apos;yicha; oyiga {topPerMonth}{" "}
+          donadan ko&apos;p sotilsa topiviy.
         </p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1">
-          {FILTERS.map((option) => (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            go({ q: query });
+          }}
+          className="flex flex-1 flex-wrap gap-2"
+        >
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Dori nomi"
+            className="min-w-[160px] flex-1 rounded-lg border border-edge bg-card px-3 py-1.5 text-sm outline-none focus:border-primary sm:max-w-[240px]"
+          />
+          <button type="submit" className="btn btn-ghost btn-sm">
+            Qidirish
+          </button>
+          {search && (
             <button
-              key={option.key}
               type="button"
-              onClick={() => setFilter(option.key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                filter === option.key
-                  ? "bg-primary-light text-primary"
-                  : "border border-edge text-muted hover:text-fg"
-              }`}
+              onClick={() => {
+                setQuery("");
+                go({ q: "" });
+              }}
+              className="btn btn-ghost btn-sm"
             >
-              {option.label}
+              Tozalash
             </button>
-          ))}
-        </div>
+          )}
+        </form>
 
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Dori nomi"
-          className="min-w-[160px] flex-1 rounded-lg border border-edge bg-card px-3 py-1.5 text-sm outline-none focus:border-primary sm:max-w-[240px]"
-        />
-
-        <div className="ml-auto flex gap-2">
-          <button type="button" onClick={() => setAddOpen(true)} className="btn btn-ghost btn-sm">
-            + Dori
-          </button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => run(() => refreshPricesNow())}
-            className="btn btn-primary btn-sm"
-          >
-            {pending ? "Yangilanmoqda…" : "Narxlarni yangilash"}
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run(() => refreshPricesNow())}
+          className="btn btn-primary btn-sm"
+        >
+          {pending ? "Yangilanmoqda…" : "Narxlarni yangilash"}
+        </button>
       </div>
 
       <FormError message={error} />
 
-      <div className="overflow-x-auto">
+      <div className={`overflow-x-auto transition-opacity ${navigating ? "opacity-50" : ""}`}>
         <table className="data-table">
           <thead>
             <tr>
               <th>Dori</th>
               <th>Sotilgan</th>
+              <th>Tan narx</th>
               <th>Bizda</th>
-              <th>Raqobatchi</th>
+              <th>Asos</th>
               <th>Ustama %</th>
               <th>Tavsiya</th>
               <th>Farq</th>
-              <th>Tekshirilgan</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && (
+            {items.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-6 text-center text-muted">
+                <td colSpan={8} className="py-6 text-center text-muted">
                   Hech narsa topilmadi.
                 </td>
               </tr>
             )}
 
-            {shown.map((item) => {
+            {items.map((item) => {
               const over = (item.diff ?? 0) > 0;
               const under = item.diff !== null && item.diff < 0;
               return (
-                <tr key={item.id} className={item.active ? undefined : "opacity-50"}>
+                <tr key={item.productId}>
                   <td className="text-left">
-                    <div className="font-medium">{item.name}</div>
-                    {item.productName && (
-                      <div className="max-w-[260px] truncate text-xs text-muted" title={item.productName}>
-                        {item.productName}
-                        {item.stock !== null && ` · ${item.stock} dona`}
-                      </div>
-                    )}
-                    {!item.productName && (
-                      <div className="text-xs text-muted">Omborda topilmadi</div>
-                    )}
+                    <div className="max-w-[260px] truncate font-medium" title={item.name}>
+                      {item.name}
+                    </div>
+                    <div className="text-xs text-muted">{item.stock} dona qoldiq</div>
                   </td>
                   <td className="whitespace-nowrap text-xs">
-                    {item.perMonth === null ? (
-                      <span className="text-muted">—</span>
-                    ) : (
-                      <>
-                        <span className={item.group === "top" ? "font-semibold text-primary" : undefined}>
-                          {item.perMonth}
-                        </span>
-                        <span className="text-muted"> dona/oy</span>
-                      </>
-                    )}
+                    <span className={item.group === "top" ? "font-semibold text-primary" : undefined}>
+                      {item.perMonth}
+                    </span>
+                    <span className="text-muted"> dona/oy</span>
                   </td>
+                  <td className="whitespace-nowrap">{money(item.cost)}</td>
                   <td className="whitespace-nowrap">{money(item.our)}</td>
-                  <td className="whitespace-nowrap">
-                    {item.sourceUrl ? (
-                      <a
-                        href={item.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        {money(item.competitor)}
-                      </a>
+                  <td className="whitespace-nowrap text-xs">
+                    {item.basis === "competitor" ? (
+                      item.sourceUrl ? (
+                        <a
+                          href={item.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary hover:underline"
+                          title="Arzonaptekadagi eng arzon narx"
+                        >
+                          Arzonapteka {money(item.competitor)}
+                        </a>
+                      ) : (
+                        <span className="text-muted">Arzonapteka {money(item.competitor)}</span>
+                      )
                     ) : (
                       <button
                         type="button"
-                        onClick={() => { setError(""); setLinking(item); }}
-                        className="text-xs text-muted underline"
+                        onClick={() => {
+                          setError("");
+                          setLinking(item);
+                        }}
+                        className="text-muted underline"
+                        title="Arzonapteka havolasini biriktirish"
                       >
-                        havola qo&apos;shish
+                        Tan narx
                       </button>
                     )}
                   </td>
                   <td className="whitespace-nowrap">
-                    <PercentCell item={item} fallback={percent} />
+                    <PercentCell item={item} />
                   </td>
                   <td className="whitespace-nowrap font-semibold">{money(item.suggested)}</td>
                   <td className="whitespace-nowrap">
@@ -400,21 +406,6 @@ export function PricePanel({
                       <Badge color="green">mos</Badge>
                     )}
                   </td>
-                  <td className="whitespace-nowrap text-xs text-muted">
-                    {item.checkedAt
-                      ? `${formatDate(item.checkedAt)} ${formatTime(item.checkedAt)}`
-                      : "hali yo'q"}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => run(() => togglePriceWatch(item.id, !item.active))}
-                      className="btn btn-ghost btn-sm"
-                      title={item.active ? "Kuzatishni to'xtatish" : "Kuzatishni yoqish"}
-                    >
-                      {item.active ? "O'chirish" : "Yoqish"}
-                    </button>
-                  </td>
                 </tr>
               );
             })}
@@ -422,40 +413,44 @@ export function PricePanel({
         </table>
       </div>
 
-      {/* Yangi dori */}
-      <Modal open={addOpen} title="Ro'yxatga dori qo'shish" onClose={() => setAddOpen(false)}>
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const fd = new FormData(event.currentTarget);
-            run(
-              () =>
-                addPriceWatch({
-                  name: String(fd.get("name") ?? ""),
-                  sourceUrl: String(fd.get("sourceUrl") ?? ""),
-                }),
-              () => setAddOpen(false),
-            );
-          }}
-        >
-          <Field label="Dori nomi">
-            <Input name="name" required placeholder="КСАРЕЛТО" />
-          </Field>
-          <Field label="arzonapteka.uz havolasi">
-            <Input name="sourceUrl" placeholder="https://arzonapteka.uz/uz/products/..." />
-          </Field>
-          <p className="text-xs text-muted">
-            Havolani saytdan dorini topib, manzil satridan nusxalang. Keyin qo&apos;shsangiz ham bo&apos;ladi.
-          </p>
-          <SubmitButton pending={pending}>Qo&apos;shish</SubmitButton>
-        </form>
-      </Modal>
+      {/* Sahifalash */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+        <span>
+          {formatNumber(from)}–{formatNumber(to)} / {formatNumber(shownTotal)} ta dori
+          {items[0]?.checkedAt && (
+            <>
+              {" · "}oxirgi tekshiruv {formatDate(items[0].checkedAt)}{" "}
+              {formatTime(items[0].checkedAt)}
+            </>
+          )}
+        </span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={page <= 1 || navigating}
+            onClick={() => go({ sahifa: page - 1 })}
+            className="btn btn-ghost btn-sm disabled:opacity-40"
+          >
+            ← Oldingi
+          </button>
+          <span className="self-center">
+            {page} / {lastPage}
+          </span>
+          <button
+            type="button"
+            disabled={page >= lastPage || navigating}
+            onClick={() => go({ sahifa: page + 1 })}
+            className="btn btn-ghost btn-sm disabled:opacity-40"
+          >
+            Keyingi →
+          </button>
+        </div>
+      </div>
 
-      {/* Havola biriktirish */}
+      {/* Havola biriktirish — dori arzonaptekadan kuzatilsin */}
       <Modal
         open={linking !== null}
-        title={`Havola — ${linking?.name ?? ""}`}
+        title={`Arzonapteka havolasi — ${linking?.name ?? ""}`}
         onClose={() => setLinking(null)}
       >
         {linking && (
@@ -465,13 +460,27 @@ export function PricePanel({
               event.preventDefault();
               const fd = new FormData(event.currentTarget);
               run(
-                () => setPriceWatchUrl(linking.id, String(fd.get("sourceUrl") ?? "")),
+                () =>
+                  setPriceWatchUrl({
+                    watchId: linking.id,
+                    sku: linking.sku,
+                    name: linking.name,
+                    sourceUrl: String(fd.get("sourceUrl") ?? ""),
+                  }),
                 () => setLinking(null),
               );
             }}
           >
+            <p className="text-xs text-muted">
+              Havola qo&apos;shilsa, tavsiya narx tan narxdan emas, Toshkentdagi eng arzon
+              narxdan hisoblanadi.
+            </p>
             <Field label="arzonapteka.uz havolasi">
-              <Input name="sourceUrl" defaultValue={linking.sourceUrl ?? ""} placeholder="https://arzonapteka.uz/uz/products/..." />
+              <Input
+                name="sourceUrl"
+                defaultValue={linking.sourceUrl ?? ""}
+                placeholder="https://arzonapteka.uz/uz/products/..."
+              />
             </Field>
             <a
               href={`https://arzonapteka.uz/uz/search?text=${encodeURIComponent(linking.name)}`}

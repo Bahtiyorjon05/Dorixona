@@ -13,11 +13,6 @@ const settingSchema = z.object({
   percent: z.number().min(0).max(100),
 });
 
-const watchSchema = z.object({
-  name: z.string().min(2, "Dori nomini yozing"),
-  sourceUrl: z.string().url("Havola noto'g'ri").optional().or(z.literal("")),
-});
-
 function revalidateAll() {
   revalidatePath("/narxlar");
   revalidatePath("/ombor");
@@ -39,51 +34,41 @@ export async function savePriceSetting(input: z.input<typeof settingSchema>): Pr
   }
 }
 
-/** Ro'yxatga yangi dori qo'shish */
-export async function addPriceWatch(input: z.input<typeof watchSchema>): Promise<ActionResult> {
+/**
+ * Doriga arzonapteka.uz havolasini biriktirish.
+ *
+ * Havola bor doriga tavsiya narx raqobatchining eng arzon narxidan,
+ * havolasiz doriga esa tan narxdan hisoblanadi.
+ */
+export async function setPriceWatchUrl(input: {
+  watchId?: string | null;
+  sku?: string | null;
+  name: string;
+  sourceUrl: string;
+}): Promise<ActionResult> {
   try {
     await requireUser();
-    const data = watchSchema.parse(input);
-    await db.priceWatch.upsert({
-      where: { name: data.name.trim().toUpperCase() },
-      update: { sourceUrl: data.sourceUrl || null, active: true },
-      create: { name: data.name.trim().toUpperCase(), sourceUrl: data.sourceUrl || null },
-    });
-    revalidateAll();
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-/** Havolani biriktirish yoki almashtirish */
-export async function setPriceWatchUrl(id: string, sourceUrl: string): Promise<ActionResult> {
-  try {
-    await requireUser();
-    if (!id) return { ok: false, error: "Yozuv topilmadi" };
-    const url = sourceUrl.trim();
+    const url = input.sourceUrl.trim();
     if (url && !/^https:\/\/arzonapteka\.uz\//.test(url)) {
       return { ok: false, error: "arzonapteka.uz havolasi bo'lishi kerak" };
     }
-    await db.priceWatch.update({
-      where: { id },
-      data: { sourceUrl: url || null, checkedAt: null },
-    });
-    revalidateAll();
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
-/** Ayrim doriga alohida ustama; bo'sh bo'lsa dorixona sozlamasi ishlatiladi */
-export async function setPriceWatchPercent(id: string, percent: number | null): Promise<ActionResult> {
-  try {
-    await requireUser();
-    if (percent !== null && (!Number.isFinite(percent) || percent < 0 || percent > 100)) {
-      return { ok: false, error: "Foiz 0 va 100 orasida bo'lishi kerak" };
+    if (input.watchId) {
+      // Havola o'zgardi — eski narx endi yaramaydi, qayta tekshiriladi
+      await db.priceWatch.update({
+        where: { id: input.watchId },
+        data: { sourceUrl: url || null, competitorPrice: url ? null : undefined, checkedAt: null },
+      });
+    } else {
+      if (!url) return { ok: true };
+      const name = input.name.trim().toUpperCase();
+      await db.priceWatch.upsert({
+        where: { name },
+        update: { sourceUrl: url, sku: input.sku ?? undefined, active: true, checkedAt: null },
+        create: { name, sku: input.sku ?? null, sourceUrl: url },
+      });
     }
-    await db.priceWatch.update({ where: { id }, data: { percent } });
+
     revalidateAll();
     return { ok: true };
   } catch (e) {
@@ -91,10 +76,38 @@ export async function setPriceWatchPercent(id: string, percent: number | null): 
   }
 }
 
-export async function togglePriceWatch(id: string, active: boolean): Promise<ActionResult> {
+/**
+ * Bitta doriga ustama foizi.
+ *
+ * Narx sozlamasi `PriceWatch` da saqlanadi. arzonapteka.uz da kuzatilmagan
+ * doriga sozlama qatori hali bo'lmaydi — birinchi marta foiz qo'yilganda
+ * o'sha dori uchun qator yaratiladi (havolasiz, faqat foiz uchun).
+ */
+export async function setDrugPercent(input: {
+  watchId?: string | null;
+  sku?: string | null;
+  name: string;
+  percent: number | null;
+}): Promise<ActionResult> {
   try {
     await requireUser();
-    await db.priceWatch.update({ where: { id }, data: { active } });
+    const { percent } = input;
+    if (percent !== null && (!Number.isFinite(percent) || percent < 0 || percent > 1000)) {
+      return { ok: false, error: "Foiz 0 va 1000 orasida bo'lishi kerak" };
+    }
+
+    if (input.watchId) {
+      await db.priceWatch.update({ where: { id: input.watchId }, data: { percent } });
+    } else {
+      if (percent === null) return { ok: true }; // o'chiradigan narsa yo'q
+      const name = input.name.trim().toUpperCase();
+      await db.priceWatch.upsert({
+        where: { name },
+        update: { percent, sku: input.sku ?? undefined, active: true },
+        create: { name, sku: input.sku ?? null, percent },
+      });
+    }
+
     revalidateAll();
     return { ok: true };
   } catch (e) {

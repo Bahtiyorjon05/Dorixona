@@ -1271,116 +1271,212 @@ export async function getDashboardData() {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Kuzatilayotgan dorilar: raqobatchi narxi, bizning narx va tavsiya.
+ * Narx nazorati — OMBORDAGI HAMMA DORI bo'yicha.
  *
- * Tavsiya narx = raqobatchidagi eng arzon + ustama (har dorixona uchun
- * alohida sozlanadi). Narx F-Apteka'da qo'lda o'zgartiriladi — bizda
- * yozish imkoni yo'q, shuning uchun ERP faqat ko'rsatadi.
- */
-/**
- * Narx nazorati: dori "topiviy" (ko'p sotiladigan) yoki "kam sotilayotgan"
- * ekanini savdo ma'lumotidan aniqlaymiz.
+ * Dori savdosiga qarab ikkiga bo'linadi: oxirgi PRICE_SALES_DAYS kunda
+ * oyiga TOP_SELLER_PER_MONTH donadan ko'p sotilgani "topiviy", qolgani
+ * "kam sotilayotgan".
  *
- * Avtomatik ustama kam sotilayotganlarga kerak — ular turib qolmasin deb
- * raqobatchining eng arzon narxiga yaqin qo'yiladi. Topiviy dorilar esa
- * o'zi ketyapti, ular alohida jadvalda kuzatiladi.
+ * Tavsiya narx ikki xil hisoblanadi:
+ *   • arzonapteka.uz da kuzatilayotgan dori bo'lsa — raqobatchining eng
+ *     arzon narxi + ustama (dorixona foizi, odatda 5%);
+ *   • qolgan hamma doriga — TAN NARX + ustama, foizi esa 0 dan boshlanadi.
+ *     Foizni dorixona o'zi qo'yadi, har doriga alohida.
+ *
+ * Narx F-Apteka'da qo'lda o'zgartiriladi — bizda yozish imkoni yo'q,
+ * shuning uchun ERP faqat ko'rsatadi.
  */
-export type PriceGroup = "top" | "slow" | "unmatched";
+export type PriceGroup = "top" | "slow";
+/** Tavsiya nimadan hisoblangani */
+export type PriceBasis = "competitor" | "cost";
 
 export const PRICE_SALES_DAYS = 90;
 /** Oyiga shuncha dona va undan ko'p sotilsa — topiviy */
 export const TOP_SELLER_PER_MONTH = 10;
+/** Bir sahifada nechta dori */
+export const PRICE_PAGE_SIZE = 50;
 
-export async function getPriceWatchData() {
+export type PriceQuery = {
+  group?: PriceGroup | "all";
+  search?: string;
+  page?: number;
+};
+
+type PriceRow = {
+  id: string;
+  sku: string | null;
+  name: string;
+  stock: number;
+  salePrice: unknown;
+  costPrice: unknown;
+  qty: number;
+  watchId: string | null;
+  competitorPrice: unknown;
+  sourceUrl: string | null;
+  ownPercent: unknown;
+  checkedAt: Date | null;
+};
+
+export async function getPriceWatchData(query: PriceQuery = {}) {
   const branchId = await getBranchId();
   const filial = await currentFilial();
 
-  let rows: Awaited<ReturnType<typeof db.priceWatch.findMany>> = [];
   let settings: Awaited<ReturnType<typeof db.priceSetting.findMany>> = [];
   let needsMigration = false;
   try {
-    [rows, settings] = await Promise.all([
-      db.priceWatch.findMany({ orderBy: { name: "asc" } }),
-      db.priceSetting.findMany({ orderBy: { unit: "asc" } }),
-    ]);
+    settings = await db.priceSetting.findMany({ orderBy: { unit: "asc" } });
   } catch {
     needsMigration = true;
   }
-
-  // Bizning narxlar: faqat kerakli tovarlar
-  const skus = rows.map((row) => row.sku).filter((sku): sku is string => Boolean(sku));
-  const products = skus.length
-    ? await db.product.findMany({
-        where: { branchId, sku: { in: skus } },
-        select: { id: true, sku: true, name: true, salePrice: true, costPrice: true, stock: true },
-      })
-    : [];
-  const bySku = new Map(products.map((product) => [product.sku, product]));
-
-  // Oxirgi PRICE_SALES_DAYS kunda har bir doridan qancha sotilgan
-  const salesFrom = new Date(Date.now() - PRICE_SALES_DAYS * 864e5);
-  const productIds = products.map((product) => product.id);
-  const soldRows = productIds.length
-    ? await db.$queryRaw<{ productId: string; qty: number }[]>`
-        SELECT si."productId" AS "productId", COALESCE(SUM(si.quantity), 0)::float8 AS qty
-        FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-        WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${salesFrom}
-          AND si."productId" IN (${Prisma.join(productIds)})
-        GROUP BY 1`
-    : [];
-  const soldById = new Map(soldRows.map((row) => [row.productId, num(row.qty)]));
-  const months = PRICE_SALES_DAYS / 30;
 
   const active = filial === "Umumiy" ? settings[0] : settings.find((s) => s.unit === filial);
   const percent = active ? num(active.percent) : 5;
   const enabled = active ? active.enabled : true;
 
-  const items = rows.map((row) => {
-    const product = row.sku ? bySku.get(row.sku) : undefined;
-    const competitor = row.competitorPrice === null ? null : num(row.competitorPrice);
-    const our = product ? num(product.salePrice) : null;
-    // Doriga alohida ustama qo'yilgan bo'lsa, u dorixona foizidan ustun
-    const rowPercent = row.percent === null ? percent : num(row.percent);
-    const suggested = competitor === null ? null : Math.round(competitor * (1 + rowPercent / 100));
-    // Bizning narx tavsiyadan qanchaga farq qiladi
-    const diff = our !== null && suggested !== null ? our - suggested : null;
+  const group = query.group ?? "slow";
+  const search = query.search?.trim() ?? "";
+  const page = Math.max(1, query.page ?? 1);
+  const months = PRICE_SALES_DAYS / 30;
+  // Oyiga TOP_SELLER_PER_MONTH dona = oraliqda shuncha dona
+  const topThreshold = TOP_SELLER_PER_MONTH * months;
+  const salesFrom = new Date(Date.now() - PRICE_SALES_DAYS * 864e5);
 
-    // Savdo bo'yicha guruh: ombor bilan bog'lanmagani "unmatched",
-    // qolgani oyiga necha dona sotilganiga qarab bo'linadi
-    const sold = product ? soldById.get(product.id) ?? 0 : null;
-    const perMonth = sold === null ? null : sold / months;
-    const group: PriceGroup =
-      product === undefined ? "unmatched" : (perMonth ?? 0) >= TOP_SELLER_PER_MONTH ? "top" : "slow";
+  const searchFilter = search
+    ? Prisma.sql`AND p.name ILIKE ${`%${search}%`}`
+    : Prisma.empty;
+  const groupFilter =
+    group === "top"
+      ? Prisma.sql`AND COALESCE(sold.qty, 0) >= ${topThreshold}`
+      : group === "slow"
+        ? Prisma.sql`AND COALESCE(sold.qty, 0) < ${topThreshold}`
+        : Prisma.empty;
+  // Topiviy jadvalda ko'p sotilgani, qolganida puli ko'p turib qolgani tepada
+  const order =
+    group === "slow"
+      ? Prisma.sql`ORDER BY (p.stock * p."costPrice") DESC, p.name ASC`
+      : Prisma.sql`ORDER BY COALESCE(sold.qty, 0) DESC, p.name ASC`;
+
+  const soldCte = Prisma.sql`
+    WITH sold AS (
+      SELECT si."productId" AS pid, SUM(si.quantity)::float8 AS qty
+      FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${salesFrom}
+      GROUP BY 1
+    )`;
+
+  // PriceWatch jadvali hali yaratilmagan bo'lsa ham sahifa ishlashi kerak
+  const watchJoin = needsMigration
+    ? Prisma.sql`LEFT JOIN LATERAL (SELECT NULL::text AS id, NULL::numeric AS "competitorPrice",
+                                          NULL::text AS "sourceUrl", NULL::numeric AS percent,
+                                          NULL::timestamp AS "checkedAt") w ON true`
+    : Prisma.sql`LEFT JOIN LATERAL (
+        SELECT w.id, w."competitorPrice", w."sourceUrl", w.percent, w."checkedAt"
+        FROM "PriceWatch" w
+        WHERE w.sku = p.sku AND w.active = true
+        ORDER BY (w."competitorPrice" IS NOT NULL) DESC, w."createdAt" ASC
+        LIMIT 1
+      ) w ON true`;
+
+  const base = Prisma.sql`
+    FROM "Product" p
+    LEFT JOIN sold ON sold.pid = p.id
+    ${watchJoin}
+    WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0
+      ${groupFilter}
+      ${searchFilter}`;
+
+  const [rows, totals] = await Promise.all([
+    db.$queryRaw<PriceRow[]>`
+      ${soldCte}
+      SELECT p.id, p.sku, p.name, p.stock, p."salePrice", p."costPrice",
+             COALESCE(sold.qty, 0)::float8 AS qty,
+             w.id AS "watchId", w."competitorPrice", w."sourceUrl",
+             w.percent AS "ownPercent", w."checkedAt"
+      ${base}
+      ${order}
+      LIMIT ${PRICE_PAGE_SIZE} OFFSET ${(page - 1) * PRICE_PAGE_SIZE}`,
+    db.$queryRaw<{ jami: number; topiviy: number; raqobatchi: number; qimmat: number }[]>`
+      ${soldCte}
+      SELECT COUNT(*)::float8 AS jami,
+             COUNT(*) FILTER (WHERE COALESCE(sold.qty, 0) >= ${topThreshold})::float8 AS topiviy,
+             COUNT(*) FILTER (WHERE w."competitorPrice" IS NOT NULL)::float8 AS raqobatchi,
+             -- Tavsiya narxdan qimmat turganlar. Faqat tavsiyasi bor dorilar
+             -- sanaladi: raqobatchi narxi bor yoki foizi qo'lda qo'yilgan.
+             -- Aks holda tavsiya = tan narx bo'lib, hamma dori "qimmat"
+             -- bo'lib chiqardi — chakana narx tan narxdan yuqori-ku.
+             COUNT(*) FILTER (
+               WHERE (w."competitorPrice" IS NOT NULL OR w.percent IS NOT NULL)
+                 AND COALESCE(w."competitorPrice", p."costPrice") > 0
+                 AND p."salePrice" > ROUND(
+                   COALESCE(w."competitorPrice", p."costPrice") * (
+                     1 + COALESCE(
+                       w.percent,
+                       CASE WHEN w."competitorPrice" IS NOT NULL THEN ${percent}::numeric ELSE 0 END
+                     ) / 100
+                   )
+                 )
+             )::float8 AS qimmat
+      FROM "Product" p
+      LEFT JOIN sold ON sold.pid = p.id
+      ${watchJoin}
+      WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0
+        ${searchFilter}`,
+  ]);
+
+  const items = rows.map((row) => {
+    const competitor = row.competitorPrice === null ? null : num(row.competitorPrice);
+    const our = num(row.salePrice);
+    const cost = num(row.costPrice);
+    const own = row.ownPercent === null ? null : num(row.ownPercent);
+
+    // Arzonaptekada kuzatilsa raqobatchidan, bo'lmasa tan narxdan
+    const basis: PriceBasis = competitor !== null ? "competitor" : "cost";
+    // Raqobatchi narxi bor doriga dorixona foizi, qolganiga 0 — foizni
+    // dorixona o'zi qo'yadi
+    const usedPercent = own ?? (basis === "competitor" ? percent : 0);
+    const baseValue = basis === "competitor" ? (competitor as number) : cost;
+    // Tan narxli doriga foiz qo'yilmaguncha tavsiya berilmaydi: aks holda
+    // tavsiya tan narxning o'zi bo'lib, har bir dori "qimmat" bo'lib chiqadi
+    const hasTarget = basis === "competitor" || own !== null;
+    const suggested =
+      hasTarget && baseValue > 0 ? Math.round(baseValue * (1 + usedPercent / 100)) : null;
+    const diff = suggested === null ? null : our - suggested;
+    const perMonth = row.qty / months;
 
     return {
-      id: row.id,
+      // Narx sozlamasi PriceWatch da saqlanadi; hali yo'q bo'lsa null
+      id: row.watchId,
+      productId: row.id,
+      sku: row.sku,
       name: row.name,
       sourceUrl: row.sourceUrl,
-      sourceTitle: row.sourceTitle,
       competitor,
       checkedAt: row.checkedAt,
       our,
-      cost: product ? num(product.costPrice) : null,
-      stock: product?.stock ?? null,
-      productName: product?.name ?? null,
-      percent: rowPercent,
-      ownPercent: row.percent === null ? null : num(row.percent),
+      cost,
+      stock: row.stock,
+      basis,
+      percent: usedPercent,
+      ownPercent: own,
       suggested,
       diff,
       diffPercent: diff !== null && suggested ? (diff / suggested) * 100 : null,
-      active: row.active,
-      sold,
-      perMonth: perMonth === null ? null : +perMonth.toFixed(1),
-      group,
+      sold: row.qty,
+      perMonth: +perMonth.toFixed(1),
+      group: (row.qty >= topThreshold ? "top" : "slow") as PriceGroup,
     };
   });
 
-  const withPrice = items.filter((item) => item.competitor !== null && item.our !== null);
-  const overpriced = withPrice.filter((item) => (item.diff ?? 0) > 0);
-  const lastChecked = rows.reduce<Date | null>((latest, row) => {
-    if (!row.checkedAt) return latest;
-    return !latest || row.checkedAt > latest ? row.checkedAt : latest;
-  }, null);
+  const total = Math.round(num(totals[0]?.jami));
+  const topCount = Math.round(num(totals[0]?.topiviy));
+
+  let lastChecked: Date | null = null;
+  if (!needsMigration) {
+    const latest = await db.priceWatch
+      .findFirst({ where: { checkedAt: { not: null } }, orderBy: { checkedAt: "desc" }, select: { checkedAt: true } })
+      .catch(() => null);
+    lastChecked = latest?.checkedAt ?? null;
+  }
 
   return {
     needsMigration,
@@ -1389,15 +1485,18 @@ export async function getPriceWatchData() {
     enabled,
     settings: settings.map((s) => ({ unit: s.unit, enabled: s.enabled, percent: num(s.percent) })),
     items,
-    total: rows.length,
-    linked: items.filter((item) => item.our !== null).length,
-    priced: withPrice.length,
-    overpriced: overpriced.length,
-    lastChecked,
+    group,
+    search,
+    page,
+    pageSize: PRICE_PAGE_SIZE,
     salesDays: PRICE_SALES_DAYS,
     topPerMonth: TOP_SELLER_PER_MONTH,
-    slowCount: items.filter((item) => item.group === "slow").length,
-    topCount: items.filter((item) => item.group === "top").length,
-    unmatchedCount: items.filter((item) => item.group === "unmatched").length,
+    total,
+    topCount,
+    slowCount: total - topCount,
+    competitorCount: Math.round(num(totals[0]?.raqobatchi)),
+    overpriced: Math.round(num(totals[0]?.qimmat)),
+    overpricedOnPage: items.filter((item) => (item.diff ?? 0) > 0).length,
+    lastChecked,
   };
 }
