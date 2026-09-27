@@ -23,7 +23,7 @@ export async function logout() {
   await signOut({ redirectTo: "/login" });
 }
 
-/** Ilovada 15 daqiqa o'tganda — qayta kirish sababini login sahifasi ko'rsatadi */
+/** Harakatsizlik qulfi ishlaganda (AppLock) */
 export async function lockApp() {
-  await signOut({ redirectTo: "/login?reason=timeout" });
+  await signOut({ redirectTo: "/login" });
 }

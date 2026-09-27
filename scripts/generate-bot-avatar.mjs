@@ -61,10 +61,10 @@ function avatarSvg() {
 }
 
 /**
- * Bo'sh suhbat rasmi: belgi + nom + bir qatorli izoh.
+ * Bo'sh suhbat rasmi: belgi va nom.
  *
- * Buni birinchi bo'lib MIJOZ ko'radi (/start bosishdan oldin), shuning
- * uchun yozuv mijozga qaratilgan — xodimlar paneli haqida emas.
+ * Buni birinchi bo'lib MIJOZ ko'radi (/start bosishdan oldin). Ortiqcha
+ * yozuv qo'yilmaydi — nima qilish kerakligi tagidagi matnda aytiladi.
  */
 function coverSvg() {
   const w = 640;
@@ -73,10 +73,10 @@ function coverSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   ${background(w, h, "cover")}
   <g transform="translate(56 ${(h - 512 * markScale) / 2}) scale(${markScale})">${mark()}</g>
-  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#ffffff">
-    <text x="300" y="158" font-size="46" font-weight="700" letter-spacing="-0.5">Evomed</text>
-    <text x="300" y="212" font-size="46" font-weight="700" letter-spacing="-0.5">apteka</text>
-    <text x="300" y="256" font-size="20" fill="#b9c4f2">Bonus karta va chegirmalar</text>
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#ffffff"
+     font-size="52" font-weight="700" letter-spacing="-0.5">
+    <text x="300" y="170">Evomed</text>
+    <text x="300" y="230">apteka</text>
   </g>
 </svg>`;
 }

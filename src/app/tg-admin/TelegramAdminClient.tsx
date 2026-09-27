@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { markActivity, useIdleLock } from "@/lib/idle-lock";
 
 type MiniAppResponse = {
   ok: boolean;
@@ -500,6 +501,9 @@ function Bars({ data }: { data: { label: string; value: number }[] }) {
   );
 }
 
+const MINI_ACTIVITY_KEY = "dorixonaMiniLastActivity";
+const MINI_LOCKED_KEY = "dorixonaMiniLocked";
+
 export function TelegramAdminClient() {
   const [payload, setPayload] = useState<MiniAppResponse | null>(null);
   const [period, setPeriod] = useState<string>("");
@@ -511,6 +515,26 @@ export function TelegramAdminClient() {
   const [tab, setTab] = useState<TabKey>("overview");
   const [authHeader, setAuthHeader] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
+
+  // Harakatsizlik qulfi: 2 daqiqa tegilmasa, undan keyin 15 daqiqa o'tganda
+  // token o'chiriladi va email/parol so'raladi. Telegram admin ham qulf
+  // ochilguncha avtomatik kira olmaydi.
+  useIdleLock({
+    storageKey: MINI_ACTIVITY_KEY,
+    enabled: Boolean(authHeader),
+    onLock: () => {
+      try {
+        window.localStorage.removeItem("dorixonaMiniToken");
+        window.localStorage.setItem(MINI_LOCKED_KEY, "1");
+      } catch {
+        // xotira yopiq bo'lsa ham shu oynada login so'raladi
+      }
+      setAuthHeader("");
+      setPayload(null);
+      setError("");
+      setNeedsLogin(true);
+    },
+  });
 
   // Bot xabaridagi tugma kerakli bo'limni ochadi: /tg-admin?bolim=debts
   useEffect(() => {
@@ -531,8 +555,9 @@ export function TelegramAdminClient() {
         webApp?.expand();
         const initData = webApp?.initData ?? "";
         const savedToken = window.localStorage.getItem("dorixonaMiniToken");
+        const locked = window.localStorage.getItem(MINI_LOCKED_KEY) === "1";
 
-        if (initData) {
+        if (initData && !locked) {
           try {
             const header = `tma ${initData}`;
             const body = await fetchDashboard(header);
@@ -607,6 +632,8 @@ export function TelegramAdminClient() {
       const body = (await res.json()) as LoginResponse;
       if (!res.ok || !body.ok || !body.token) throw new Error(body.error || "Login xato");
       window.localStorage.setItem("dorixonaMiniToken", body.token);
+      window.localStorage.removeItem(MINI_LOCKED_KEY);
+      markActivity(MINI_ACTIVITY_KEY);
       const header = `mini ${body.token}`;
       setAuthHeader(header);
       setPayload(await fetchDashboard(header));
