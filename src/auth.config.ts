@@ -16,6 +16,7 @@ export const authConfig = {
       session.user.editPermissions = Array.isArray(token.editPermissions)
         ? token.editPermissions.filter((permission): permission is string => typeof permission === "string")
         : [];
+      if (typeof token.loginAt === "number") session.user.loginAt = token.loginAt;
       return session;
     },
     authorized({ auth, request: { nextUrl } }) {

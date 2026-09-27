@@ -49,6 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.branchId = user.branchId;
         token.permissions = user.permissions;
         token.editPermissions = user.editPermissions;
+        token.loginAt = Date.now();
       }
       return token;
     },
@@ -61,6 +62,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.editPermissions = Array.isArray(token.editPermissions)
         ? token.editPermissions.filter((permission): permission is string => typeof permission === "string")
         : [];
+      if (typeof token.loginAt === "number") session.user.loginAt = token.loginAt;
       return session;
     },
   },

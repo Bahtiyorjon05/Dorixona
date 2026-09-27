@@ -14,6 +14,8 @@ declare module "next-auth" {
       branchId?: string | null;
       permissions?: string[];
       editPermissions?: string[];
+      /** Parol kiritilgan vaqt (ms) — ilovada 15 daqiqalik qulf shundan hisoblanadi */
+      loginAt?: number;
     } & DefaultSession["user"];
   }
 }
@@ -24,5 +26,6 @@ declare module "next-auth/jwt" {
     branchId?: string | null;
     permissions?: string[];
     editPermissions?: string[];
+    loginAt?: number;
   }
 }

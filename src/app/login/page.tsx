@@ -4,10 +4,12 @@ import { Logo } from "@/components/Logo";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{ error?: string; reason?: string }>;
 }) {
   const params = await searchParams;
   const errorMessage = params?.error ? "Email yoki parol noto'g'ri" : "";
+  const timeoutMessage =
+    !errorMessage && params?.reason === "timeout" ? "Xavfsizlik uchun 15 daqiqada qayta kirish kerak" : "";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface px-4">
@@ -48,6 +50,10 @@ export default async function LoginPage({
               placeholder="••••••••"
             />
           </div>
+
+          {timeoutMessage && (
+            <p className="rounded-lg bg-primary-light px-3 py-2 text-sm text-primary">{timeoutMessage}</p>
+          )}
 
           {errorMessage && (
             <p className="rounded-lg bg-danger-light px-3 py-2 text-sm text-danger">
