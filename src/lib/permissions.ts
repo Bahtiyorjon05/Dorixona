@@ -3,6 +3,7 @@ export const PERMISSION_DEFS = [
   { key: "harajatlar", label: "Harajatlar", path: "/harajatlar" },
   { key: "qarzlar", label: "Qarzlar", path: "/qarzlar" },
   { key: "ombor", label: "Ombor", path: "/ombor" },
+  { key: "narxlar", label: "Narx nazorati", path: "/narxlar" },
   { key: "savdo", label: "Savdo", path: "/savdo" },
   { key: "pos", label: "Kassa (POS)", path: "/pos" },
   { key: "mijozlar", label: "Mijozlar", path: "/mijozlar" },

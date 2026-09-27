@@ -1265,3 +1265,92 @@ export async function getDashboardData() {
     lastSync: lastSync ? { at: lastSync.createdAt, source: lastSync.source, note: lastSync.note } : null,
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  NARX NAZORATI
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Kuzatilayotgan dorilar: raqobatchi narxi, bizning narx va tavsiya.
+ *
+ * Tavsiya narx = raqobatchidagi eng arzon + ustama (har dorixona uchun
+ * alohida sozlanadi). Narx F-Apteka'da qo'lda o'zgartiriladi — bizda
+ * yozish imkoni yo'q, shuning uchun ERP faqat ko'rsatadi.
+ */
+export async function getPriceWatchData() {
+  const branchId = await getBranchId();
+  const filial = await currentFilial();
+
+  let rows: Awaited<ReturnType<typeof db.priceWatch.findMany>> = [];
+  let settings: Awaited<ReturnType<typeof db.priceSetting.findMany>> = [];
+  let needsMigration = false;
+  try {
+    [rows, settings] = await Promise.all([
+      db.priceWatch.findMany({ orderBy: { name: "asc" } }),
+      db.priceSetting.findMany({ orderBy: { unit: "asc" } }),
+    ]);
+  } catch {
+    needsMigration = true;
+  }
+
+  // Bizning narxlar: faqat kerakli tovarlar
+  const skus = rows.map((row) => row.sku).filter((sku): sku is string => Boolean(sku));
+  const products = skus.length
+    ? await db.product.findMany({
+        where: { branchId, sku: { in: skus } },
+        select: { sku: true, name: true, salePrice: true, costPrice: true, stock: true },
+      })
+    : [];
+  const bySku = new Map(products.map((product) => [product.sku, product]));
+
+  const active = filial === "Umumiy" ? settings[0] : settings.find((s) => s.unit === filial);
+  const percent = active ? num(active.percent) : 5;
+  const enabled = active ? active.enabled : true;
+
+  const items = rows.map((row) => {
+    const product = row.sku ? bySku.get(row.sku) : undefined;
+    const competitor = row.competitorPrice === null ? null : num(row.competitorPrice);
+    const our = product ? num(product.salePrice) : null;
+    const suggested = competitor === null ? null : Math.round(competitor * (1 + percent / 100));
+    // Bizning narx tavsiyadan qanchaga farq qiladi
+    const diff = our !== null && suggested !== null ? our - suggested : null;
+
+    return {
+      id: row.id,
+      name: row.name,
+      sourceUrl: row.sourceUrl,
+      sourceTitle: row.sourceTitle,
+      competitor,
+      checkedAt: row.checkedAt,
+      our,
+      cost: product ? num(product.costPrice) : null,
+      stock: product?.stock ?? null,
+      productName: product?.name ?? null,
+      suggested,
+      diff,
+      diffPercent: diff !== null && suggested ? (diff / suggested) * 100 : null,
+      active: row.active,
+    };
+  });
+
+  const withPrice = items.filter((item) => item.competitor !== null && item.our !== null);
+  const overpriced = withPrice.filter((item) => (item.diff ?? 0) > 0);
+  const lastChecked = rows.reduce<Date | null>((latest, row) => {
+    if (!row.checkedAt) return latest;
+    return !latest || row.checkedAt > latest ? row.checkedAt : latest;
+  }, null);
+
+  return {
+    needsMigration,
+    filial,
+    percent,
+    enabled,
+    settings: settings.map((s) => ({ unit: s.unit, enabled: s.enabled, percent: num(s.percent) })),
+    items,
+    total: rows.length,
+    linked: items.filter((item) => item.our !== null).length,
+    priced: withPrice.length,
+    overpriced: overpriced.length,
+    lastChecked,
+  };
+}

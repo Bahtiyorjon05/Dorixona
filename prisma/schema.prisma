@@ -494,3 +494,35 @@ model DailySales {
   @@unique([day, unit, docType])
   @@index([day])
 }
+
+/// Narx nazoratidagi dori: raqobatchidagi eng arzon narx kuzatiladi
+model PriceWatch {
+  id              String    @id @default(cuid())
+  /// Ro'yxatdagi nom (ПАРАЦЕТАМОЛ) — shu nom bo'yicha bizning tovar topiladi
+  name            String    @unique
+  /// arzonapteka.uz dagi mahsulot sahifasi
+  sourceUrl       String?
+  sourceTitle     String?
+  /// Toshkentdagi eng arzon narx
+  competitorPrice Decimal?  @db.Decimal(16, 2)
+  checkedAt       DateTime?
+  /// Bizning tovar (Product.sku), topilgan bo'lsa
+  sku             String?
+  active          Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([checkedAt])
+  @@index([active])
+}
+
+/// Har bir dorixona uchun ustama sozlamasi
+model PriceSetting {
+  /// Dorixona nomi: Yunusobod, Shayxontohur
+  unit      String   @id
+  enabled   Boolean  @default(true)
+  /// Ustama foizi (5 = 5%)
+  percent   Decimal  @default(5) @db.Decimal(5, 2)
+  updatedAt DateTime @default(now()) @updatedAt
+}

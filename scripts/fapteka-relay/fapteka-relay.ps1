@@ -31,6 +31,9 @@ param(
 # o'zgarib qoladi - localhost esa hech qachon o'zgarmaydi.
 $ApiUrl  = "http://localhost:8081/P_GetReport_XML"
 $ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
+# Narx nazorati: har ishga tushganda bir necha dorining narxi yangilanadi.
+# Ro'yxat uch soatda to'liq aylanadi.
+$PriceUrl = "https://dorixonaa.vercel.app/api/prices/refresh"
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
 $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur
 # Kirim va yetkazib beruvchiga qaytarish omborga (filial 1) yoziladi,
@@ -116,7 +119,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v11 boshlandi (30-hisobot: tolov turlari - naqd, terminal)"
+Write-Log "relay v12 boshlandi (narx nazorati ham yangilanadi)"
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
   $day = (Get-Date).Date.AddDays(-$i)
@@ -160,5 +163,18 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
         Write-Log ("XATO  {0}  {1}" -f $label, (Get-ErrorText $_))
       }
     }
+  }
+}
+
+# ---- Narx nazorati --------------------------------------------------------
+# Raqobatchi narxlari ERP tomonda yangilanadi; bu yerda faqat turtki beramiz.
+if (-not $Only) {
+  try {
+    $prices = New-Object System.Net.WebClient
+    $prices.Headers.Add("Authorization", "Bearer $Token")
+    $answer = [System.Text.Encoding]::UTF8.GetString($prices.UploadData($PriceUrl, "POST", [byte[]]@()))
+    Write-Log ("OK    narx nazorati  {0}" -f $answer)
+  } catch {
+    Write-Log ("XATO  narx nazorati  {0}" -f (Get-ErrorText $_))
   }
 }
