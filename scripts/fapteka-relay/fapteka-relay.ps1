@@ -122,7 +122,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v14 boshlandi (xatoda qaysi tomon ishlamagani yoziladi)"
+Write-Log "relay v15 boshlandi (bo'sh javob ishonchli aniqlanadi)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -175,7 +175,15 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
 
       # Bo'sh javobni (o'sha kuni hujjat yo'q) serverga yubormaymiz -
       # 120 kunlik tortishda shu keraksiz so'rovlar butun vaqtni yeb qo'yadi.
-      if ($xml.Length -lt 40) {
+      #
+      # Hujjat bo'lmasa F-Apteka XML emas, shunchaki shuni qaytaradi:
+      #   <HTML><BODY><B>200 OK</B></BODY></HTML>
+      # Bu 39 bayt - eski 40 baytlik o'lchov bilan chegarada turardi.
+      # Bitta ortiqcha satr belgisi qo'shilsa, shu "javob" ERP ga hisobot
+      # sifatida ketardi. Shuning uchun matnning o'ziga qaraymiz.
+      $short = ""
+      if ($xml.Length -lt 200) { $short = [System.Text.Encoding]::UTF8.GetString($xml) }
+      if ($xml.Length -lt 40 -or $short -match "200\s*OK") {
         Write-Log ("BOSH  {0}" -f $label)
         continue
       }

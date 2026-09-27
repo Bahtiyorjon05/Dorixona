@@ -42,6 +42,14 @@ to'xtaydi. Xato chiqsa, qaysi tomondan kelgani ko'rsatiladi:
 | `XATO ... ERP: ...` | ERP sayti (Vercel) qabul qilmadi |
 | `BOSH ...` | o'sha kuni hujjat bo'lmagan — normal holat |
 
+Hujjat bo'lmaganda F-Apteka XML emas, `<HTML><BODY><B>200 OK</B></BODY></HTML>`
+qaytaradi (39 bayt). Skript shuni matnidan tanib, ERP ga yubormaydi.
+
+**Kirim qaysi filialdan so'raladi.** Kirim hujjatlari faqat omborda (filial 1)
+bo'ladi — filial 2 va 3 uchun 1-hisobot bo'sh qaytaradi (tekshirildi
+27.09.2026). Shuning uchun tovar haridi harajati "Umumiy" bo'lib yoziladi:
+tovar kelganda u hali dorixonalarga bo'linmagan bo'ladi.
+
 `F-APTEKA: Невозможно соединиться с удаленным сервером` chiqsa, hisobot
 xizmati o'chiq. `netstat -ano | findstr :8081` da `LISTENING` bo'lishi kerak.
 
