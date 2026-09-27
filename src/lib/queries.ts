@@ -542,6 +542,8 @@ export async function getEmployeesData() {
     id: e.id,
     fullName: e.fullName,
     position: e.position,
+    // Telegram bot xodimni shu raqamdan taniydi
+    phone: e.phone,
     branch: e.branch.name,
     unit: e.unit,
     baseSalary: num(e.baseSalary),

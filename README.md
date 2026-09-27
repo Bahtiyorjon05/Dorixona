@@ -198,6 +198,20 @@ qirqadi — belgi kichraytirilib markazga suriladi, yurakning uchi kesilmaydi.
 Deploy bo'lgach, ikkalasi ham to'g'ridan-to'g'ri ochiladi:
 `/icons/bot-avatar.png` va `/icons/bot-cover.png`.
 
+### Xodimni telefon raqamidan tanish
+Bot `/start` da telefon raqamini so'raydi. Raqam ERP dagi **xodim** raqamiga
+mos kelsa, u mijoz sifatida ro'yxatdan o'tkazilmaydi: Telegram'i xodimning
+login akkauntiga bog'lanadi va panel ochiladi. Keyingi safar `/start` bosishning
+o'zi kifoya.
+
+Solishtirish faqat raqamlar bo'yicha va oxirgi 9 ta bilan ketadi, shuning uchun
+`+998 90 123 45 67`, `998901234567` va `(90) 123-45-67` bir xil hisoblanadi.
+Ishdan bo'shagan xodimlar (`INACTIVE`) hisobga olinmaydi.
+
+Raqam Xodimlar bo'limida kiritiladi — ro'yxatda ism ostida ko'rinadi, yo'q
+bo'lsa "telefon yo'q" deb turadi. Xodimning ERP logini bo'lmasa, bot buni
+aytadi va admin Sozlamalardan akkaunt ochishi kerak bo'ladi.
+
 ### Qarz eslatmasi
 Muddati yaqin qarzlar Telegram'ga o'zi keladi:
 

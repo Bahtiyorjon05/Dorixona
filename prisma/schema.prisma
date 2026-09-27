@@ -416,6 +416,7 @@ model IntegrationLog {
   createdAt DateTime @default(now())
 
   @@index([source, createdAt])
+  @@index([createdAt]) // bosh sahifa: oxirgi yozuv (source'siz)
 }
 
 model Debt {

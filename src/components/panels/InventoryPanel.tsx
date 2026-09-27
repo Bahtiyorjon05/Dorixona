@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatNumber } from "@/lib/format";
 import { Badge } from "@/components/ui";
@@ -21,10 +21,16 @@ type Product = {
   status: { label: string; color: "green" | "amber" | "red" };
 };
 
+/** Ming-minglab dori bir yo'la chizilsa sahifa va qidiruv qotadi */
+const PAGE_SIZE = 100;
+
 export function InventoryPanel({ products }: { products: Product[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  // Yozish darhol ko'rinadi, jadval esa bir zumdan keyin yangilanadi
+  const deferredQuery = useDeferredValue(query);
   const [source, setSource] = useState<"all" | "fapteka" | "erp">("all");
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [addOpen, setAddOpen] = useState(false);
   const [receive, setReceive] = useState<Product | null>(null);
   const [edit, setEdit] = useState<Product | null>(null);
@@ -32,7 +38,7 @@ export function InventoryPanel({ products }: { products: Product[] }) {
   const [pending, start] = useTransition();
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return products.filter((p) => {
       if (source === "fapteka" && !p.fromFapteka) return false;
       if (source === "erp" && p.fromFapteka) return false;
@@ -43,7 +49,8 @@ export function InventoryPanel({ products }: { products: Product[] }) {
         (p.sku ?? "").toLowerCase().includes(q)
       );
     });
-  }, [products, query, source]);
+  }, [products, deferredQuery, source]);
+  const visible = filtered.slice(0, limit);
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, onOk: () => void) {
     setError("");
@@ -70,7 +77,10 @@ export function InventoryPanel({ products }: { products: Product[] }) {
               <button
                 key={item.value}
                 type="button"
-                onClick={() => setSource(item.value as "all" | "fapteka" | "erp")}
+                onClick={() => {
+                  setSource(item.value as "all" | "fapteka" | "erp");
+                  setLimit(PAGE_SIZE);
+                }}
                 className={`rounded-md px-2.5 py-1 transition ${
                   source === item.value ? "bg-primary text-white" : "text-muted hover:text-fg"
                 }`}
@@ -81,7 +91,10 @@ export function InventoryPanel({ products }: { products: Product[] }) {
           </div>
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setLimit(PAGE_SIZE);
+            }}
             placeholder="Dori nomi yoki kodi..."
             className="!w-56 !py-1.5 text-xs"
           />
@@ -104,7 +117,7 @@ export function InventoryPanel({ products }: { products: Product[] }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p) => (
+            {visible.map((p) => (
               <tr key={p.id} className="border-b border-edge last:border-0 hover:bg-surface">
                 <td className="py-2.5 pr-3">
                   <div className="font-medium">{p.name}</div>
@@ -150,6 +163,21 @@ export function InventoryPanel({ products }: { products: Product[] }) {
           </tbody>
         </table>
       </div>
+
+      {filtered.length > visible.length && (
+        <div className="mt-3 flex items-center justify-center gap-3 text-xs text-muted">
+          <span>
+            {visible.length} / {filtered.length} ta ko&apos;rsatildi
+          </span>
+          <button
+            type="button"
+            onClick={() => setLimit((n) => n + PAGE_SIZE)}
+            className="rounded-lg border border-edge px-3 py-1.5 hover:bg-surface"
+          >
+            Yana {Math.min(PAGE_SIZE, filtered.length - visible.length)} ta
+          </button>
+        </div>
+      )}
 
       {/* Yangi dori */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Yangi dori qo'shish">

@@ -9,6 +9,7 @@ import {
 } from "@/lib/loyalty";
 import { getTelegramWebAppUrl } from "@/lib/telegram-auth";
 import { readUserAccess } from "@/lib/permission-db";
+import { PHONE_KEY_LENGTH, phoneKey } from "@/lib/phone";
 import type { AppPermission } from "@/lib/permissions";
 import {
   debtMessage,
@@ -52,6 +53,78 @@ async function linkedStaff(id?: number) {
 
 async function isLinkedStaff(id?: number) {
   return Boolean(await linkedStaff(id));
+}
+
+/**
+ * Telefon raqami bo'yicha xodimni topadi.
+ *
+ * Raqam har xil yozilgan bo'lishi mumkin (+998, bo'shliq, qavs), shuning
+ * uchun solishtirish faqat raqamlar bo'yicha va oxirgi 9 ta bilan ketadi.
+ * Ishdan bo'shaganlar hisobga olinmaydi.
+ */
+async function employeeByPhone(phone: string) {
+  const key = phoneKey(phone);
+  if (!key) return null;
+  try {
+    const rows = await db.$queryRaw<
+      { id: string; fullName: string; position: string; userId: string | null }[]
+    >`
+      SELECT e.id, e."fullName", e.position, e."userId"
+      FROM "Employee" e
+      WHERE e.phone IS NOT NULL
+        AND e.status <> 'INACTIVE'
+        AND RIGHT(regexp_replace(e.phone, '[^0-9]', '', 'g'), ${PHONE_KEY_LENGTH}) = ${key}
+      LIMIT 1`;
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Telegram'ni xodimning login akkauntiga bog'laydi.
+ *
+ * telegramId noyob maydon: o'sha ID boshqa akkauntda qolgan bo'lsa avval
+ * bo'shatiladi, aks holda yozish xato beradi.
+ */
+async function linkTelegramToUser(userId: string, telegramId: number) {
+  const id = BigInt(telegramId);
+  await db.user.updateMany({ where: { telegramId: id, NOT: { id: userId } }, data: { telegramId: null } });
+  await db.user.update({ where: { id: userId }, data: { telegramId: id } });
+}
+
+/**
+ * Raqam xodimniki bo'lsa — panelni ochadi va mijoz sifatida
+ * ro'yxatdan o'tkazmaydi. Xodim emas bo'lsa false qaytaradi.
+ */
+async function handleStaffPhone(ctx: Context, phone: string) {
+  const employee = await employeeByPhone(phone);
+  if (!employee || !ctx.from) return false;
+
+  if (!employee.userId) {
+    await ctx.reply(
+      `Salom, ${employee.fullName}! Siz dorixona xodimi sifatida tanildingiz.\n\n` +
+        "Lekin sizga hali ERP login ochilmagan. Admin Sozlamalar bo'limidan " +
+        "akkaunt yaratib bersin, shundan keyin panel ochiladi.",
+      { reply_markup: { remove_keyboard: true } },
+    );
+    return true;
+  }
+
+  try {
+    await linkTelegramToUser(employee.userId, ctx.from.id);
+  } catch (error) {
+    console.error("Telegram xodimga bog'lanmadi:", error);
+  }
+
+  await ctx.reply(
+    `Salom, ${employee.fullName}! Telegram akkauntingiz bog'landi ✅\n\n` +
+      `Lavozim: ${employee.position}\n` +
+      "Endi /start bosishning o'zi kifoya.",
+    { reply_markup: { remove_keyboard: true } },
+  );
+  await sendAdminPanel(ctx);
+  return true;
 }
 
 /** Panel ko'ra oladiganmi: admin yoki bog'langan xodim */
@@ -267,6 +340,10 @@ function registerBotHandlers(bot: Bot) {
     });
 
     if (existing) {
+      // Xodim avval mijoz bo'lib yozilgan bo'lishi mumkin — raqamiga qarab
+      // xodimligi aniqlansa, panel ochiladi
+      if (await handleStaffPhone(ctx, existing.phone)) return;
+
       await ctx.reply(
         `Xush kelibsiz, ${existing.fullName ?? "mijoz"}! 🌿\n\n` +
           `Sizning bonus kartangiz: ${existing.cardCode}\n` +
@@ -281,9 +358,11 @@ function registerBotHandlers(bot: Bot) {
       .oneTime();
 
     await ctx.reply(
-      "Assalomu alaykum! Dorixona sodiqlik dasturiga xush kelibsiz 💊\n\n" +
+      "Assalomu alaykum! Evomed apteka sodiqlik dasturiga xush kelibsiz 💊\n\n" +
         "Ro'yxatdan o'tish uchun telefon raqamingizni ulashing. " +
-        `Sovg'a sifatida ${SIGNUP_BONUS_POINTS} ball va birinchi xaridingizga chegirma olasiz! 🎁`,
+        `Sovg'a sifatida ${SIGNUP_BONUS_POINTS} ball va birinchi xaridingizga chegirma olasiz! 🎁\n\n` +
+        "Dorixona xodimi bo'lsangiz ham shu tugmani bosing — raqamingizdan " +
+        "tanib, panelni ochamiz.",
       { reply_markup: keyboard },
     );
   });
@@ -300,6 +379,9 @@ function registerBotHandlers(bot: Bot) {
     const phone = contact.phone_number.startsWith("+")
       ? contact.phone_number
       : `+${contact.phone_number}`;
+
+    // Raqam ERP dagi xodimniki bo'lsa — mijoz emas, xodim sifatida kiradi
+    if (await handleStaffPhone(ctx, phone)) return;
 
     const already = await db.customer.findFirst({
       where: { OR: [{ phone }, { telegramId: BigInt(from.id) }] },

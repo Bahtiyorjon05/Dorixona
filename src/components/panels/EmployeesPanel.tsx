@@ -11,6 +11,7 @@ type Employee = {
   id: string;
   fullName: string;
   position: string;
+  phone?: string | null;
   branch: string;
   unit?: string | null;
   baseSalary: number;
@@ -107,7 +108,12 @@ export function EmployeesPanel({ employees }: { employees: Employee[] }) {
                       >
                         {initials}
                       </div>
-                      <span className="font-medium">{e.fullName}</span>
+                      <div className="min-w-0">
+                        <div className="font-medium">{e.fullName}</div>
+                        <div className="text-xs text-muted">
+                          {e.phone ?? "telefon yo'q"}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="py-2.5 pr-3 text-muted">{e.position}</td>
@@ -207,6 +213,7 @@ export function EmployeesPanel({ employees }: { employees: Employee[] }) {
                     id: edit.id,
                     fullName: String(fd.get("fullName")),
                     position: String(fd.get("position")),
+                    phone: String(fd.get("phone") ?? ""),
                     baseSalary: Number(fd.get("baseSalary")),
                     status: fd.get("status") as never,
                     unit: String(fd.get("unit") ?? "Umumiy"),
@@ -219,6 +226,13 @@ export function EmployeesPanel({ employees }: { employees: Employee[] }) {
             <Field label="To'liq ism">
               <Input name="fullName" required defaultValue={edit.fullName} />
             </Field>
+            <Field label="Telefon">
+              <Input name="phone" defaultValue={edit.phone ?? ""} placeholder="+998..." />
+            </Field>
+            <p className="-mt-2 text-xs text-muted">
+              Telegram bot xodimni shu raqamdan taniydi: raqam mos kelsa mijoz emas,
+              xodim sifatida kiradi va panel ochiladi.
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Lavozim">
                 <Input name="position" required defaultValue={edit.position} />

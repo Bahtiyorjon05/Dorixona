@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { formatPhone } from "@/lib/phone";
 import { activeBranch, fail, requireUser, type ActionResult } from "./_shared";
 
 /** Bo'sh yoki "Umumiy" bo'lsa null saqlaymiz. */
@@ -36,7 +37,7 @@ export async function createEmployee(input: z.input<typeof createSchema>): Promi
       data: {
         fullName: d.fullName.trim(),
         position: d.position.trim(),
-        phone: d.phone || null,
+        phone: formatPhone(d.phone),
         baseSalary: d.baseSalary,
         unit: normalizeUnit(d.unit),
         branchId: branch.id,
@@ -53,6 +54,8 @@ const updateSchema = z.object({
   id: z.string(),
   fullName: z.string().min(3),
   position: z.string().min(2),
+  // Telegram bot xodimni shu raqamdan taniydi
+  phone: z.string().optional(),
   baseSalary: z.number().nonnegative(),
   status: z.enum(["ACTIVE", "ON_LEAVE", "INACTIVE"]),
   unit: z.string().optional(),
@@ -67,6 +70,8 @@ export async function updateEmployee(input: z.input<typeof updateSchema>): Promi
       data: {
         fullName: d.fullName.trim(),
         position: d.position.trim(),
+        // Bir xil ko'rinishda saqlaymiz: +998901234567
+        phone: formatPhone(d.phone),
         baseSalary: d.baseSalary,
         status: d.status,
         unit: normalizeUnit(d.unit),

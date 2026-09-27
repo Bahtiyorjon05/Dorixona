@@ -23,8 +23,10 @@ export function createPrismaPgAdapter() {
   const relaxTls = connectionString ? shouldRelaxTls(connectionString) : false;
   const config: PoolConfig = {
     connectionString: connectionString && relaxTls ? withoutSslMode(connectionString) : connectionString,
-    // Serverless: har bir Vercel instance uchun bitta ulanish (Supabase pooler limitini saqlash uchun).
-    max: Number(process.env.POSTGRES_POOL_MAX ?? 1),
+    // Bitta ulanishda sahifaning Promise.all so'rovlari ham navbatga tizilib
+    // qolardi (bosh sahifada 7 ta so'rov ketma-ket). 4 ta — so'rovlar parallel
+    // ketadi, pooler limiti esa baribir oshib ketmaydi.
+    max: Number(process.env.POSTGRES_POOL_MAX ?? 4),
     idleTimeoutMillis: 10_000,
   };
   if (relaxTls) {
