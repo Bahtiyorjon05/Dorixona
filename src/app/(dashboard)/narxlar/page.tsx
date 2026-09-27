@@ -46,7 +46,7 @@ export default async function NarxlarPage({
         />
         <MetricCard
           icon="⚠️"
-          label="Tavsiyadan qimmat"
+          label="Bizda qimmat"
           value={formatNumber(d.overpriced)}
           valueColor={d.overpriced > 0 ? "var(--c-danger)" : undefined}
         />
