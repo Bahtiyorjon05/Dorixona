@@ -40,14 +40,10 @@ type Setting = { unit: string; enabled: boolean; percent: number };
 type Group = "slow" | "top" | "all";
 
 /** Savdo bo'yicha ikki jadval — dorixona ikkisini alohida ko'radi */
-const GROUPS: { key: Group; label: string; hint: string }[] = [
-  {
-    key: "slow",
-    label: "Kam sotilayotgan",
-    hint: "Turib qolgan tovar — narxni tushirish shu yerdan boshlanadi",
-  },
-  { key: "top", label: "Topiviy dorilar", hint: "Ko'p sotilayotganlar" },
-  { key: "all", label: "Hammasi", hint: "" },
+const GROUPS: { key: Group; label: string }[] = [
+  { key: "slow", label: "Kam sotilayotgan" },
+  { key: "top", label: "Topiviy dorilar" },
+  { key: "all", label: "Hammasi" },
 ];
 
 function money(value: number | null) {
@@ -118,9 +114,7 @@ function SettingRow({ setting }: { setting: Setting }) {
     <div className="flex items-center justify-between gap-3 rounded-lg border border-edge bg-surface px-3 py-2.5">
       <div className="min-w-0">
         <div className="text-sm font-medium">{setting.unit}</div>
-        <div className="text-xs text-muted">
-          {enabled ? "Arzonaptekadagi dorilarga qo'llanadi" : "O'chirilgan"}
-        </div>
+        {!enabled && <div className="text-xs text-muted">O&apos;chirilgan</div>}
       </div>
 
       <div className="flex items-center gap-2">
@@ -176,8 +170,6 @@ export function PricePanel({
   total,
   topCount,
   slowCount,
-  salesDays,
-  topPerMonth,
 }: {
   items: Item[];
   settings: Setting[];
@@ -188,8 +180,6 @@ export function PricePanel({
   total: number;
   topCount: number;
   slowCount: number;
-  salesDays: number;
-  topPerMonth: number;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -231,7 +221,6 @@ export function PricePanel({
     });
   }
 
-  const activeGroup = GROUPS.find((option) => option.key === group);
   const counts: Record<Group, number> = { slow: slowCount, top: topCount, all: total };
   const shownTotal = counts[group];
   const lastPage = Math.max(1, Math.ceil(shownTotal / pageSize));
@@ -265,12 +254,6 @@ export function PricePanel({
         </div>
       </div>
 
-      {activeGroup?.hint && (
-        <p className="-mt-2 text-xs text-muted">
-          {activeGroup.hint} · oxirgi {salesDays} kun savdosi bo&apos;yicha; oyiga {topPerMonth}{" "}
-          donadan ko&apos;p sotilsa topiviy.
-        </p>
-      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <form
@@ -367,10 +350,12 @@ export function PricePanel({
                           className="text-primary hover:underline"
                           title="Arzonaptekadagi eng arzon narx"
                         >
-                          Arzonapteka {money(item.competitor)}
+                          {money(item.competitor)}
                         </a>
                       ) : (
-                        <span className="text-muted">Arzonapteka {money(item.competitor)}</span>
+                        <span className="text-muted" title="Arzonaptekadagi eng arzon narx">
+                          {money(item.competitor)}
+                        </span>
                       )
                     ) : (
                       <button

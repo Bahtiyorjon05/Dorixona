@@ -102,11 +102,17 @@ async function handleStaffPhone(ctx: Context, phone: string) {
   if (!employee || !ctx.from) return false;
 
   if (!employee.userId) {
+    const url = getTelegramWebAppUrl();
     await ctx.reply(
-      `Salom, ${employee.fullName}! Siz dorixona xodimi sifatida tanildingiz.\n\n` +
-        "Lekin sizga hali ERP login ochilmagan. Admin Sozlamalar bo'limidan " +
-        "akkaunt yaratib bersin, shundan keyin panel ochiladi.",
-      { reply_markup: { remove_keyboard: true } },
+      `Salom, ${employee.fullName}! Siz Evomed apteka xodimi sifatida tanildingiz ✅\n\n` +
+        `Lavozim: ${employee.position}\n\n` +
+        "Ishni boshlash uchun Evomed apteka boshqaruv panelidan ro'yxatdan o'ting. " +
+        "Shundan keyin Telegram'ingiz bog'lanadi va keyingi safar /start bosishning o'zi kifoya.",
+      {
+        reply_markup: url
+          ? new InlineKeyboard().webApp("Boshqaruv panelini ochish", url)
+          : { remove_keyboard: true },
+      },
     );
     return true;
   }

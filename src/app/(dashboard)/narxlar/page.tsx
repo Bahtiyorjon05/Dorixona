@@ -23,10 +23,7 @@ export default async function NarxlarPage({
 
   return (
     <div>
-      <PageHeader
-        title="Narx nazorati"
-        subtitle="Ombordagi hamma dori — savdosiga qarab ikkiga bo'lingan"
-      />
+      <PageHeader title="Narx nazorati" />
 
       {d.needsMigration && (
         <div className="mb-5 rounded-lg border border-danger bg-danger-light p-3 text-sm">
@@ -41,20 +38,17 @@ export default async function NarxlarPage({
           icon="🐌"
           label="Kam sotilayotgan"
           value={formatNumber(d.slowCount)}
-          sub="Turib qolgan tovar"
         />
         <MetricCard
           icon="🔥"
           label="Topiviy dorilar"
           value={formatNumber(d.topCount)}
-          sub={`Oyiga ${d.topPerMonth} donadan ko'p`}
         />
         <MetricCard
           icon="⚠️"
-          label="Biznikidan qimmat"
+          label="Tavsiyadan qimmat"
           value={formatNumber(d.overpriced)}
           valueColor={d.overpriced > 0 ? "var(--c-danger)" : undefined}
-          sub="Tavsiyadan yuqori narx"
         />
         <MetricCard
           icon="🕐"
@@ -75,8 +69,6 @@ export default async function NarxlarPage({
           total={d.total}
           topCount={d.topCount}
           slowCount={d.slowCount}
-          salesDays={d.salesDays}
-          topPerMonth={d.topPerMonth}
         />
       </Card>
 
