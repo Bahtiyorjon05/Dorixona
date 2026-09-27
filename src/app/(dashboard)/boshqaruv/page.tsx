@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge, Card, MetricCard, PageHeader, TrendDown, TrendUp } from "@/components/ui";
 import { formatDate, formatNumber, formatTime } from "@/lib/format";
 import { InstallApp } from "@/components/InstallApp";
-import { getDashboardData, getDebtsData, getPriceWatchData } from "@/lib/queries";
+import { getDashboardData, getDebtsData } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +21,7 @@ function money(amount: number, currency: "UZS" | "USD") {
 }
 
 export default async function BoshqaruvPage() {
-  const [d, debts, prices] = await Promise.all([
-    getDashboardData(),
-    getDebtsData(),
-    // Narxni tushirish kerak bo'lganlar soni uchun — birinchi sahifa yetarli
-    getPriceWatchData({ group: "slow", page: 1 }).catch(() => null),
-  ]);
+  const [d, debts] = await Promise.all([getDashboardData(), getDebtsData()]);
   const margin = d.monthTurnover > 0 ? (d.monthProfit / d.monthTurnover) * 100 : 0;
   const netProfit = d.monthProfit - d.monthExpense;
 
@@ -59,16 +54,6 @@ export default async function BoshqaruvPage() {
               {debts.dueSoon.map((debt) => debt.counterparty).join(", ")}
             </div>
           )}
-        </Link>
-      )}
-
-      {prices && prices.overpriced > 0 && (
-        <Link
-          href="/narxlar?guruh=slow"
-          className="mb-5 block rounded-lg border border-edge bg-accent-light p-3 text-sm"
-        >
-          💹 <b>{formatNumber(prices.overpriced)} ta dori tavsiyadan qimmat turibdi</b> — narxni
-          tushirish kerak
         </Link>
       )}
 
