@@ -121,24 +121,62 @@ async function replyLong(ctx: Context, text: string, keyboard?: InlineKeyboard) 
   }
 }
 
+/** Klaviatura yorliqlari — matn kelganda shular bo'yicha tanib olinadi */
+const MENU = {
+  qarzlar: "🧮 Qarzlar",
+  savdo: "🛒 Savdo",
+  ombor: "📦 Ombor",
+  narxlar: "💹 Narxlar",
+  hisobot: "📊 Jamlanma",
+  panel: "📱 To'liq panel",
+} as const;
+
+/** Yuborilgan matn menyu tugmasimi — emoji va katta-kichik harf farq qilmaydi */
+function sectionFromText(text: string) {
+  const clean = text
+    .replace(/[^\p{L}\p{N}\s']/gu, "")
+    .trim()
+    .toLowerCase();
+  if (!clean) return null;
+  for (const [key, label] of Object.entries(MENU)) {
+    const plain = label
+      .replace(/[^\p{L}\p{N}\s']/gu, "")
+      .trim()
+      .toLowerCase();
+    if (clean === plain) return key;
+  }
+  return null;
+}
+
 /** Bo'limni Mini App'da ochish tugmasi */
 function openButton(label: string, section: string) {
   const url = webAppUrl(section);
   return url ? new InlineKeyboard().webApp(label, url) : undefined;
 }
 
-/** Admin/xodim uchun asosiy menyu */
+/**
+ * Asosiy menyu — pastdagi doimiy klaviatura.
+ *
+ * Nega inline tugma emas: inline tugma bosilishi Telegram'ga
+ * "callback_query" bo'lib keladi, u esa webhook "allowed_updates" ro'yxatida
+ * bo'lmasa umuman yetib kelmaydi va tugma jim turadi. Pastki klaviatura esa
+ * oddiy xabar yuboradi — u har doim keladi, hech qanday sozlash kerak emas.
+ */
 function mainMenu() {
+  const keyboard = new Keyboard()
+    .text(MENU.qarzlar)
+    .text(MENU.savdo)
+    .row()
+    .text(MENU.ombor)
+    .text(MENU.narxlar)
+    .row()
+    .text(MENU.hisobot)
+    .resized()
+    .persistent();
+
+  // Mini App tugmasi ham shu klaviaturada tursin
   const url = webAppUrl();
-  const keyboard = new InlineKeyboard()
-    .text("🧮 Qarzlar", "m:qarzlar")
-    .text("🛒 Savdo", "m:savdo")
-    .row()
-    .text("📦 Ombor", "m:ombor")
-    .text("💹 Narxlar", "m:narxlar")
-    .row()
-    .text("📊 Jamlanma", "m:hisobot");
-  if (url) keyboard.row().webApp("📱 To'liq panelni ochish", url);
+  if (url) keyboard.row().webApp(MENU.panel, url);
   return keyboard;
 }
 
@@ -156,7 +194,7 @@ async function sendAdminPanel(ctx: Context) {
   if (isAdmin(ctx.from?.id)) {
     await ctx.reply(
       "💊 <b>Evomed apteka — admin paneli</b>\n\n" +
-        "Tezkor ma'lumot uchun tugmani bosing yoki buyruqdan foydalaning:\n" +
+        "Pastdagi tugmalardan foydalaning yoki buyruq yozing:\n" +
         "/qarzlar · /savdo · /ombor · /narxlar · /hisobot\n\n" +
         "To'liq panelda Moliya, Ombor, Savdo, Qarzlar, Narx nazorati, Mijozlar, " +
         "Xodimlar, KPI, Davomat va Hisobotlar bor.",
@@ -169,7 +207,8 @@ async function sendAdminPanel(ctx: Context) {
   const staff = await linkedStaff(ctx.from?.id);
   if (staff) {
     await ctx.reply(
-      `Xush kelibsiz, ${staff.fullName}!\n\nO'zingizga berilgan bo'limlar panelda ko'rinadi.`,
+      `Xush kelibsiz, ${staff.fullName}!\n\n` +
+        "Pastdagi tugmalardan foydalaning — sizga berilgan bo'limlar ochiladi.",
       { reply_markup: mainMenu() },
     );
     return;
@@ -368,7 +407,19 @@ function registerBotHandlers(bot: Bot) {
   bot.command("narxlar", (ctx) => sendSection(ctx, "narxlar"));
   bot.command("hisobot", (ctx) => sendSection(ctx, "hisobot"));
 
-  // Menyu tugmalari
+  // Pastki klaviatura tugmalari oddiy matn bo'lib keladi
+  bot.on("message:text", async (ctx, next) => {
+    const text = ctx.message.text;
+    if (text.startsWith("/")) return next();
+
+    const key = sectionFromText(text);
+    if (!key || key === "panel") return next();
+    if (!(await isStaff(ctx.from?.id))) return next();
+
+    await sendSection(ctx, key);
+  });
+
+  // Eski xabarlardagi inline tugmalar ham ishlayversin
   bot.callbackQuery(/^m:(.+)$/, async (ctx) => {
     const key = ctx.match?.[1];
     await ctx.answerCallbackQuery();
@@ -395,6 +446,7 @@ function registerBotHandlers(bot: Bot) {
           "/hisobot — kunlik jamlanma\n" +
           "/panel — to'liq Mini App\n" +
           "/id — Telegram ID\n\n" +
+          "Shu buyruqlar pastdagi tugmalarda ham turadi.\n" +
           "Qarz muddati 10 kundan kam qolsa bot o'zi ogohlantiradi.",
         { parse_mode: "HTML", reply_markup: mainMenu() },
       );

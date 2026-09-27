@@ -178,6 +178,12 @@ kirganda Telegram'i akkauntga bog'lanib aniqlanadi.
 Xodim faqat o'ziga berilgan bo'limni ko'radi; ruxsati bo'lmasa bot qisqa rad
 javobini qaytaradi.
 
+Shu buyruqlar pastdagi doimiy klaviaturada tugma bo'lib ham turadi. Ataylab
+inline tugma ishlatilmaydi: inline tugma bosilishi Telegram'ga `callback_query`
+bo'lib keladi va u webhook'ning `allowed_updates` ro'yxatida bo'lmasa umuman
+yetib kelmaydi — tugma jim turadi. Pastki klaviatura esa oddiy xabar yuboradi,
+shuning uchun hech qanday sozlashsiz ishlayveradi.
+
 ### Qarz eslatmasi
 Muddati yaqin qarzlar Telegram'ga o'zi keladi:
 

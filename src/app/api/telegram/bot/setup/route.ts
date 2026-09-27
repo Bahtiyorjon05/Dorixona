@@ -82,8 +82,13 @@ export async function GET(req: Request) {
 
   const bot = new Bot(token);
   const webhookUrl = new URL("/api/telegram/bot", url.origin).toString();
-  // callback_query ham kerak — menyu tugmalari shu orqali ishlaydi
-  await bot.api.setWebhook(webhookUrl, { allowed_updates: ["message", "callback_query"] });
+  const oldInfo = await bot.api.getWebhookInfo().catch(() => null);
+  // callback_query ham kerak — eski xabarlardagi inline tugmalar shu orqali keladi.
+  // (Pastki klaviatura tugmalari oddiy xabar yuboradi, ular busiz ham ishlaydi.)
+  await bot.api.setWebhook(webhookUrl, {
+    allowed_updates: ["message", "callback_query"],
+    drop_pending_updates: false,
+  });
   await bot.api.setMyCommands(customerCommands);
 
   const webAppUrl = getTelegramWebAppUrl() ?? new URL("/tg-admin", url.origin).toString();
@@ -109,10 +114,18 @@ export async function GET(req: Request) {
     ),
   );
 
+  const info = await bot.api.getWebhookInfo().catch(() => null);
+
   return Response.json({
     ok: true,
     webhookUrl,
     webAppUrl,
+    avval: oldInfo
+      ? { url: oldInfo.url, qabulQiladi: oldInfo.allowed_updates ?? "hammasi", xato: oldInfo.last_error_message ?? null }
+      : null,
+    hozir: info
+      ? { url: info.url, qabulQiladi: info.allowed_updates ?? "hammasi", xato: info.last_error_message ?? null }
+      : null,
     adminlar: admins.length,
     xodimlar: staff.length,
     buyruqlarSozlandi: commandResults.filter((result) => result.status === "fulfilled").length,
