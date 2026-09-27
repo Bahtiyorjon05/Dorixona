@@ -801,10 +801,6 @@ export function TelegramAdminClient() {
 
           <div className="flex-1 overflow-y-auto p-3 md:p-5">
             <div className="mx-auto max-w-6xl space-y-4">
-              <div className="rounded-lg border border-edge bg-card p-3 text-xs text-muted">
-                Adminlar Telegram ID orqali aniqlanadi. Xodimlar Mini App ichida email/parol bilan kiradi. Oddiy mijozlar /start, /balans, /tarix orqali alohida ishlaydi.
-              </div>
-
               {notice ? (
                 <div className="rounded-lg border border-primary bg-primary-light px-3 py-2 text-sm text-fg">
                   {notice}
@@ -1420,9 +1416,6 @@ export function TelegramAdminClient() {
                       {saving === "refreshPrices" ? "Tekshirilmoqda..." : "Narxlarni yangilash"}
                     </button>
                   ) : null}
-                  <p className="mt-2 text-xs text-muted">
-                    Foizni va har bir dorining alohida ustamasini web saytdagi Narx nazorati bo&apos;limida o&apos;zgartirasiz.
-                  </p>
                 </Card>
 
                 {([
@@ -1453,12 +1446,6 @@ export function TelegramAdminClient() {
                     </Card>
                   );
                 })}
-
-                <p className="text-xs text-muted">
-                  Ustama foizini web saytdagi Narx nazorati bo&apos;limida qo&apos;yasiz.
-                  Arzonaptekadan narx olinadigan {data.prices.competitorCount} ta doriga
-                  raqobatchi narxi asos bo&apos;ladi, qolganiga tan narx.
-                </p>
               </>
             )}
           </div>

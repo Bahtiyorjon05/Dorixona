@@ -71,28 +71,6 @@ export default async function NarxlarPage({
           slowCount={d.slowCount}
         />
       </Card>
-
-      <div className="mt-4 space-y-1.5 text-xs text-muted">
-        <p>
-          Dorilar savdo ma&apos;lumotiga qarab ikkiga bo&apos;linadi: oxirgi {d.salesDays} kunda
-          oyiga {d.topPerMonth} donadan ko&apos;p sotilgani <b>topiviy</b>, qolgani{" "}
-          <b>kam sotilayotgan</b>.
-        </p>
-        <p>
-          Tavsiya narx ikki xil hisoblanadi. arzonapteka.uz da kuzatiladigan{" "}
-          {formatNumber(d.competitorCount)} ta doriga — <b>Toshkentdagi eng arzon narx + ustama</b>{" "}
-          (dorixona foizi). Qolgan hamma doriga — <b>tan narx + ustama</b>, foizi 0 dan boshlanadi
-          va uni jadvaldagi &laquo;Ustama %&raquo; katakchasiga o&apos;zingiz yozasiz. Foiz
-          yozilmaguncha tavsiya ko&apos;rsatilmaydi — aks holda tavsiya tan narxning o&apos;zi
-          bo&apos;lib qolardi. Bitta doriga yozilgan foiz dorixona foizidan ustun turadi.
-        </p>
-        <p>
-          &laquo;Asos&raquo; ustunidagi <b>Tan narx</b> yozuvini bossangiz, o&apos;sha doriga
-          arzonapteka havolasini biriktirasiz — shundan keyin tavsiya raqobatchi narxidan
-          hisoblanadi. Narxni F-Apteka&apos;da qo&apos;lda qo&apos;yasiz: F-Apteka tashqaridan
-          narx yozishga ruxsat bermaydi.
-        </p>
-      </div>
     </div>
   );
 }

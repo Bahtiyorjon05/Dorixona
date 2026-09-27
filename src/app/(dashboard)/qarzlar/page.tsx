@@ -80,12 +80,6 @@ export default async function QarzlarPage() {
       <Card title="Qarzlar ro'yxati" icon="💳">
         <DebtsPanel debts={d.debts} units={[...units]} />
       </Card>
-
-      <p className="mt-4 text-xs text-muted">
-        Har bir qarzning tarixi saqlanadi: yangi tovar olinsa &laquo;+ Qarz&raquo;, pul berilsa
-        &laquo;To&apos;lov&raquo; tugmasi. Qoldiq shu ikkisidan hisoblanadi. Muddati o&apos;tgan qarz qizil,
-        yaqinlashgani sariq bo&apos;lib turadi.
-      </p>
     </div>
   );
 }

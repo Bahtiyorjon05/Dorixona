@@ -159,11 +159,6 @@ export default async function MoliyaPage({
       <Card title="6 oylik savdo va harajat tahlili" icon="📈" className="mb-5">
         <FoydaXarajatChart data={d.profitSeries} />
       </Card>
-
-      <p className="text-xs text-muted">
-        Harajat, dorixonalar kesimi va qarzlar — <a href="/harajatlar" className="text-primary">Harajatlar</a> va{" "}
-        <a href="/qarzlar" className="text-primary">Qarzlar</a> bo&apos;limlarida.
-      </p>
     </div>
   );
 }

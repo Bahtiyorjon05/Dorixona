@@ -200,11 +200,6 @@ export default async function SavdoPage({
           </Card>
         </div>
       </div>
-
-      <p className="mt-4 text-xs text-muted">
-        F-Apteka kunlik jamlanma beradi, chekma-chek emas — shuning uchun chek soni ko&apos;rsatilmaydi.
-        Ma&apos;lumot har 15 daqiqada yangilanadi.
-      </p>
     </div>
   );
 }
