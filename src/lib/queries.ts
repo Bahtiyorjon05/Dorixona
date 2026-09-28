@@ -6,7 +6,7 @@ import { monthName } from "@/lib/format";
 import { isFaptekaExpenseTitle, isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 import { unitWhere } from "@/lib/filial";
 import { currentFilial } from "@/lib/filial-server";
-import { retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
+import { overlayRetail, retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 
 /**
  * F-Apteka hujjat turi (DOCTYPE) nimani bildiradi.
@@ -466,6 +466,7 @@ export async function getExpensesData(period?: Date) {
       }),
     ]);
 
+  await overlayRetail(finRows);
   const catSum = (c: string) => num(byCat.find((b) => b.category === c)?._sum.amount);
 
   // Tovar puli ikki manbadan kelishi mumkin: F-Apteka kirimi (avtomatik) va
@@ -897,6 +898,7 @@ export async function getAnalyticsData(year?: number) {
 
   // Har oy uchun barcha filiallar yig'indisi (Umumiy'dan tashqari)
   const monthAgg = new Map<number, { savdo: number; foyda: number; astatka: number }>();
+  await overlayRetail(finRows);
   for (const row of finRows) {
     if (row.unit === "Umumiy") continue;
     const m = new Date(row.periodMonth).getUTCMonth() + 1;

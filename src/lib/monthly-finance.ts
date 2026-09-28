@@ -98,6 +98,28 @@ export function retailByLocalDate(
   return map;
 }
 
+/**
+ * Oylik xulosa qatorlaridagi savdo va foydani kunlik jamlanmadan
+ * yangilaydi (joyida). Bazadagi raqam faqat ko'prik skript ishlaganda yoki
+ * ⟳ bosilganda yangilanadi — ko'rsatishda esa har doim F-Apteka bilan bir
+ * xil raqam chiqsin. Jamlanmasi yo'q oy va "Umumiy" qatori tegilmaydi.
+ */
+export async function overlayRetail(
+  rows: { unit: string; periodMonth: Date; turnover: unknown; profit: unknown }[],
+) {
+  await Promise.all(
+    rows
+      .filter((row) => row.unit !== "Umumiy")
+      .map(async (row) => {
+        const start = new Date(row.periodMonth);
+        const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+        const retail = await retailTotals(start, end, row.unit);
+        if (retail.known) Object.assign(row, { turnover: retail.turnover, profit: retail.profit });
+      }),
+  );
+  return rows;
+}
+
 export type RecomputeResult = {
   unit: string;
   year: number;

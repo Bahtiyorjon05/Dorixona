@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
+import { overlayRetail, retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
 import { TOP_SELLER_PER_MONTH, getPriceWatchData, utcMonthStart } from "@/lib/queries";
@@ -346,6 +346,7 @@ async function getExpenses(period?: Date) {
     db.debt.findMany({ orderBy: { createdAt: "asc" } }),
   ]);
 
+  await overlayRetail(finRows);
   const unitSpent = new Map(byUnitRows.map((r) => [r.unit ?? "Umumiy", num(r._sum.amount)]));
 
   return {
@@ -795,6 +796,7 @@ async function getAnalytics() {
   const uzMonths = ["Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek"];
   const expMap = new Map(expRows.map((r) => [new Date(r.m).getUTCMonth() + 1, M(r.exp)]));
   const monthAgg = new Map<number, { savdo: number; foyda: number; astatka: number }>();
+  await overlayRetail(finRows);
   for (const row of finRows) {
     if (row.unit === "Umumiy") continue;
     const mo = new Date(row.periodMonth).getUTCMonth() + 1;
