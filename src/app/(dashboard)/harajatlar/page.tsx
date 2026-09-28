@@ -39,7 +39,21 @@ export default async function HarajatlarPage({
   // Cron ishlamay qolsa ham: sahifa ochilganda doimiy xarajatlar shu oyga
   // yoziladi (oyiga bir marta, keyin darrov qaytadi)
   await carryRecurringExpenses().catch(() => null);
-  const d = await getExpensesData(parseMonth((await searchParams).oy));
+  let d: Awaited<ReturnType<typeof getExpensesData>>;
+  try {
+    d = await getExpensesData(parseMonth((await searchParams).oy));
+  } catch (error) {
+    // Production'da Next xato matnini yashiradi — sababini ko'rish uchun
+    console.error("Harajatlar sahifasi", error);
+    return (
+      <div className="card p-4 text-sm">
+        <b className="text-danger">Harajatlar yuklanmadi.</b>
+        <pre className="mt-2 whitespace-pre-wrap text-xs text-muted">
+          {error instanceof Error ? `${error.name}: ${error.message}` : String(error)}
+        </pre>
+      </div>
+    );
+  }
   const now = new Date();
   const isPast =
     d.period.getFullYear() !== now.getFullYear() || d.period.getMonth() !== now.getMonth();
