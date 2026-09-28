@@ -78,6 +78,26 @@ export async function retailDaily(from: Date, to: Date, unit: string | null) {
   }
 }
 
+/**
+ * DailySales kunlarini mahalliy sana bo'yicha yig'adi. Kalit — mahalliy
+ * yarim tun (grafiklar startOfDay bilan solishtiradi); `monthly` bo'lsa oy boshi.
+ */
+export function retailByLocalDate(
+  rows: { day: Date; turnover: number; profit: number }[],
+  monthly = false,
+) {
+  const map = new Map<number, { turnover: number; profit: number }>();
+  for (const row of rows) {
+    const d = new Date(row.day);
+    const key = new Date(d.getUTCFullYear(), d.getUTCMonth(), monthly ? 1 : d.getUTCDate()).getTime();
+    const entry = map.get(key) ?? { turnover: 0, profit: 0 };
+    entry.turnover += row.turnover;
+    entry.profit += row.profit;
+    map.set(key, entry);
+  }
+  return map;
+}
+
 export type RecomputeResult = {
   unit: string;
   year: number;

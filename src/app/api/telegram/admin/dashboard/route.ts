@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
+import { retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
 import { TOP_SELLER_PER_MONTH, getPriceWatchData, utcMonthStart } from "@/lib/queries";
@@ -103,6 +103,13 @@ async function getFinance(period?: Date) {
       byDay.set(key, (byDay.get(key) ?? 0) + row.turnover);
     }
     weekRows.splice(0, weekRows.length, ...[...byDay].map(([t, total]) => ({ d: new Date(t), total })));
+  }
+  // 6 oylik savdo: jamlanma bor oylar F-Apteka bo'yicha, eskilari cheklardan
+  const retailMonths = retailByLocalDate(await retailDaily(utcDay(sixMonthsAgo), utcDay(tomorrow), null), true);
+  for (const [key, value] of retailMonths) {
+    const row = seriesRows.find((r) => new Date(r.m).getTime() === key);
+    if (row) row.rev = value.turnover;
+    else seriesRows.push({ m: new Date(key), rev: value.turnover });
   }
 
   const totalCat = catRows.reduce((sum, row) => sum + row.revenue, 0) || 1;

@@ -6,7 +6,7 @@ import { monthName } from "@/lib/format";
 import { isFaptekaExpenseTitle, isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 import { unitWhere } from "@/lib/filial";
 import { currentFilial } from "@/lib/filial-server";
-import { retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
+import { retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 
 /**
  * F-Apteka hujjat turi (DOCTYPE) nimani bildiradi.
@@ -210,6 +210,32 @@ export async function getFinanceData(period?: Date) {
       FROM "Sale" s WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
       GROUP BY 1 ORDER BY 1`,
   ]);
+
+  // Kunlik jamlanma (22-hisobot) bor kunlar/oylar — F-Apteka bilan bir xil
+  // savdo; jamlanmasi yo'q eski kunlar cheklardan qoladi
+  const chartFilial = await currentFilial();
+  const chartUnit = chartFilial === "Umumiy" ? null : chartFilial;
+  const retailRows = await retailDaily(utcDay(sixMonthsAgo), utcDay(tomorrow), chartUnit);
+  const retailDays = retailByLocalDate(retailRows);
+  const retailMonths = retailByLocalDate(retailRows, true);
+  for (const [key, value] of retailDays) {
+    const d = new Date(key);
+    if (d >= weekAgo) {
+      const row = weekRows.find((r) => startOfDay(new Date(r.d)).getTime() === key);
+      if (row) row.total = value.turnover;
+      else weekRows.push({ d, total: value.turnover });
+    }
+    if (d >= monthStart && d < nextMonth) {
+      const row = monthDailyRows.find((r) => startOfDay(new Date(r.d)).getTime() === key);
+      if (row) row.total = value.turnover;
+      else monthDailyRows.push({ d, total: value.turnover });
+    }
+  }
+  for (const [key, value] of retailMonths) {
+    const row = seriesRows.find((r) => new Date(r.m).getTime() === key);
+    if (row) row.rev = value.turnover;
+    else seriesRows.push({ m: new Date(key), rev: value.turnover });
+  }
 
   // Joriy oy — kunlik savdo (bugungacha)
   const monthDayMap = new Map(
@@ -849,6 +875,22 @@ export async function getAnalyticsData(year?: number) {
       WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${new Date(Date.now() - 60 * 864e5)}
       GROUP BY 1 ORDER BY 1`,
   ]);
+
+  // Kunlik jamlanma bor kunlarda savdo va QQSsiz foyda F-Apteka bo'yicha
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 864e5);
+  const retailDays = retailByLocalDate(
+    await retailDaily(utcDay(sixtyDaysAgo), utcDay(new Date(Date.now() + 864e5)), null),
+  );
+  for (const [key, value] of retailDays) {
+    const row = dailyRows.find((r) => startOfDay(new Date(r.day)).getTime() === key);
+    if (row) {
+      row.savdo = value.turnover;
+      row.foyda = value.profit;
+    } else {
+      dailyRows.push({ day: new Date(key), savdo: value.turnover, foyda: value.profit });
+    }
+  }
+  dailyRows.sort((a, b) => new Date(a.day).getTime() - new Date(b.day).getTime());
 
   // Oy raqami -> harajat
   const expMap = new Map(expRows.map((r) => [new Date(r.m).getUTCMonth() + 1, M(r.exp)]));
