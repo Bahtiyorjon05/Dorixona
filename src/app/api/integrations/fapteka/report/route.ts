@@ -169,6 +169,8 @@ export async function POST(request: NextRequest) {
     await recomputeSafely(dateFrom, dateTo);
     revalidatePath("/savdo");
     revalidatePath("/moliya");
+    revalidatePath("/harajatlar");
+    revalidatePath("/boshqaruv");
     return NextResponse.json({ ok: true, totals });
   }
 

@@ -6,6 +6,7 @@ import { monthName } from "@/lib/format";
 import { isFaptekaExpenseTitle, isFaptekaSku } from "@/lib/integrations/fapteka/mapping";
 import { unitWhere } from "@/lib/filial";
 import { currentFilial } from "@/lib/filial-server";
+import { retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 
 /**
  * F-Apteka hujjat turi (DOCTYPE) nimani bildiradi.
@@ -202,6 +203,7 @@ export async function getFinanceData(period?: Date) {
     db.$queryRaw<{ m: Date; exp: number }[]>`
       SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount),0)::float8 AS exp
       FROM "Expense" e WHERE e."branchId" = ${branchId} AND e."spentAt" >= ${sixMonthsAgo}
+        AND e."category" <> 'GOODS' 
       GROUP BY 1 ORDER BY 1`,
     db.$queryRaw<{ d: Date; total: number }[]>`
       SELECT date_trunc('day', s."createdAt") AS d, COALESCE(SUM(s.total),0)::float8 AS total
@@ -397,13 +399,17 @@ export async function getExpensesData(period?: Date) {
   const filial = await currentFilial();
   const unitFilter = unitWhere(filial);
   const where = { branchId, spentAt: { gte: monthStart, lt: nextMonth }, ...unitFilter };
+  // Tovar xaridi harajat emas: u omborga qo'shiladi, sotilgach tan narxi
+  // "Foyda" ichida allaqachon ayirilgan. Uni ham ayirsak ikki marta
+  // hisoblanardi (sentabrda sof foyda -1,25 mlrd chiqqan edi).
+  const opWhere = { ...where, category: { not: "GOODS" as const } };
 
   const [list, totalAgg, byCat, byUnitRows, finRows, debtRows, allDates, finMonths] =
     await Promise.all([
       db.expense.findMany({ where, orderBy: { spentAt: "desc" } }),
-      db.expense.aggregate({ _sum: { amount: true }, where }),
+      db.expense.aggregate({ _sum: { amount: true }, where: opWhere }),
       db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
-      db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, _count: true, where }),
+      db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, _count: true, where: opWhere }),
       db.monthlyFinance.findMany({
         // periodMonth UTC yarim tunda saqlanadi — mahalliy vaqt bilan
         // taqqoslasak UTC+5 da oy siljib ketadi
@@ -492,7 +498,8 @@ export async function getExpensesData(period?: Date) {
     salary: catSum("SALARY"),
     goods: catSum("GOODS"),
     goodsAuto,
-    goodsManual: catSum("GOODS") - goodsAuto,
+    // Kasr qoldig'i "0 so'm" bo'lib ko'rinib ogohlantirish chiqarmasin
+    goodsManual: Math.max(0, Math.round(catSum("GOODS") - goodsAuto)),
     byCategory: byCat
       .map((c) => ({ category: c.category as string, amount: num(c._sum.amount) }))
       .sort((a, b) => b.amount - a.amount),
@@ -778,6 +785,7 @@ export async function getAnalyticsData(year?: number) {
       SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount), 0)::float8 AS exp
       FROM "Expense" e WHERE e."branchId" = ${branchId}
         AND e."spentAt" >= ${yearStart} AND e."spentAt" < ${yearEnd}
+        AND e."category" <> 'GOODS' 
       GROUP BY 1 ORDER BY 1`,
     // Assortiment — hozirgi qoldiq (eng qimmat 50 ta pozitsiya)
     db.$queryRaw<{ name: string; category: string; stock: number; price: number; value: number }[]>`
@@ -1055,6 +1063,37 @@ export async function getSalesData(input: { from: Date; to: Date }) {
     byDay.set(key, current);
   }
 
+  // Kunlik jamlanma (22-hisobot) bor bo'lsa savdo va foyda shundan —
+  // F-Apteka "Продажи за период" bilan bir xil. Cheklar (4-hisobot)
+  // summani ~3% oshirib ko'rsatadi, ular faqat tovarlar reytingi uchun.
+  const retail = await retailDaily(utcDay(input.from), utcDay(toExclusive), unit);
+  if (retail.length) {
+    const byDate = new Map<string, { day: Date; turnover: number; profit: number }>();
+    const units = new Map<string, { turnover: number; profit: number }>();
+    for (const row of retail) {
+      const key = new Date(row.day).toISOString().slice(0, 10);
+      const day = byDate.get(key) ?? { day: new Date(row.day), turnover: 0, profit: 0 };
+      day.turnover += row.turnover;
+      day.profit += row.profit;
+      byDate.set(key, day);
+      const name = row.unit === "Umumiy" ? "Ajratilmagan" : row.unit;
+      const entry = units.get(name) ?? { turnover: 0, profit: 0 };
+      entry.turnover += row.turnover;
+      entry.profit += row.profit;
+      units.set(name, entry);
+    }
+    dailyRows.splice(
+      0,
+      dailyRows.length,
+      ...[...byDate.values()].sort((a, b) => b.day.getTime() - a.day.getTime()),
+    );
+    unitRows.splice(
+      0,
+      unitRows.length,
+      ...[...units].map(([name, v]) => ({ unit: name, ...v })).sort((a, b) => b.turnover - a.turnover),
+    );
+  }
+
   const daily = dailyRows.map((row) => {
     const day = new Date(row.day);
     const payment = payments.get(day.toISOString().slice(0, 10));
@@ -1222,18 +1261,31 @@ export async function getDashboardData() {
       SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
       WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${today} AND s."createdAt" < ${tomorrow}
-        AND (${unit}::text IS NULL OR s."unit" = ${unit})`,
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})`
+      .then(async (rows) => {
+        const retail = await retailTotals(utcDay(today), utcDay(tomorrow), unit);
+        return retail.known ? [{ turnover: retail.turnover }] : rows;
+      }),
     db.$queryRaw<{ turnover: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
       WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${yesterday} AND s."createdAt" < ${today}
-        AND (${unit}::text IS NULL OR s."unit" = ${unit})`,
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})`
+      .then(async (rows) => {
+        const retail = await retailTotals(utcDay(yesterday), utcDay(today), unit);
+        return retail.known ? [{ turnover: retail.turnover }] : rows;
+      }),
     db.$queryRaw<{ turnover: number; profit: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover,
              COALESCE(SUM(si."lineTotal" - si."costPrice" * si.quantity), 0)::float8 AS profit
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
       WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}
-        AND (${unit}::text IS NULL OR s."unit" = ${unit})`,
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})`
+      // Kunlik jamlanma bo'lsa — F-Apteka bilan bir xil hisob (QQSsiz foyda)
+      .then(async (rows) => {
+        const retail = await retailTotals(utcDay(monthStart), utcDay(nextMonth), unit);
+        return retail.known ? [{ turnover: retail.turnover, profit: retail.profit }] : rows;
+      }),
     db.$queryRaw<{ value: number; positions: number }[]>`
       SELECT COALESCE(SUM(p.stock * p."salePrice"), 0)::float8 AS value,
              COUNT(*)::float8 AS positions
@@ -1261,12 +1313,16 @@ export async function getDashboardData() {
     db.$queryRaw<{ turnover: number }[]>`
       SELECT COALESCE(SUM(si."lineTotal"), 0)::float8 AS turnover
       FROM "SaleItem" si JOIN "Sale" s ON s.id = si."saleId"
-      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}`,
+      WHERE s."branchId" = ${branchId} AND s."createdAt" >= ${monthStart} AND s."createdAt" < ${nextMonth}`
+      .then(async (rows) => {
+        const retail = await retailTotals(utcDay(monthStart), utcDay(nextMonth), null);
+        return retail.known ? [{ turnover: retail.turnover }] : rows;
+      }),
     // Shu filialning o'z xarajati
     db.expense
       .aggregate({
         _sum: { amount: true },
-        where: { spentAt: { gte: monthStart, lt: nextMonth }, ...(unit ? { unit } : {}) },
+        where: { spentAt: { gte: monthStart, lt: nextMonth }, category: { not: "GOODS" }, ...(unit ? { unit } : {}) },
       })
       .catch(() => ({ _sum: { amount: 0 } })),
     // Filialga biriktirilmagan xarajat: tovar xaridi shu yerda —
@@ -1274,7 +1330,7 @@ export async function getDashboardData() {
     db.expense
       .aggregate({
         _sum: { amount: true },
-        where: { spentAt: { gte: monthStart, lt: nextMonth }, unit: null },
+        where: { spentAt: { gte: monthStart, lt: nextMonth }, category: { not: "GOODS" }, unit: null },
       })
       .catch(() => ({ _sum: { amount: 0 } })),
   ]);

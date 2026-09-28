@@ -17,6 +17,67 @@ import { FILIALS } from "@/lib/filial";
  * `revaluation` (pereotsenka) qo'lda kiritiladi va bu yerda tegilmaydi:
  * `Product` da dorixona ajratmasi yo'q, qoldiq esa tarixsiz.
  */
+/** Mahalliy sana → DailySales.day formati (UTC yarim tun) */
+export const utcDay = (d: Date) => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+
+/** QQS (НДС) stavkasi — F-Apteka foydani QQSsiz ko'rsatadi */
+const VAT_RATE = 0.12;
+/** Chakana savdo hujjatlari: 2 = sotuv, 4 = qaytarish (summasi manfiy) */
+const RETAIL_DOC_TYPES = ["2", "4"];
+
+export type RetailTotals = { turnover: number; cost: number; profit: number; known: boolean };
+
+/**
+ * Chakana savdo va foyda — F-Apteka'ning 22-hisobotidan kelgan kunlik
+ * jamlanmadan (DailySales). F-Apteka'dagi "Продажи за период" bilan bir xil:
+ *   savdo  = Сумма (qaytarish ayirilgan)
+ *   foyda  = (Сумма − Сумма со скидкой) − (НДС продажи − НДС прихода)
+ * QQS farqi 12% bilan hisoblanadi; F-Apteka har tovar QQSini alohida oladi,
+ * shuning uchun farq ~0,02% (sentabr, Shayxontohur: 12 785 so'm / 68,5 mln).
+ *
+ * `Sale` cheklaridan hisoblash savdoni oshirib ko'rsatardi (sentabr,
+ * Shayxontohur: 741,4 mln o'rniga 718,9 mln bo'lishi kerak edi).
+ *
+ * unit = null — hamma dorixona. `day` UTC yarim tunda saqlanadi.
+ */
+export async function retailTotals(from: Date, to: Date, unit: string | null): Promise<RetailTotals> {
+  try {
+    const agg = await db.dailySales.aggregate({
+      _sum: { amount: true, cost: true },
+      _count: true,
+      where: { day: { gte: from, lt: to }, docType: { in: RETAIL_DOC_TYPES }, ...(unit ? { unit } : {}) },
+    });
+    const turnover = Number(agg._sum.amount ?? 0);
+    const cost = Number(agg._sum.cost ?? 0);
+    const profit = (turnover - cost) / (1 + VAT_RATE);
+    return { turnover, cost, profit, known: agg._count > 0 };
+  } catch {
+    // Jadval hali yaratilmagan
+    return { turnover: 0, cost: 0, profit: 0, known: false };
+  }
+}
+
+/**
+ * Kun × dorixona bo'yicha chakana savdo va QQSsiz foyda (DailySales).
+ * Bo'sh ro'yxat — jamlanma yo'q, chaqiruvchi eski hisobga qaytadi.
+ */
+export async function retailDaily(from: Date, to: Date, unit: string | null) {
+  try {
+    const rows = await db.dailySales.groupBy({
+      by: ["day", "unit"],
+      _sum: { amount: true, cost: true },
+      where: { day: { gte: from, lt: to }, docType: { in: RETAIL_DOC_TYPES }, ...(unit ? { unit } : {}) },
+    });
+    return rows.map((row) => {
+      const turnover = Number(row._sum.amount ?? 0);
+      const cost = Number(row._sum.cost ?? 0);
+      return { day: row.day, unit: row.unit, turnover, profit: (turnover - cost) / (1 + VAT_RATE) };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export type RecomputeResult = {
   unit: string;
   year: number;
@@ -62,12 +123,18 @@ export async function recomputeMonthlyFinance(input: {
     marginQuery,
   ]);
 
-  const turnover = Number(agg._sum.total ?? 0);
-  const profit = Number(marginRows[0]?.margin ?? 0);
+  // Kunlik jamlanma bor oylarda — F-Apteka bilan bir xil hisob
+  const retail = await retailTotals(
+    new Date(Date.UTC(year, month - 1, 1)),
+    new Date(Date.UTC(year, month, 1)),
+    unit,
+  );
+  const turnover = retail.known ? retail.turnover : Number(agg._sum.total ?? 0);
+  const profit = retail.known ? retail.profit : Number(marginRows[0]?.margin ?? 0);
   const base = { unit, year, month, turnover, profit, salesCount: agg._count };
 
   // Savdo yo'q — qo'lda kiritilganini saqlab qolamiz
-  if (agg._count === 0) return { ...base, skipped: true };
+  if (agg._count === 0 && !retail.known) return { ...base, skipped: true };
 
   const periodMonth = new Date(Date.UTC(year, month - 1, 1));
   await db.monthlyFinance.upsert({

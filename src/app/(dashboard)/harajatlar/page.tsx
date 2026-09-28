@@ -75,7 +75,7 @@ export default async function HarajatlarPage({
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard icon="🧾" label="Jami harajat" value={formatNumber(d.total)} valueColor="var(--c-danger)" sub={`${d.list.length} ta yozuv`} />
+        <MetricCard icon="🧾" label="Jami harajat" value={formatNumber(d.total)} valueColor="var(--c-danger)" sub={d.goods > 0 ? `Tovar xaridi alohida: ${formatNumber(d.goods)}` : `${d.list.length} ta yozuv`} />
         <MetricCard icon="🏠" label="Ijara va kommunal" value={formatNumber(d.rent)} sub="Doimiy xarajat" />
         <MetricCard icon="👥" label="Maosh fondi" value={formatNumber(d.salary)} sub="Xodimlar" />
         {totalProfit > 0 ? (

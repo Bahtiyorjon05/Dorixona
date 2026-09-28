@@ -366,7 +366,11 @@ export async function digestMessage() {
     salesSplit(today, tomorrow, null),
     salesSplit(monthStart, nextMonth, null),
     paymentBreakdown(today, tomorrow, null),
-    db.expense.aggregate({ _sum: { amount: true }, where: { spentAt: { gte: monthStart, lt: nextMonth } } }),
+    // Tovar xaridi harajatga kirmaydi — tan narxi foyda ichida ayirilgan
+    db.expense.aggregate({
+      _sum: { amount: true },
+      where: { spentAt: { gte: monthStart, lt: nextMonth }, category: { not: "GOODS" } },
+    }),
     debtSummary(),
     // Tugagan tovar. Avval "stock <= 5" sanalardi, lekin dorixonada deyarli
     // hamma dorining qoldig'i kichik - 5600 tadan 4438 tasi chiqib, raqam

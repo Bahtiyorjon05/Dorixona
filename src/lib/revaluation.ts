@@ -93,8 +93,7 @@ export type RevaluationPushResult = {
  * - Push'da yo'q dori (qoldig'i tugagan) — unutiladi; qaytib kelsa yangi
  *   partiya sifatida qaraladi.
  *
- * Yangi pereotsenka bo'lsa, oy jami MonthlyFinance.revaluation ga va
- * "Pereotsenka" harajatiga yoziladi.
+ * Natija faqat Revaluation jadvaliga va jurnalga yoziladi — harajatga emas.
  */
 export async function syncRevaluationFromSite(rows: Row[]): Promise<RevaluationPushResult> {
   const units = otdelUnitMap();
@@ -177,24 +176,18 @@ export async function syncRevaluationFromSite(rows: Row[]): Promise<RevaluationP
   }
   result.changes = [...byUnit].map(([unit, entry]) => ({ unit, ...entry }));
 
-  const branch = await db.branch.findFirst({ where: { isActive: true } });
-  if (!branch) return result;
-  const { year, month, start, end } = tashkentMonth(new Date());
-  const periodMonth = new Date(Date.UTC(year, month - 1, 1));
+  // Oy jami faqat jurnal uchun. Harajatga YOZILMAYDI: F-Apteka bilan
+  // solishtirganda (28.09) farq chiqdi — SITE.exe bir doriga bitta narx
+  // yuboradi, F-Apteka esa har partiyani alohida qayta baholaydi, SITE.exe
+  // to'xtab qolsa hujjat umuman tushmaydi. Aniq summa oy oxirida Moliya
+  // formasidagi "Qayta baholash" ga F-Apteka'dan qo'lda kiritiladi.
+  const { start, end } = tashkentMonth(new Date());
   for (const unit of byUnit.keys()) {
     const sum = await db.revaluation.aggregate({
       _sum: { amount: true },
       where: { unit, at: { gte: start, lt: end } },
     });
-    // Narx tushsa summa manfiy — bu zarar, harajatga musbat bo'lib yoziladi
-    const loss = Math.max(0, -Number(sum._sum.amount ?? 0));
-    await db.monthlyFinance.upsert({
-      where: { unit_periodMonth: { unit, periodMonth } },
-      create: { unit, periodMonth, branchId: branch.id, revaluation: loss },
-      update: { revaluation: loss },
-    });
-    await syncRevaluationExpense({ branchId: branch.id, unit, year, month, amount: loss });
-    result.monthTotals.push({ unit, amount: loss });
+    result.monthTotals.push({ unit, amount: Math.max(0, -Number(sum._sum.amount ?? 0)) });
   }
   return result;
 }

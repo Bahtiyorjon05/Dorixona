@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
 import { TOP_SELLER_PER_MONTH, getPriceWatchData, utcMonthStart } from "@/lib/queries";
@@ -74,17 +75,35 @@ async function getFinance(period?: Date) {
       GROUP BY 1 ORDER BY 1`,
     db.$queryRaw<{ m: Date; exp: number }[]>`
       SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount),0)::float8 AS exp
-      FROM "Expense" e WHERE e."spentAt" >= ${sixMonthsAgo}
+      FROM "Expense" e WHERE e."spentAt" >= ${sixMonthsAgo} AND e."category" <> 'GOODS' 
       GROUP BY 1 ORDER BY 1`,
   ]);
 
   const cash = payAgg.find((row) => row.method === "CASH")?.sum ?? 0;
   const card = payAgg.find((row) => row.method === "CARD")?.sum ?? 0;
   const mixed = payAgg.find((row) => row.method === "MIXED")?.sum ?? 0;
-  const todaySales = num(todayAgg._sum.total);
-  const yesterdaySales = num(yesterdayAgg._sum.total) || 1;
-  const margin = num(monthMargin[0]?.margin);
-  const lastMargin = num(lastMonthMargin[0]?.margin) || 1;
+  // Kunlik jamlanma (22-hisobot) bor bo'lsa — web va F-Apteka bilan bir xil
+  // raqam: cheklar savdoni ~3% oshirib ko'rsatadi, foyda esa QQSsiz bo'ladi.
+  const [rToday, rYesterday, rMonth, rLastMonth, rWeek] = await Promise.all([
+    retailTotals(utcDay(today), utcDay(tomorrow), null),
+    retailTotals(utcDay(yesterday), utcDay(today), null),
+    retailTotals(utcDay(monthStart), utcDay(nextMonth), null),
+    retailTotals(utcDay(lastMonthStart), utcDay(monthStart), null),
+    retailDaily(utcDay(weekAgo), utcDay(tomorrow), null),
+  ]);
+  const todaySales = rToday.known ? rToday.turnover : num(todayAgg._sum.total);
+  const yesterdaySales = (rYesterday.known ? rYesterday.turnover : num(yesterdayAgg._sum.total)) || 1;
+  const margin = rMonth.known ? rMonth.profit : num(monthMargin[0]?.margin);
+  const lastMargin = (rLastMonth.known ? rLastMonth.profit : num(lastMonthMargin[0]?.margin)) || 1;
+  if (rWeek.length) {
+    const byDay = new Map<number, number>();
+    for (const row of rWeek) {
+      const d = new Date(row.day);
+      const key = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime();
+      byDay.set(key, (byDay.get(key) ?? 0) + row.turnover);
+    }
+    weekRows.splice(0, weekRows.length, ...[...byDay].map(([t, total]) => ({ d: new Date(t), total })));
+  }
 
   const totalCat = catRows.reduce((sum, row) => sum + row.revenue, 0) || 1;
   const categories = catRows.slice(0, 5).map((row) => ({
@@ -166,8 +185,40 @@ async function getSales() {
       GROUP BY 1 ORDER BY 2 DESC`,
   ]);
 
+  // Kunlik jamlanma bor bo'lsa — web Savdo sahifasi bilan bir xil hisob
+  const [rToday, rDaily] = await Promise.all([
+    retailTotals(utcDay(today), utcDay(tomorrow), null),
+    retailDaily(utcDay(twoWeeksAgo), utcDay(tomorrow), null),
+  ]);
+  if (rDaily.length) {
+    const days = new Map<string, { day: Date; turnover: number; profit: number }>();
+    const units = new Map<string, { turnover: number; profit: number }>();
+    const monthKey = utcDay(monthStart).getTime();
+    for (const row of rDaily) {
+      const key = new Date(row.day).toISOString().slice(0, 10);
+      const day = days.get(key) ?? { day: new Date(row.day), turnover: 0, profit: 0 };
+      day.turnover += row.turnover;
+      day.profit += row.profit;
+      days.set(key, day);
+    }
+    dailyRows.splice(0, dailyRows.length, ...[...days.values()].sort((a, b) => b.day.getTime() - a.day.getTime()));
+    const monthRows = await retailDaily(new Date(monthKey), utcDay(tomorrow), null);
+    for (const row of monthRows) {
+      const name = row.unit === "Umumiy" ? "Ajratilmagan" : row.unit;
+      const entry = units.get(name) ?? { turnover: 0, profit: 0 };
+      entry.turnover += row.turnover;
+      entry.profit += row.profit;
+      units.set(name, entry);
+    }
+    unitRows.splice(
+      0,
+      unitRows.length,
+      ...[...units].map(([name, v]) => ({ unit: name, ...v })).sort((a, b) => b.turnover - a.turnover),
+    );
+  }
+
   return {
-    todayTotal: num(todayAgg._sum.total),
+    todayTotal: rToday.known ? rToday.turnover : num(todayAgg._sum.total),
     todayCount,
     daily: dailyRows.map((row) => ({
       day: new Date(row.day).toISOString(),
@@ -276,12 +327,14 @@ async function getExpenses(period?: Date) {
   }
   const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
   const where = { spentAt: { gte: monthStart, lt: nextMonth } };
+  // Tovar xaridi harajat emas — tan narxi "Foyda" ichida ayirilgan (web bilan bir xil)
+  const opWhere = { ...where, category: { not: "GOODS" as const } };
 
   const [list, totalAgg, byCat, byUnitRows, finRows, debtRows] = await Promise.all([
     db.expense.findMany({ where, orderBy: { spentAt: "desc" }, take: 12 }),
-    db.expense.aggregate({ _sum: { amount: true }, where }),
+    db.expense.aggregate({ _sum: { amount: true }, where: opWhere }),
     db.expense.groupBy({ by: ["category"], _sum: { amount: true }, where }),
-    db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, where }),
+    db.expense.groupBy({ by: ["unit"], _sum: { amount: true }, where: opWhere }),
     db.monthlyFinance.findMany({ where: { periodMonth: utcMonthStart(monthStart) }, orderBy: { unit: "asc" } }),
     db.debt.findMany({ orderBy: { createdAt: "asc" } }),
   ]);
@@ -728,6 +781,7 @@ async function getAnalytics() {
     db.$queryRaw<{ m: Date; exp: number }[]>`
       SELECT date_trunc('month', e."spentAt") AS m, COALESCE(SUM(e.amount), 0)::float8 AS exp
       FROM "Expense" e WHERE e."spentAt" >= ${yearStart} AND e."spentAt" < ${yearEnd}
+        AND e."category" <> 'GOODS' 
       GROUP BY 1 ORDER BY 1`,
   ]);
 
