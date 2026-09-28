@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getExpensesData } from "@/lib/queries";
+import { carryRecurringExpenses } from "@/lib/recurring-expenses";
 import { formatNumber, formatSom, monthName } from "@/lib/format";
 import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
 import { ExpensesPanel } from "@/components/panels/ExpensesPanel";
@@ -35,6 +36,9 @@ export default async function HarajatlarPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Cron ishlamay qolsa ham: sahifa ochilganda doimiy xarajatlar shu oyga
+  // yoziladi (oyiga bir marta, keyin darrov qaytadi)
+  await carryRecurringExpenses().catch(() => null);
   const d = await getExpensesData(parseMonth((await searchParams).oy));
   const now = new Date();
   const isPast =

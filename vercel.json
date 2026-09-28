@@ -3,6 +3,10 @@
     {
       "path": "/api/notifications/debts",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/expenses/recurring",
+      "schedule": "0 1 * * *"
     }
   ]
 }
