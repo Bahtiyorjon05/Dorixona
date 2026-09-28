@@ -520,7 +520,7 @@ export function TelegramAdminClient() {
   const [authHeader, setAuthHeader] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
 
-  // Harakatsizlik qulfi: 2 daqiqa tegilmasa, undan keyin 15 daqiqa o'tganda
+  // Harakatsizlik qulfi: 2 daqiqa tegilmasa, undan keyin 30 daqiqa o'tganda
   // token o'chiriladi va email/parol so'raladi. Telegram admin ham qulf
   // ochilguncha avtomatik kira olmaydi.
   useIdleLock({

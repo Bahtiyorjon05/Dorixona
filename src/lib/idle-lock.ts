@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 /** Shuncha vaqt hech narsa bosilmasa, foydalanuvchi "joyida yo'q" deb hisoblanadi */
 const IDLE_AFTER_MS = 2 * 60 * 1000;
 /** "Joyida yo'q" bo'lgandan keyin shuncha vaqt o'tsa, parol qayta so'raladi */
-const LOCK_AFTER_MS = 15 * 60 * 1000;
+const LOCK_AFTER_MS = 30 * 60 * 1000;
 
 const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart", "scroll"] as const;
 
@@ -34,7 +34,7 @@ export function markActivity(storageKey: string) {
 /**
  * Harakatsizlik qulfi: ishlab turgan odam chiqarib yuborilmaydi.
  *
- * 2 daqiqa hech narsa bosilmasa, o'sha paytdan 15 daqiqa sanaladi — shu
+ * 2 daqiqa hech narsa bosilmasa, o'sha paytdan 30 daqiqa sanaladi — shu
  * orada ham harakat bo'lmasa, onLock chaqiriladi. Oxirgi harakat vaqti
  * localStorage'da turadi: boshqa oynadagi ish ham hisoblanadi, ilova
  * yopilib uzoq vaqtdan keyin ochilsa esa darhol parol so'raladi.
