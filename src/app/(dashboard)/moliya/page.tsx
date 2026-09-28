@@ -40,6 +40,8 @@ export default async function MoliyaPage({
   ]);
 
   const period = `${ex.period.getFullYear()}-yil ${monthName(ex.period.getMonth() + 1)}`;
+  // Tovar xaridisiz harajat (ijara, oylik, soliq, pereotsenka...) ayiriladi
+  const netProfit = d.monthlyProfit - ex.total;
 
 
   return (
@@ -82,7 +84,7 @@ export default async function MoliyaPage({
       )}
 
       {/* Kassa ko'rsatkichlari */}
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <MetricCard
           icon="🧾"
           label="Kunlik savdo"
@@ -98,7 +100,14 @@ export default async function MoliyaPage({
             </>
           }
         />
-        <MetricCard icon="📈" label="Oylik foyda (marja)" value={formatNumber(d.monthlyProfit)} sub="POS savdolaridan" />
+        <MetricCard icon="📈" label="Oylik foyda" value={formatNumber(d.monthlyProfit)} sub="QQSsiz, F-Apteka bo'yicha" />
+        <MetricCard
+          icon="💰"
+          label="Sof foyda"
+          value={formatNumber(netProfit)}
+          valueColor={netProfit >= 0 ? "var(--c-success)" : "var(--c-danger)"}
+          sub={`Harajat: ${formatNumber(ex.total)}`}
+        />
         <MetricCard
           icon="🏦"
           label="Oylik kassa tushumi"

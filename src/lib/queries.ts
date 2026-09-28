@@ -265,10 +265,19 @@ export async function getFinanceData(period?: Date) {
   const cash = posCash;
   const card = posCard;
 
-  const todaySales = num(todayAgg._sum.total);
-  const yesterdaySales = num(yesterdayAgg._sum.total) || 1;
-  const margin = num(monthMargin[0]?.margin);
-  const lastMargin = num(lastMonthMargin[0]?.margin) || 1;
+  // Kunlik jamlanma (22-hisobot) bor bo'lsa — F-Apteka bilan bir xil raqam:
+  // savdo qaytarish ayirilgan, foyda QQSsiz. Aks holda cheklardan.
+  const retailUnit = filial === "Umumiy" ? null : filial;
+  const [rToday, rYesterday, rMonth, rLastMonth] = await Promise.all([
+    retailTotals(utcDay(today), utcDay(tomorrow), retailUnit),
+    retailTotals(utcDay(yesterday), utcDay(today), retailUnit),
+    retailTotals(utcDay(monthStart), utcDay(nextMonth), retailUnit),
+    retailTotals(utcDay(lastMonthStart), utcDay(monthStart), retailUnit),
+  ]);
+  const todaySales = rToday.known ? rToday.turnover : num(todayAgg._sum.total);
+  const yesterdaySales = (rYesterday.known ? rYesterday.turnover : num(yesterdayAgg._sum.total)) || 1;
+  const margin = rMonth.known ? rMonth.profit : num(monthMargin[0]?.margin);
+  const lastMargin = (rLastMonth.known ? rLastMonth.profit : num(lastMonthMargin[0]?.margin)) || 1;
 
   return {
     todaySales,
