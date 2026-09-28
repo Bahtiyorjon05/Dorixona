@@ -273,7 +273,7 @@ export async function stockMessage() {
     db.$queryRaw<{ value: number }[]>`
       SELECT COALESCE(SUM(stock * "costPrice"), 0)::float8 AS value FROM "Product" WHERE "isActive" = true`,
     db.product.findMany({
-      where: { isActive: true, stock: { lte: 5 } },
+      where: { isActive: true, stock: 0 },
       orderBy: { stock: "asc" },
       take: 10,
       select: { name: true, stock: true, minStock: true },
@@ -291,8 +291,8 @@ export async function stockMessage() {
     `\nTovar turi: ${som(total)} ta`,
     `Ombor qiymati: ${money(num(valueRows[0]?.value))}`,
     low.length
-      ? `\n🔴 Kam qoldiq:\n${low.map((p) => `• ${esc(p.name)} — ${p.stock} dona`).join("\n")}`
-      : "\n✅ Kam qoldiq yo'q",
+      ? `\n🔴 Tugagan:\n${low.map((p) => `• ${esc(p.name)}`).join("\n")}`
+      : "\n✅ Tugagan tovar yo'q",
     expiring.length
       ? `\n🟡 Muddati yaqin (60 kun):\n${expiring
           .map((p) => `• ${esc(p.name)} — ${p.expiryDate ? formatDate(p.expiryDate) : "-"}`)
@@ -368,7 +368,10 @@ export async function digestMessage() {
     paymentBreakdown(today, tomorrow, null),
     db.expense.aggregate({ _sum: { amount: true }, where: { spentAt: { gte: monthStart, lt: nextMonth } } }),
     debtSummary(),
-    db.product.count({ where: { isActive: true, stock: { lte: 5 } } }),
+    // Tugagan tovar. Avval "stock <= 5" sanalardi, lekin dorixonada deyarli
+    // hamma dorining qoldig'i kichik - 5600 tadan 4438 tasi chiqib, raqam
+    // ma'nosini yo'qotgandi. Tugagani esa aniq harakat talab qiladi.
+    db.product.count({ where: { isActive: true, stock: 0 } }),
   ]);
 
   const red = debts.overdue.length + debts.urgent.length;
@@ -379,7 +382,7 @@ export async function digestMessage() {
     `Oy boshidan: ${money(monthSplit.net)}`,
     `Oylik xarajat: ${money(num(expenses._sum.amount))}`,
     `\nOchiq qarz: ${debts.openCount} ta${red ? ` · 🔴 shoshilinch ${red} ta` : ""}${debts.soon.length ? ` · 🟡 ${debts.soon.length} ta` : ""}`,
-    low ? `Kam qoldiq: ${low} ta tovar` : "Kam qoldiq yo'q",
+    low ? `Tugagan tovar: ${som(low)} ta` : "Tugagan tovar yo'q",
   ];
 
   return parts.filter(Boolean).join("\n");
@@ -393,12 +396,20 @@ export async function digestMessage() {
  */
 export async function stockAlert() {
   const soon = new Date(Date.now() + 30 * 864e5);
-  const [low, expiring] = await Promise.all([
+  // Ogohlantirish tugagan tovar bo'yicha. "Qoldig'i 3 dan kam" deb
+  // sanalganda 5600 tadan minglabi chiqib ketardi — dorixonada dorining
+  // qoldig'i tabiiy ravishda kichik bo'ladi. Tugagani esa aniq harakat
+  // talab qiladi: buyurtma berish kerak.
+  const [lowCount, low, expiringCount, expiring] = await Promise.all([
+    db.product.count({ where: { isActive: true, stock: 0 } }),
     db.product.findMany({
-      where: { isActive: true, stock: { lte: 3 } },
-      orderBy: { stock: "asc" },
+      where: { isActive: true, stock: 0 },
+      orderBy: { name: "asc" },
       take: 15,
-      select: { name: true, stock: true },
+      select: { name: true },
+    }),
+    db.product.count({
+      where: { isActive: true, expiryDate: { not: null, lte: soon }, stock: { gt: 0 } },
     }),
     db.product.findMany({
       where: { isActive: true, expiryDate: { not: null, lte: soon }, stock: { gt: 0 } },
@@ -408,23 +419,27 @@ export async function stockAlert() {
     }),
   ]);
 
-  if (!low.length && !expiring.length) {
+  if (!lowCount && !expiringCount) {
     return { text: null, low: 0, expiring: 0 };
   }
 
+  // Ro'yxat qirqilgan bo'lsa aytib qo'yamiz, aks holda sarlavhadagi son
+  // ko'rsatilgan qatorlar soniga o'xshab ketadi
+  const more = (shown: number, total: number) =>
+    total > shown ? `\n… yana ${som(total - shown)} ta` : "";
+
   const parts = [
     "📦 <b>Ombor ogohlantirishi</b>",
-    low.length
-      ? `\n🔴 Tugab qolgan (${low.length} ta):\n${low
-          .map((p) => `• ${esc(p.name)} — ${p.stock === 0 ? "tugagan" : `${p.stock} dona`}`)
-          .join("\n")}`
+    lowCount
+      ? `\n🔴 Tugagan (${som(lowCount)} ta):\n${low.map((p) => `• ${esc(p.name)}`).join("\n")}` +
+        more(low.length, lowCount)
       : "",
-    expiring.length
-      ? `\n🟡 Muddati 30 kun ichida (${expiring.length} ta):\n${expiring
+    expiringCount
+      ? `\n🟡 Muddati 30 kun ichida (${som(expiringCount)} ta):\n${expiring
           .map((p) => `• ${esc(p.name)} — ${p.expiryDate ? formatDate(p.expiryDate) : "-"} · ${p.stock} dona`)
-          .join("\n")}`
+          .join("\n")}` + more(expiring.length, expiringCount)
       : "",
   ];
 
-  return { text: parts.filter(Boolean).join("\n"), low: low.length, expiring: expiring.length };
+  return { text: parts.filter(Boolean).join("\n"), low: lowCount, expiring: expiringCount };
 }
