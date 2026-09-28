@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
   if (report === "incomingTotals") {
     const result = await syncFaptekaIncomingSuppliers({ rows, dateFrom, dateTo });
     // Tovar olindi = firmaga qarz. To'lovlar ERP da qo'lda kiritiladi.
-    let debts = { created: 0, updated: 0, skipped: 0 };
+    let debts = { created: 0, updated: 0, skipped: 0, paidInFull: 0, removed: 0 };
     try {
       debts = await syncFaptekaSupplierDebts(rows);
     } catch (error) {
@@ -191,7 +191,9 @@ export async function POST(request: NextRequest) {
       keys: fieldKeys(rows).slice(0, 2000),
       note:
         `${label} | yetkazib beruvchi: ${result.updated} ta, noma'lum: ${result.unknownOrgs}` +
-        ` | qarz: +${debts.created} yangi, ${debts.updated} yangilandi`,
+        ` | qarz: +${debts.created} yangi, ${debts.updated} yangilandi` +
+        `, naqd firma: ${debts.paidInFull}` +
+        (debts.removed ? `, ro'yxatda yo'q firma qarzi o'chirildi: ${debts.removed}` : ""),
       ok: true,
     });
     revalidatePath("/harajatlar");

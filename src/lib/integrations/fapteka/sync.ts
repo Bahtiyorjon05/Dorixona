@@ -16,6 +16,7 @@ import {
   type FaptekaReportKey,
 } from "./mapping";
 import { otdelUnitMap } from "./otdel";
+import { isDebtSupplier } from "./debt-suppliers";
 
 export type FaptekaSyncMode = "catalog" | "movements" | "sales" | "all";
 
@@ -876,13 +877,18 @@ async function recalcDebt(debtId: string) {
  * "shuncha berildi, shuncha qoldi" shundan chiqadi.
  *
  * Har hujjat bir marta yoziladi — DebtEntry.ref bo'yicha tekshiriladi.
+ *
+ * Faqat qarzga tovar beradigan firmalar (debt-suppliers.ts) yoziladi.
+ * Qolganlaridan tovar to'liq to'lab olinadi — ular qarz emas.
  */
 export async function syncFaptekaSupplierDebts(rows: FaptekaRow[]) {
   const branch = await db.branch.findFirst({ where: { isActive: true } });
   if (!branch) throw new Error("Aktiv filial topilmadi");
 
   const orgIds = [...new Set(rows.map((row) => (row.O ?? "").trim()).filter(Boolean))];
-  if (!orgIds.length) return { ok: true, created: 0, updated: 0, skipped: rows.length };
+  if (!orgIds.length) {
+    return { ok: true, created: 0, updated: 0, skipped: rows.length, paidInFull: 0, removed: 0 };
+  }
 
   const orgs = await db.faptekaOrg.findMany({
     where: { id: { in: orgIds } },
@@ -893,6 +899,7 @@ export async function syncFaptekaSupplierDebts(rows: FaptekaRow[]) {
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let paidInFull = 0;
 
   for (const row of rows) {
     const docId = (row.N ?? "").trim();
@@ -900,6 +907,10 @@ export async function syncFaptekaSupplierDebts(rows: FaptekaRow[]) {
     const amount = numberValue(row.SS) || numberValue(row.SP) + numberValue(row.SN);
     if (!docId || !supplier || amount <= 0) {
       skipped += 1;
+      continue;
+    }
+    if (!isDebtSupplier(supplier)) {
+      paidInFull += 1;
       continue;
     }
 
@@ -957,7 +968,32 @@ export async function syncFaptekaSupplierDebts(rows: FaptekaRow[]) {
     await recalcDebt(debt.id);
   }
 
-  return { ok: true, created, updated, skipped };
+  const removed = await removeNonDebtSupplierDebts();
+  return { ok: true, created, updated, skipped, paidInFull, removed };
+}
+
+/**
+ * Ro'yxatda yo'q firmalarga avval avtomatik yozilgan qarzlarni tozalaydi.
+ *
+ * Faqat F-Apteka kirimidan kelgan yozuvlar (ref "FA:INC:...") o'chiriladi.
+ * Qarzda qo'lda kiritilgan to'lov yoki yozuv qolsa, qarzning o'zi qoladi
+ * va summasi qayta hisoblanadi; bo'sh qolsa — o'chiriladi.
+ */
+async function removeNonDebtSupplierDebts() {
+  const debts = await db.debt.findMany({
+    where: { kind: "FIRM", entries: { some: { ref: { startsWith: "FA:INC:" } } } },
+    select: { id: true, counterparty: true },
+  });
+  let removed = 0;
+  for (const debt of debts) {
+    if (isDebtSupplier(debt.counterparty)) continue;
+    await db.debtEntry.deleteMany({ where: { debtId: debt.id, ref: { startsWith: "FA:INC:" } } });
+    const left = await db.debtEntry.count({ where: { debtId: debt.id } });
+    if (left === 0) await db.debt.delete({ where: { id: debt.id } });
+    else await recalcDebt(debt.id);
+    removed += 1;
+  }
+  return removed;
 }
 
 /**
