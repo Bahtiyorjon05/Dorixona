@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
   }
 
   const wantedDay = params.get("kun")?.trim();
+  // charset ko'rsatilmasa Windows PowerShell 5.1 kirillni buzib o'qiydi
   return NextResponse.json({
     ok: true,
     oy: `${year}-${String(month).padStart(2, "0")}`,
@@ -69,5 +70,5 @@ export async function GET(request: NextRequest) {
             })),
         }
       : {}),
-  });
+  }, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }
