@@ -30,6 +30,10 @@ param(
 # uchun localhost. Tarmoq manzili (192.168.0.x) router qayta yonganda
 # o'zgarib qoladi - localhost esa hech qachon o'zgarmaydi.
 $ApiUrl  = "http://localhost:8081/P_GetReport_XML"
+# Hisobot xizmatining Windows dagi nomi. API javob bermasa shu qayta yoqiladi.
+$ServiceName = "ServiceReport"
+# Qayta yoqishlar orasidagi eng kam vaqt (daqiqa) - tinimsiz urinmasin
+$RestartCooldownMinutes = 30
 $ErpUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/report"
 # Narx nazorati: har ishga tushganda bir necha dorining narxi yangilanadi.
 # Ro'yxat uch soatda to'liq aylanadi.
@@ -104,7 +108,10 @@ if ((Test-Path $LogFile) -and (Get-Item $LogFile).Length -gt 5MB) { Remove-Item 
 function Write-Log([string]$Text) {
   $line = "{0:yyyy-MM-dd HH:mm:ss}  {1}" -f (Get-Date), $Text
   Add-Content -Path $LogFile -Value $line -Encoding UTF8
-  Write-Output $line
+  # Write-Output emas: u matnni quvurga ham chiqaradi va log yozadigan
+  # funksiyaning qaytargan qiymatiga qo'shilib ketadi. Write-Host faqat
+  # ekranga yozadi, fayl esa yuqorida saqlandi.
+  Write-Host $line
 }
 
 # Xato bo'lsa, server javobining matnini ham ko'rsatadi
@@ -128,23 +135,72 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v16 boshlandi (kunlik xulosa va ombor eslatmasi ham)"
+Write-Log "relay v17 boshlandi (API javob bermasa xizmatni o'zi qayta yoqadi)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
 # noaniq qolardi: API o'chiqmi yoki internetmi.
-try {
-  $ping = New-Object System.Net.WebClient
-  $probe = "{0}?pDateFrom={1}&pDateTo={1}&pFilial_id=2&pReport_id=4" -f $ApiUrl, (Get-Date).ToString("dd.MM.yyyy")
-  [void]$ping.DownloadData($probe)
+$ApiError = ""
+
+function Test-FaptekaApi {
+  try {
+    $ping = New-Object System.Net.WebClient
+    $probe = "{0}?pDateFrom={1}&pDateTo={1}&pFilial_id=2&pReport_id=4" -f $ApiUrl, (Get-Date).ToString("dd.MM.yyyy")
+    [void]$ping.DownloadData($probe)
+    return $true
+  } catch {
+    $script:ApiError = Get-ErrorText $_
+    return $false
+  }
+}
+
+# Kompyuter yoqilganda xizmat tarmoq tayyor bo'lmasdan turib boshlanib,
+# 8081-portni egallay olmay to'xtab qolishi mumkin ("Could not bind socket").
+# O'sha holatda xizmatni qayta yoqishning o'zi yetadi. Skript vazifa
+# rejalashtiruvchida SYSTEM nomidan ishlagani uchun buning huquqi bor.
+$RestartDone = $false
+
+function Restart-FaptekaService {
+  $script:RestartDone = $false
+  $stamp = Join-Path $PSScriptRoot "restart.stamp"
+  if (Test-Path $stamp) {
+    $last = (Get-Item $stamp).LastWriteTime
+    $passed = (New-TimeSpan -Start $last -End (Get-Date)).TotalMinutes
+    if ($passed -lt $RestartCooldownMinutes) {
+      Write-Log ("      Yaqinda urinib ko'rilgan ({0:N0} daqiqa oldin), kutamiz" -f $passed)
+      return
+    }
+  }
+  Set-Content -Path $stamp -Value (Get-Date).ToString("s") -Encoding ASCII
+
+  try {
+    Write-Log ("      Xizmatni qayta yoqamiz: {0}" -f $ServiceName)
+    Restart-Service -Name $ServiceName -Force -ErrorAction Stop
+    Start-Sleep -Seconds 10
+    $script:RestartDone = $true
+  } catch {
+    Write-Log ("XATO  Xizmat qayta yoqilmadi: {0}" -f $_.Exception.Message)
+    Write-Log "      Administrator huquqi kerak bo'lishi mumkin. Qo'lda:"
+    Write-Log "      net stop ServiceReport   va   net start ServiceReport"
+  }
+}
+
+if (Test-FaptekaApi) {
   Write-Log "OK    F-Apteka API javob berdi"
-} catch {
-  Write-Log ("XATO  F-Apteka API javob bermadi: {0}" -f (Get-ErrorText $_))
+} else {
+  Write-Log ("XATO  F-Apteka API javob bermadi: {0}" -f $ApiError)
   Write-Log ("      Manzil: {0}" -f $ApiUrl)
-  Write-Log "      Tekshiring: 1) ServiceReports / API dasturi ishlab turibdimi"
-  Write-Log "                  2) cmd da: netstat -ano | findstr :8081  -> LISTENING bo'lsin"
-  Write-Log "                  3) brauzerda shu manzilni ochib ko'ring, XML chiqishi kerak"
-  exit 1
+
+  Restart-FaptekaService
+  if ($RestartDone -and (Test-FaptekaApi)) {
+    Write-Log "OK    Xizmat qayta yoqildi, API javob berdi - davom etamiz"
+  } else {
+    if ($RestartDone) { Write-Log ("XATO  Qayta yoqilgandan keyin ham javob yo'q: {0}" -f $ApiError) }
+    Write-Log "      Tekshiring: 1) ServiceReports / API dasturi ishlab turibdimi"
+    Write-Log "                  2) cmd da: netstat -ano | findstr :8081  -> LISTENING bo'lsin"
+    Write-Log "                  3) brauzerda shu manzilni ochib ko'ring, XML chiqishi kerak"
+    exit 1
+  }
 }
 
 for ($i = $Days - 1; $i -ge 0; $i--) {

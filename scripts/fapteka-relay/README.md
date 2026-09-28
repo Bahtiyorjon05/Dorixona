@@ -42,6 +42,23 @@ to'xtaydi. Xato chiqsa, qaysi tomondan kelgani ko'rsatiladi:
 | `XATO ... ERP: ...` | ERP sayti (Vercel) qabul qilmadi |
 | `BOSH ...` | o'sha kuni hujjat bo'lmagan — normal holat |
 
+**O'zini tuzatish.** API javob bermasa skript hisobot xizmatini (`ServiceReport`)
+bir marta qayta yoqib ko'radi va davom etadi. Kompyuter yoqilganda xizmat
+tarmoq tayyor bo'lmasdan turib boshlanib, 8081-portni egallay olmay to'xtab
+qolishi mumkin (`Could not bind socket`) — shu holat o'zi tiklanadi.
+
+Har 15 daqiqada tinimsiz urinmasligi uchun qayta yoqishlar orasida 30 daqiqa
+kutiladi (`restart.stamp` fayli shuni belgilaydi). Vazifa SYSTEM nomidan
+ishlagani uchun huquqi yetadi; qo'lda oddiy oynadan ishga tushirilsa
+"administrator kerak" deb yozadi va qo'lda nima qilishni aytadi.
+
+Xizmat kompyuter yoqilganda kech boshlanishi uchun bir marta shuni qo'ying
+(administrator oynasida):
+
+```
+sc.exe config ServiceReport start= delayed-auto
+```
+
 Hujjat bo'lmaganda F-Apteka XML emas, `<HTML><BODY><B>200 OK</B></BODY></HTML>`
 qaytaradi (39 bayt). Skript shuni matnidan tanib, ERP ga yubormaydi.
 
