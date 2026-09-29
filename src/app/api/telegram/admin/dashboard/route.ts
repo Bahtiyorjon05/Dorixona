@@ -355,7 +355,15 @@ async function getExpenses(period?: Date) {
     categories: byCat.map((row) => ({ category: row.category, amount: num(row._sum.amount) })),
     // Dorixonalar kesimi — MonthlyFinance dan (savdo/foyda/astatka/pereotsenka)
     monthlyUnits: finRows.map((f) => {
-      const spent = unitSpent.get(f.unit) ?? 0;
+      // Biriktirilmagan harajat dorixonalarga savdo ulushiga qarab bo'linadi
+      // (web bilan bir xil) — Umumiy = Yunusobod + Shayxontohur
+      const sharedTotal = unitSpent.get("Umumiy") ?? 0;
+      const allTurnover = finRows.filter((r) => r.unit !== "Umumiy").reduce((s, r) => s + num(r.turnover), 0);
+      const shared =
+        f.unit === "Umumiy"
+          ? allTurnover > 0 ? 0 : sharedTotal
+          : allTurnover > 0 ? (sharedTotal * num(f.turnover)) / allTurnover : 0;
+      const spent = (f.unit === "Umumiy" ? 0 : (unitSpent.get(f.unit) ?? 0)) + shared;
       const profit = num(f.profit);
       return {
         unit: f.unit,

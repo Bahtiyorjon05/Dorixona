@@ -12,6 +12,8 @@ export type MonthlyUnit = {
   turnover: number;
   profit: number;
   expenses: number;
+  /** Biriktirilmagan umumiy harajatdan savdo ulushiga qarab tushgan qism */
+  sharedExpenses?: number;
   netProfit: number;
   stockValue: number;
   revaluation: number;
@@ -170,6 +172,11 @@ export function MonthlyFinancePanel({
                   {u.turnover > 0 && <Row label="Savdo" value={formatSom(u.turnover)} />}
                   {u.profit > 0 && <Row label="Foyda" value={formatSom(u.profit)} />}
                   <Row label="Harajat" value={`−${formatSom(u.expenses)}`} />
+                  {!isTotal && (u.sharedExpenses ?? 0) > 0 && (
+                    <div className="-mt-1 text-right text-[11px] text-muted">
+                      shundan umumiy ulush: {formatSom(u.sharedExpenses ?? 0)}
+                    </div>
+                  )}
                   {u.profit > 0 && (
                     <div className="flex justify-between border-t border-surface pt-1.5 font-medium">
                       <dt>Sof foyda</dt>
