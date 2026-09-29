@@ -265,6 +265,25 @@ export async function salesMessage() {
   return parts.filter(Boolean).join("\n");
 }
 
+/** Shuncha kun ichida sotilgan bo'lsa — tugagani ogohlantirishga kiradi */
+const SOLD_OUT_RECENT_DAYS = 60;
+
+/**
+ * Tugagan tovar: qoldig'i 0 va oxirgi 60 kunda sotilgan.
+ *
+ * Faqat "qoldiq 0" deb sanalsa 1 200 dan ortiq chiqardi — ularning ko'pi
+ * bir vaqtlar kelgan-u, oylab sotilmagan, qayta buyurtma ham qilinmaydigan
+ * dorilar. Yaqinda sotilgani tugasa esa mijoz so'raydi — buyurtma kerak.
+ */
+function soldOutWhere() {
+  const since = new Date(Date.now() - SOLD_OUT_RECENT_DAYS * 864e5);
+  return {
+    isActive: true,
+    stock: 0,
+    saleItems: { some: { sale: { createdAt: { gte: since } } } },
+  };
+}
+
 /** /ombor — kam qoldiq va muddati yaqin dorilar */
 export async function stockMessage() {
   const soon = new Date(Date.now() + 60 * 864e5);
@@ -273,7 +292,7 @@ export async function stockMessage() {
     db.$queryRaw<{ value: number }[]>`
       SELECT COALESCE(SUM(stock * "costPrice"), 0)::float8 AS value FROM "Product" WHERE "isActive" = true`,
     db.product.findMany({
-      where: { isActive: true, stock: 0 },
+      where: soldOutWhere(),
       orderBy: { stock: "asc" },
       take: 10,
       select: { name: true, stock: true, minStock: true },
@@ -375,7 +394,7 @@ export async function digestMessage() {
     // Tugagan tovar. Avval "stock <= 5" sanalardi, lekin dorixonada deyarli
     // hamma dorining qoldig'i kichik - 5600 tadan 4438 tasi chiqib, raqam
     // ma'nosini yo'qotgandi. Tugagani esa aniq harakat talab qiladi.
-    db.product.count({ where: { isActive: true, stock: 0 } }),
+    db.product.count({ where: soldOutWhere() }),
   ]);
 
   const red = debts.overdue.length + debts.urgent.length;
@@ -405,9 +424,9 @@ export async function stockAlert() {
   // qoldig'i tabiiy ravishda kichik bo'ladi. Tugagani esa aniq harakat
   // talab qiladi: buyurtma berish kerak.
   const [lowCount, low, expiringCount, expiring] = await Promise.all([
-    db.product.count({ where: { isActive: true, stock: 0 } }),
+    db.product.count({ where: soldOutWhere() }),
     db.product.findMany({
-      where: { isActive: true, stock: 0 },
+      where: soldOutWhere(),
       orderBy: { name: "asc" },
       take: 15,
       select: { name: true },
