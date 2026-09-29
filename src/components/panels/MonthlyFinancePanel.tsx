@@ -97,6 +97,11 @@ export function MonthlyFinancePanel({
   };
 
   const showAggregate = allUnits.includes("Umumiy") && allUnits.length > 1;
+  // Hech qaysi dorixonaga biriktirilmagan harajat — faqat Umumiy'dan ayiriladi
+  const unassigned = Math.max(
+    0,
+    totalExpenses - rows.filter((r) => r.unit !== "Umumiy").reduce((sum, r) => sum + r.expenses, 0),
+  );
   const units: MonthlyUnit[] = allUnits.map((unit) =>
     unit === "Umumiy" && showAggregate ? aggregate() : stored(unit),
   );
@@ -170,6 +175,11 @@ export function MonthlyFinancePanel({
                   {u.turnover > 0 && <Row label="Savdo" value={formatSom(u.turnover)} />}
                   {u.profit > 0 && <Row label="Foyda" value={formatSom(u.profit)} />}
                   <Row label="Harajat" value={`−${formatSom(u.expenses)}`} />
+                  {isTotal && unassigned > 0 && (
+                    <div className="-mt-1 text-right text-[11px] text-muted">
+                      shundan filialga biriktirilmagan: {formatSom(unassigned)}
+                    </div>
+                  )}
                   {u.profit > 0 && (
                     <div className="flex justify-between border-t border-surface pt-1.5 font-medium">
                       <dt>Sof foyda</dt>

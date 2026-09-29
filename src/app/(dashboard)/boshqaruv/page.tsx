@@ -23,8 +23,8 @@ function money(amount: number, currency: "UZS" | "USD") {
 export default async function BoshqaruvPage() {
   const [d, debts] = await Promise.all([getDashboardData(), getDebtsData()]);
   const margin = d.monthTurnover > 0 ? (d.monthProfit / d.monthTurnover) * 100 : 0;
-  // Sof foyda: yalpi foydadan oylik xarajat ayirilgan. Filial tanlangan
-  // bo'lsa umumiy xarajatning savdo ulushiga to'g'ri kelgan qismi ham kiradi.
+  // Sof foyda: foydadan oylik xarajat ayirilgan. Filial tanlanganda faqat
+  // o'z harajati; biriktirilmagan harajat faqat Umumiy'dan ayiriladi.
   const netProfit = d.monthProfit - d.monthExpense;
 
   return (
