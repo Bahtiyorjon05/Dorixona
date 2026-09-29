@@ -10,7 +10,7 @@ import { lockApp } from "@/lib/actions/auth";
 export function AppLock({ loginAt }: { loginAt: number | null }) {
   useIdleLock({
     storageKey: "dorixonaLastActivity",
-    notBefore: loginAt ?? 0,
+    notBefore: loginAt,
     onLock: () => void lockApp(),
   });
   return null;

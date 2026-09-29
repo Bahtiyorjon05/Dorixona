@@ -38,7 +38,10 @@ export function markActivity(storageKey: string) {
  * orada ham harakat bo'lmasa, onLock chaqiriladi. Oxirgi harakat vaqti
  * localStorage'da turadi: boshqa oynadagi ish ham hisoblanadi, ilova
  * yopilib uzoq vaqtdan keyin ochilsa esa darhol parol so'raladi.
- * notBefore — kirish vaqti: undan eski harakat hisobga olinmaydi.
+ * notBefore — kirish vaqti: undan eski harakat hisobga olinmaydi. null —
+ * kirish vaqti noma'lum (login'dan keyingi birinchi chizishda server yangi
+ * cookie'ni hali ko'rmaydi): saqlangan eski vaqtga ishonilmaydi, hisob
+ * hozirdan boshlanadi. Aks holda login qilgan zahoti yana chiqarib yuborardi.
  */
 export function useIdleLock({
   storageKey,
@@ -48,7 +51,7 @@ export function useIdleLock({
 }: {
   storageKey: string;
   enabled?: boolean;
-  notBefore?: number;
+  notBefore?: number | null;
   onLock: () => void;
 }) {
   const onLockRef = useRef(onLock);
@@ -57,7 +60,7 @@ export function useIdleLock({
   useEffect(() => {
     if (!enabled) return;
 
-    let last = Math.max(readStored(storageKey), notBefore) || Date.now();
+    let last = notBefore == null ? Date.now() : Math.max(readStored(storageKey), notBefore) || Date.now();
     let lastWrite = 0;
     let locked = false;
 

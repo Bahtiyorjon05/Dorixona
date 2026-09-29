@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
+import { markActivity } from "@/lib/idle-lock";
 
 /**
  * Kirish tugmasi: Enter bilan ham ishlaydi va kutish paytida ko'rinadi.
@@ -21,8 +22,14 @@ export function LoginSubmit() {
       event.preventDefault();
       form.requestSubmit(ref.current);
     };
+    // Yangi kirish — harakatsizlik qulfi eski saqlangan vaqtdan hisoblamasin
+    const onSubmit = () => markActivity("dorixonaLastActivity");
     form.addEventListener("keydown", onKeyDown);
-    return () => form.removeEventListener("keydown", onKeyDown);
+    form.addEventListener("submit", onSubmit);
+    return () => {
+      form.removeEventListener("keydown", onKeyDown);
+      form.removeEventListener("submit", onSubmit);
+    };
   }, []);
 
   return (
