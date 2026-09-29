@@ -480,27 +480,6 @@ export async function getExpensesData(period?: Date) {
     .sort((a, b) => b.amount - a.amount);
   const unitSpent = new Map(byUnit.map((u) => [u.unit, u.amount]));
 
-  // Hech qaysi dorixonaga biriktirilmagan harajat (svet, soliq, kamera...)
-  // dorixonalarga savdo ulushiga qarab bo'linadi — bosh sahifa bilan bir xil.
-  // Shunda Umumiy sof foyda = Yunusobod + Shayxontohur bo'ladi.
-  const [sharedAgg, allFin] = await Promise.all([
-    db.expense.aggregate({
-      _sum: { amount: true },
-      where: { branchId, spentAt: { gte: monthStart, lt: nextMonth }, unit: null, category: { not: "GOODS" } },
-    }),
-    db.monthlyFinance.findMany({ where: { branchId, periodMonth: utcMonthStart(monthStart) } }),
-  ]);
-  await overlayRetail(allFin);
-  const sharedTotal = num(sharedAgg._sum.amount);
-  const allTurnover = allFin.filter((f) => f.unit !== "Umumiy").reduce((sum, f) => sum + num(f.turnover), 0);
-  const sharedFor = (unit: string, turnover: number) =>
-    unit === "Umumiy" ? (allTurnover > 0 ? 0 : sharedTotal) : allTurnover > 0 ? (sharedTotal * turnover) / allTurnover : 0;
-  // Filial tanlangan bo'lsa jami harajatga uning umumiy ulushi ham qo'shiladi
-  const selectedShare =
-    filial === "Umumiy"
-      ? 0
-      : sharedFor(filial, num(allFin.find((f) => f.unit === filial)?.turnover ?? 0));
-
   // Harajat sanalari + moliyaviy xulosa oylari birlashtiriladi, yangisi birinchi
   const monthKeys = new Set<string>([
     ...allDates.map((d) => `${d.spentAt.getFullYear()}-${d.spentAt.getMonth()}`),
@@ -550,8 +529,7 @@ export async function getExpensesData(period?: Date) {
       isRecurring: e.isRecurring,
       unit: e.unit,
     })),
-    total: num(totalAgg._sum.amount) + selectedShare,
-    sharedShare: selectedShare,
+    total: num(totalAgg._sum.amount),
     rent: catSum("RENT") + catSum("UTILITIES"),
     salary: catSum("SALARY"),
     goods: catSum("GOODS"),
@@ -563,18 +541,13 @@ export async function getExpensesData(period?: Date) {
       .sort((a, b) => b.amount - a.amount),
     byUnit,
     monthlyUnits: finRows.map((f) => {
-      const shared = sharedFor(f.unit, num(f.turnover));
-      // "Umumiy" qatorining o'z harajati — taqsimlangan umumiy harajat, u
-      // dorixonalarga bo'lingan (savdo bo'lmasa o'zida qoladi)
-      const own = f.unit === "Umumiy" ? 0 : (unitSpent.get(f.unit) ?? 0);
-      const spent = own + shared;
+      const spent = unitSpent.get(f.unit) ?? 0;
       const profit = num(f.profit);
       return {
         unit: f.unit,
         turnover: num(f.turnover),
         profit,
         expenses: spent,
-        sharedExpenses: f.unit === "Umumiy" ? 0 : shared,
         netProfit: profit - spent,
         stockValue: num(f.stockValue),
         revaluation: num(f.revaluation),
