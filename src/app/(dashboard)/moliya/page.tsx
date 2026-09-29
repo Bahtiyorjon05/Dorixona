@@ -32,12 +32,36 @@ export default async function MoliyaPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const selected = parseMonth((await searchParams).oy);
-  const [d, ex, filial, debts] = await Promise.all([
+  const results = await Promise.allSettled([
     getFinanceData(selected),
     getExpensesData(selected),
     currentFilial(),
     getDebtsData(),
   ]);
+  // Bitta so'rov yiqilsa butun sahifa (va login'dan keyingi yo'naltirish)
+  // "Application error" bo'lib qolmasin — qaysi qism va nega yiqilgani chiqadi
+  const failed = results
+    .map((r, i) => ({ r, name: ["Moliya", "Harajatlar", "Filial", "Qarzlar"][i] }))
+    .filter((x): x is { r: PromiseRejectedResult; name: string } => x.r.status === "rejected");
+  if (failed.length) {
+    for (const { name, r } of failed) console.error(`Moliya sahifasi — ${name}`, r.reason);
+    return (
+      <div className="card p-4 text-sm">
+        <b className="text-danger">Moliya yuklanmadi.</b>
+        {failed.map(({ name, r }) => (
+          <pre key={name} className="mt-2 whitespace-pre-wrap text-xs text-muted">
+            {name}: {r.reason instanceof Error ? `${r.reason.name}: ${r.reason.message}` : String(r.reason)}
+          </pre>
+        ))}
+      </div>
+    );
+  }
+  const [d, ex, filial, debts] = results.map((r) => (r as PromiseFulfilledResult<unknown>).value) as [
+    Awaited<ReturnType<typeof getFinanceData>>,
+    Awaited<ReturnType<typeof getExpensesData>>,
+    Awaited<ReturnType<typeof currentFilial>>,
+    Awaited<ReturnType<typeof getDebtsData>>,
+  ];
 
   const period = `${ex.period.getFullYear()}-yil ${monthName(ex.period.getMonth() + 1)}`;
   // Tovar xaridisiz harajat (ijara, oylik, soliq, pereotsenka...) ayiriladi
