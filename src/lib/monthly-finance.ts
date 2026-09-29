@@ -32,25 +32,65 @@ export type RetailTotals = { turnover: number; cost: number; profit: number; kno
  * jamlanmadan (DailySales). F-Apteka'dagi "Продажи за период" bilan bir xil:
  *   savdo  = Сумма (qaytarish ayirilgan)
  *   foyda  = (Сумма − Сумма со скидкой) − (НДС продажи − НДС прихода)
- * QQS farqi 12% bilan hisoblanadi; F-Apteka har tovar QQSini alohida oladi,
- * shuning uchun farq ~0,02% (sentabr, Shayxontohur: 12 785 so'm / 68,5 mln).
+ * Sotuv QQSi 12%, xarid QQSi har tovarning kirimdagi stavkasidan (QQSsiz
+ * yetkazib beruvchilar bor: sentabr, Yunusobod — 12% deb olinsa foyda
+ * ~511 ming ortiq chiqardi).
  *
  * `Sale` cheklaridan hisoblash savdoni oshirib ko'rsatardi (sentabr,
  * Shayxontohur: 741,4 mln o'rniga 718,9 mln bo'lishi kerak edi).
  *
  * unit = null — hamma dorixona. `day` UTC yarim tunda saqlanadi.
  */
+/** Hamma xarid QQS bilan (12%) bo'lsa, tan narxdagi QQS ulushi */
+const DEFAULT_COST_VAT_SHARE = VAT_RATE / (1 + VAT_RATE);
+
+/**
+ * Foyda F-Apteka'dagi kabi: (Сумма − Сумма со скидкой) − (НДС продажи − НДС прихода).
+ * Sotuv QQSi hamma tovarda 12%; xarid QQSi esa yetkazib beruvchiga bog'liq
+ * (QQSsiz ishlaydiganlari bor) — shuning uchun tan narxdagi ulushi alohida.
+ */
+function profitWithoutVat(turnover: number, cost: number, costVatShare: number) {
+  const saleVat = (turnover * VAT_RATE) / (1 + VAT_RATE);
+  return turnover - cost - (saleVat - cost * costVatShare);
+}
+
+/**
+ * Sotilgan tovarlar tan narxidagi xarid QQSi ulushi — har tovarning kirimdagi
+ * stavkasidan (Product."purchaseVatRate", kirim hisobotidan SN/SP), tan narx
+ * bo'yicha o'rtacha. Stavkasi noma'lum tovar 12% deb olinadi. Ustun yoki
+ * ma'lumot bo'lmasa — hammasi 12%.
+ */
+async function purchaseVatShare(from: Date, to: Date, unit: string | null) {
+  try {
+    const [row] = await db.$queryRaw<{ share: number | null }[]>`
+      SELECT (SUM(si."costPrice" * si.quantity *
+                  COALESCE(p."purchaseVatRate", ${VAT_RATE}) / (1 + COALESCE(p."purchaseVatRate", ${VAT_RATE})))
+              / NULLIF(SUM(si."costPrice" * si.quantity), 0))::float8 AS share
+      FROM "SaleItem" si
+      JOIN "Sale" s ON s.id = si."saleId"
+      JOIN "Product" p ON p.id = si."productId"
+      WHERE s."createdAt" >= ${from} AND s."createdAt" < ${to}
+        AND (${unit}::text IS NULL OR s."unit" = ${unit})`;
+    const share = Number(row?.share);
+    return Number.isFinite(share) && share >= 0 ? share : DEFAULT_COST_VAT_SHARE;
+  } catch {
+    return DEFAULT_COST_VAT_SHARE;
+  }
+}
+
 export async function retailTotals(from: Date, to: Date, unit: string | null): Promise<RetailTotals> {
   try {
-    const agg = await db.dailySales.aggregate({
-      _sum: { amount: true, cost: true },
-      _count: true,
-      where: { day: { gte: from, lt: to }, docType: { in: RETAIL_DOC_TYPES }, ...(unit ? { unit } : {}) },
-    });
+    const [agg, costVatShare] = await Promise.all([
+      db.dailySales.aggregate({
+        _sum: { amount: true, cost: true },
+        _count: true,
+        where: { day: { gte: from, lt: to }, docType: { in: RETAIL_DOC_TYPES }, ...(unit ? { unit } : {}) },
+      }),
+      purchaseVatShare(from, to, unit),
+    ]);
     const turnover = Number(agg._sum.amount ?? 0);
     const cost = Number(agg._sum.cost ?? 0);
-    const profit = (turnover - cost) / (1 + VAT_RATE);
-    return { turnover, cost, profit, known: agg._count > 0 };
+    return { turnover, cost, profit: profitWithoutVat(turnover, cost, costVatShare), known: agg._count > 0 };
   } catch {
     // Jadval hali yaratilmagan
     return { turnover: 0, cost: 0, profit: 0, known: false };
@@ -63,15 +103,19 @@ export async function retailTotals(from: Date, to: Date, unit: string | null): P
  */
 export async function retailDaily(from: Date, to: Date, unit: string | null) {
   try {
-    const rows = await db.dailySales.groupBy({
-      by: ["day", "unit"],
-      _sum: { amount: true, cost: true },
-      where: { day: { gte: from, lt: to }, docType: { in: RETAIL_DOC_TYPES }, ...(unit ? { unit } : {}) },
-    });
+    const [rows, costVatShare] = await Promise.all([
+      db.dailySales.groupBy({
+        by: ["day", "unit"],
+        _sum: { amount: true, cost: true },
+        where: { day: { gte: from, lt: to }, docType: { in: RETAIL_DOC_TYPES }, ...(unit ? { unit } : {}) },
+      }),
+      // Butun oraliq uchun bitta ulush — kunma-kun hisoblash shart emas
+      purchaseVatShare(from, to, unit),
+    ]);
     return rows.map((row) => {
       const turnover = Number(row._sum.amount ?? 0);
       const cost = Number(row._sum.cost ?? 0);
-      return { day: row.day, unit: row.unit, turnover, profit: (turnover - cost) / (1 + VAT_RATE) };
+      return { day: row.day, unit: row.unit, turnover, profit: profitWithoutVat(turnover, cost, costVatShare) };
     });
   } catch {
     return [];

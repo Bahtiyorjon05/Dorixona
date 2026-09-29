@@ -274,6 +274,7 @@ async function syncMovementReport(
 
   const data: Prisma.StockMovementCreateManyInput[] = [];
   const costUpdates = new Map<string, number>();
+  const vatRates = new Map<string, number>();
   for (const row of rows) {
     const faptekaId = rowId(row, "G");
     const quantity = stockCount(row.Q);
@@ -282,6 +283,8 @@ async function syncMovementReport(
 
     const cost = costPerUnit(row);
     if (input.movementType === "IN" && cost > 0) costUpdates.set(product.id, cost);
+    const vat = input.movementType === "IN" ? purchaseVatRate(row) : null;
+    if (vat !== null) vatRates.set(product.id, vat);
 
     const docId = row.ID || row.N || `${row.D ?? input.dateFrom}-${faptekaId}`;
     data.push({
@@ -312,6 +315,7 @@ async function syncMovementReport(
         .map(([id, costPrice]) => db.product.update({ where: { id }, data: { costPrice } })),
     );
   }
+  await savePurchaseVatRates(vatRates);
 }
 
 /**
@@ -463,6 +467,37 @@ function costPerUnit(row: FaptekaRow) {
   const withVat = numberValue(row.SP) + numberValue(row.SN);
   if (quantity > 0 && withVat > 0) return withVat / quantity;
   return numberValue(row.P);
+}
+
+/**
+ * Kirimdagi QQS stavkasi: SN / SP (0,12 yoki 0 — QQSsiz yetkazib beruvchi).
+ * Foyda F-Apteka'dagi kabi QQSsiz hisoblanishi uchun kerak (monthly-finance).
+ */
+function purchaseVatRate(row: FaptekaRow) {
+  const withoutVat = numberValue(row.SP);
+  if (withoutVat <= 0) return null;
+  const rate = numberValue(row.SN) / withoutVat;
+  return Number.isFinite(rate) && rate >= 0 && rate < 0.3 ? Math.round(rate * 10_000) / 10_000 : null;
+}
+
+/**
+ * Tovarlarning xarid QQS stavkasini yozadi. Ustun Prisma sxemasida yo'q —
+ * SQL (prisma/manual/xarid-qqs.sql) ishga tushirilmagan bo'lsa, tovar
+ * so'rovlari yiqilmasin. Ustun yo'q bo'lsa jimgina o'tkazib yuboriladi.
+ */
+async function savePurchaseVatRates(rates: Map<string, number>) {
+  const entries = [...rates.entries()];
+  try {
+    for (let index = 0; index < entries.length; index += 500) {
+      const chunk = entries.slice(index, index + 500);
+      await db.$executeRaw`
+        UPDATE "Product" p SET "purchaseVatRate" = v.rate
+        FROM (VALUES ${Prisma.join(chunk.map(([id, rate]) => Prisma.sql`(${id}, ${rate}::numeric)`))}) AS v(id, rate)
+        WHERE p.id = v.id`;
+    }
+  } catch {
+    // Ustun hali yaratilmagan
+  }
 }
 
 function saleLineTotal(row: Record<string, string>, quantity: number, fallbackPrice: number) {
@@ -1107,13 +1142,17 @@ export async function syncFaptekaCostPrices(rows: FaptekaRow[]) {
 
   const products = await loadFaptekaProducts(branch.id, rows);
   const costs = new Map<string, number>();
+  const vatRates = new Map<string, number>();
   for (const row of rows) {
     const faptekaId = rowId(row, "G");
     const product = faptekaId ? products.get(faptekaSku(faptekaId)) : undefined;
     const cost = costPerUnit(row);
     // Bir tovar bir necha marta kelgan bo'lsa, oxirgi narx qoladi
     if (product && cost > 0) costs.set(product.id, cost);
+    const vat = purchaseVatRate(row);
+    if (product && vat !== null) vatRates.set(product.id, vat);
   }
+  await savePurchaseVatRates(vatRates);
 
   const updates = [...costs.entries()];
   for (let index = 0; index < updates.length; index += 25) {
