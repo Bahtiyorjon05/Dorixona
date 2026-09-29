@@ -90,7 +90,6 @@ export async function carryRecurringExpenses(now = new Date()): Promise<Recurrin
         where: {
           isRecurring: true,
           category: { not: "SALARY" },
-          title: { not: REVALUATION_EXPENSE_TITLE },
           spentAt: { gte: prevStart, lt: monthStart },
         },
         orderBy: { spentAt: "desc" },
@@ -104,6 +103,12 @@ export async function carryRecurringExpenses(now = new Date()): Promise<Recurrin
         orderBy: { fullName: "asc" },
       }),
     ]);
+
+    // Pereotsenka har oy boshqa summa — ko'chirilmaydi. Nomi lotin yoki
+    // kirill, katta-kichik harf bilan yozilishi mumkin ("ПЕРЕОЦЕНКА")
+    const isRevaluation = (title: string) =>
+      title.trim().toLowerCase() === REVALUATION_EXPENSE_TITLE.toLowerCase() || /переоцен|pereots/i.test(title);
+    previous.splice(0, previous.length, ...previous.filter((e) => !isRevaluation(e.title)));
 
     const taken = new Set(current.map((e) => sameKey(e.title, e.unit, e.branchId)));
     // 5-sana, kun o'rtasida: UTC ham, Toshkent ham shu kunga tushadi
