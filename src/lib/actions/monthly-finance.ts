@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { isFilial } from "@/lib/filial";
-import { recomputeMonthlyFinance } from "@/lib/monthly-finance";
 import { syncRevaluationExpense } from "@/lib/revaluation";
 import { activeBranch, fail, requireUser, type ActionResult } from "./_shared";
 
@@ -106,48 +105,5 @@ export async function deleteMonthlyFinance(input: {
     return { ok: true };
   } catch (e) {
     return fail(e);
-  }
-}
-
-export type AutofillResult =
-  | { ok: true; turnover: number; profit: number; salesCount: number; skipped: boolean }
-  | { ok: false; error: string };
-
-/**
- * Savdo va foydani bazadagi haqiqiy savdodan (POS + F-Apteka sync) hisoblab,
- * MonthlyFinance'ga yozadi.
- *
- * Shu oyda chek topilmasa hech narsa yozilmaydi — qo'lda kiritilgan raqamlar
- * nol bilan almashib ketmasligi uchun. F-Apteka sync hozircha `Sale.unit` ni
- * to'ldirmaydi, shuning uchun natija ko'pincha "savdo topilmadi" bo'ladi.
- *
- * Astatka va pereotsenkaga tegilmaydi: `Product` da dorixona ajratmasi yo'q,
- * qoldiq esa tarixsiz.
- */
-export async function autofillMonthlyFinance(input: {
-  unit: string;
-  year: number;
-  month: number;
-}): Promise<AutofillResult> {
-  try {
-    await requireUser();
-    const unit = assertUnit(input.unit);
-    const branch = await activeBranch();
-    const result = await recomputeMonthlyFinance({
-      branchId: branch.id,
-      unit,
-      year: input.year,
-      month: input.month,
-    });
-    if (!result.skipped) revalidateAll();
-    return {
-      ok: true,
-      turnover: result.turnover,
-      profit: result.profit,
-      salesCount: result.salesCount,
-      skipped: result.skipped,
-    };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Xatolik yuz berdi" };
   }
 }

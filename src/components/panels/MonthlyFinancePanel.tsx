@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatSom } from "@/lib/format";
 import { Card } from "@/components/ui";
 import { Field, FormError, Input, Modal, SubmitButton } from "@/components/Modal";
-import { autofillMonthlyFinance, saveMonthlyFinance } from "@/lib/actions/monthly-finance";
+import { saveMonthlyFinance } from "@/lib/actions/monthly-finance";
 
 export type MonthlyUnit = {
   unit: string;
@@ -68,7 +68,6 @@ export function MonthlyFinancePanel({
   const router = useRouter();
   const [editing, setEditing] = useState<MonthlyUnit | null>(null);
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
   const [pending, start] = useTransition();
 
   // Bazadagi yozuvlar. Yozuvi yo'q dorixona ham kartochka bo'lib ko'rinishi
@@ -130,23 +129,6 @@ export function MonthlyFinancePanel({
     });
   }
 
-  function autofill(unit: string) {
-    setInfo("");
-    start(async () => {
-      const res = await autofillMonthlyFinance({ unit, year, month });
-      if (!res.ok) {
-        setInfo(`${unit}: ${res.error}`);
-        return;
-      }
-      setInfo(
-        res.skipped
-          ? `${unit}: bu oy uchun chek topilmadi — F-Apteka sync hali bu dorixonaga ulanmagan bo'lishi mumkin. Qo'lda kiritilgan raqamlarga tegilmadi.`
-          : `${unit}: ${res.salesCount} ta chek — savdo ${formatSom(res.turnover)}, foyda ${formatSom(res.profit)}`,
-      );
-      router.refresh();
-    });
-  }
-
   return (
     <Card title={`${label} — dorixonalar kesimi`} icon="🏪" className="mb-5">
       <div className="grid gap-4 lg:grid-cols-3">
@@ -162,16 +144,6 @@ export function MonthlyFinancePanel({
                   {isTotal && <span className="ml-1.5 text-xs text-muted">jami</span>}
                 </span>
                 <div className="flex items-center gap-1">
-                  {!isTotal && (
-                    <button
-                      onClick={() => autofill(u.unit)}
-                      disabled={pending}
-                      title="Savdo va foydani bazadagi cheklardan hisoblab qo'yish"
-                      className="rounded-lg border border-edge px-2 py-1 text-xs hover:bg-surface disabled:opacity-50"
-                    >
-                      ⟳
-                    </button>
-                  )}
                   <button
                     // Jami kartochka bo'lsa ham tahrirlashda taqsimlanmagan
                     // qator ochiladi — yig'indi bazaga yozilib qolmasligi uchun
@@ -225,7 +197,6 @@ export function MonthlyFinancePanel({
         </div>
       )}
 
-      {info && <p className="mt-3 rounded-lg bg-surface px-3 py-2 text-xs">{info}</p>}
 
       <Modal
         open={Boolean(editing)}
