@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { isFilial } from "@/lib/filial";
-import { syncRevaluationExpense } from "@/lib/revaluation";
+import { clearRevaluationExpense } from "@/lib/revaluation";
 import { activeBranch, fail, requireUser, type ActionResult } from "./_shared";
 
 /** Bo'sh satr -> null, aks holda son. Mln emas, so'mda saqlanadi. */
@@ -68,13 +68,8 @@ export async function saveMonthlyFinance(input: z.input<typeof schema>): Promise
       create: { unit, periodMonth, branchId: branch.id, ...fields },
       update: fields,
     });
-    await syncRevaluationExpense({
-      branchId: branch.id,
-      unit,
-      year: data.year,
-      month: data.month,
-      amount: fields.revaluation,
-    });
+    // Pereotsenka harajat emas — avval yozilgan harajati bo'lsa tozalanadi
+    await clearRevaluationExpense({ unit, year: data.year, month: data.month });
 
     revalidateAll();
     return { ok: true };
@@ -91,16 +86,10 @@ export async function deleteMonthlyFinance(input: {
   try {
     await requireUser();
     const periodMonth = new Date(Date.UTC(input.year, input.month - 1, 1));
-    const removed = await db.monthlyFinance.delete({
+    await db.monthlyFinance.delete({
       where: { unit_periodMonth: { unit: input.unit, periodMonth } },
     });
-    await syncRevaluationExpense({
-      branchId: removed.branchId,
-      unit: input.unit,
-      year: input.year,
-      month: input.month,
-      amount: 0,
-    });
+    await clearRevaluationExpense({ unit: input.unit, year: input.year, month: input.month });
     revalidateAll();
     return { ok: true };
   } catch (e) {

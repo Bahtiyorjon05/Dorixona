@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { otdelUnitMap } from "@/lib/integrations/fapteka/otdel";
 
 /**
- * Pereotsenka (qayta baholash) — har oy har bir dorixonaga doimiy harajat.
+ * Pereotsenka (qayta baholash). Harajat emas: summasi oylik kartadagi
+ * "Qayta baholash" qatorida turadi (qo'lda kiritiladi).
  *
  * F-Apteka API'si pereotsenkani bermaydi, shuning uchun uni o'zimiz
  * hisoblaymiz: SITE.exe har 5 daqiqada har bir dorixonadagi har bir
@@ -26,45 +27,25 @@ function tashkentMonth(date: Date) {
 }
 
 /**
- * Pereotsenka o'sha dorixonaning shu oydagi doimiy harajati bo'lib yoziladi.
- * Summa musbat (zarar) keladi; nol bo'lsa harajat o'chiriladi.
+ * Pereotsenka harajat EMAS — u faqat oylik kartadagi "Qayta baholash"
+ * qatorida (MonthlyFinance.revaluation) ko'rsatiladi va sof foydadan
+ * ayirilmaydi. Avval harajat sifatida ham yozilardi; shu oy uchun o'sha
+ * eski yozuvlar (lotin yoki kirill nomda) bo'lsa, o'chiriladi.
  */
-export async function syncRevaluationExpense(input: {
-  branchId: string;
-  unit: string;
-  year: number;
-  month: number;
-  amount: number;
-}) {
-  const unit = input.unit === "Umumiy" ? null : input.unit;
-  // Oy o'rtasi: server (UTC) va Toshkent vaqti farqi oyni siljitmasin
-  const spentAt = new Date(Date.UTC(input.year, input.month - 1, 15));
-  const existing = await db.expense.findMany({
+export async function clearRevaluationExpense(input: { unit: string; year: number; month: number }) {
+  await db.expense.deleteMany({
     where: {
-      title: REVALUATION_EXPENSE_TITLE,
-      unit,
+      unit: input.unit === "Umumiy" ? null : input.unit,
+      OR: [
+        { title: { equals: REVALUATION_EXPENSE_TITLE, mode: "insensitive" } },
+        { title: { equals: "ПЕРЕОЦЕНКА", mode: "insensitive" } },
+      ],
       spentAt: {
         gte: new Date(Date.UTC(input.year, input.month - 1, 1)),
         lt: new Date(Date.UTC(input.year, input.month, 1)),
       },
     },
-    select: { id: true },
   });
-
-  if (input.amount <= 0) {
-    if (existing.length) await db.expense.deleteMany({ where: { id: { in: existing.map((e) => e.id) } } });
-    return;
-  }
-
-  const [keep, ...extra] = existing;
-  if (extra.length) await db.expense.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
-  const data = { amount: input.amount, spentAt, isRecurring: true, category: "OTHER" as const };
-  if (keep) await db.expense.update({ where: { id: keep.id }, data });
-  else {
-    await db.expense.create({
-      data: { ...data, title: REVALUATION_EXPENSE_TITLE, unit, branchId: input.branchId },
-    });
-  }
 }
 
 const num = (value: unknown) => {
