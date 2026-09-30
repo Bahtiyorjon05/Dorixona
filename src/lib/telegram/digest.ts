@@ -488,12 +488,38 @@ export async function stockRuleCounts() {
     db.product.count({ where: { isActive: true, stock: { lte: 3 } } }),
   ]);
 
+  // Tez sotiladiganlarni ajratish: oxirgi 30 kunda kamida shuncha dona
+  const fast = async (stock: number, minQty: number) => {
+    const rows = await db.$queryRaw<{ soni: number }[]>`
+      SELECT COUNT(*)::float8 AS soni FROM (
+        SELECT p.id
+        FROM "Product" p
+        JOIN "SaleItem" si ON si."productId" = p.id
+        JOIN "Sale" s ON s.id = si."saleId"
+        WHERE p."isActive" = true AND p.stock <= ${stock} AND s."createdAt" >= ${since(30)}
+        GROUP BY p.id
+        HAVING SUM(si.quantity) >= ${minQty}
+      ) x`;
+    return Math.round(Number(rows[0]?.soni ?? 0));
+  };
+
+  const [tez3_10, tez3_20, tez3_30, tez1_10] = await Promise.all([
+    fast(3, 10),
+    fast(3, 20),
+    fast(3, 30),
+    fast(1, 10),
+  ]);
+
   return {
     "qoldiq 0 + 30 kun": nol30,
     "qoldiq 0 + 60 kun": nol60,
     "qoldiq <=1 + 30 kun": kam1_30,
     "qoldiq <=3 + 30 kun": kam3_30,
     "qoldiq <=3 + 60 kun": kam3_60,
+    "qoldiq <=3 + oyiga 10+ dona": tez3_10,
+    "qoldiq <=3 + oyiga 20+ dona": tez3_20,
+    "qoldiq <=3 + oyiga 30+ dona": tez3_30,
+    "qoldiq <=1 + oyiga 10+ dona": tez1_10,
     "faqat qoldiq 0 (savdosiz)": faqatNol,
     "faqat qoldiq <=3 (savdosiz)": faqatKam3,
   };
