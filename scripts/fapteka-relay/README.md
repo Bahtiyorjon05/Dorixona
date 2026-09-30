@@ -42,6 +42,15 @@ to'xtaydi. Xato chiqsa, qaysi tomondan kelgani ko'rsatiladi:
 | `XATO ... ERP: ...` | ERP sayti (Vercel) qabul qilmadi |
 | `BOSH ...` | o'sha kuni hujjat bo'lmagan — normal holat |
 
+**Kirim hujjatlari bazadan.** 20-hisobot protsedurasida `SELECT TOP 1 *`
+turibdi — bir so'rovga bitta hujjat qaytaradi, qolgani yo'qoladi va firmaga
+qarz yarim ko'rinadi (tekshirilgan: 29.09.2026 da 3 ta hujjat bo'lgan, hisobot
+1 tasini bergan). Shuning uchun skript hujjatlarni F-Apteka bazasidan
+o'zi o'qiydi (`INCOME` jadvali) va `/api/integrations/fapteka/sql` ga yuboradi.
+
+Baza shu kompyuterda, `$SqlConn` dagi parol ham shu yerda qoladi — saytga
+faqat tayyor qatorlar ketadi. Faqat o'qiladi, hech narsa yozilmaydi.
+
 **O'zini tuzatish.** API javob bermasa skript hisobot xizmatini (`ServiceReport`)
 bir marta qayta yoqib ko'radi va davom etadi. Kompyuter yoqilganda xizmat
 tarmoq tayyor bo'lmasdan turib boshlanib, 8081-portni egallay olmay to'xtab

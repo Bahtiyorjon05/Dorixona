@@ -41,6 +41,12 @@ $PriceUrl = "https://dorixonaa.vercel.app/api/prices/refresh"
 # Qarz eslatmasi: muddati yaqin qarzlar Telegram'ga yuboriladi.
 # Server kuniga bir marta yuboradi, shuning uchun bu turtki xavfsiz.
 $DebtUrl = "https://dorixonaa.vercel.app/api/notifications/debts"
+# Kirim hujjatlari to'g'ridan-to'g'ri F-Apteka bazasidan olinadi.
+# Sabab: 20-hisobotda "SELECT TOP 1 *" turibdi - bir so'rovga bitta
+# hujjat qaytaradi, qolgani yo'qoladi va qarz yarim ko'rinadi.
+# Parol shu kompyuterda qoladi, saytga faqat tayyor qatorlar ketadi.
+$SqlUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/sql"
+$SqlConn = "Server=localhost;Database=NAPTSKLAD;User Id=<login>;Password=<parol>;TrustServerCertificate=True"
 # Kunlik xulosa (kechqurun) va ombor ogohlantirishi (ertalab). Qaysi
 # paytda yuborishni server o'zi hal qiladi, bu yerda faqat turtki beramiz.
 $NoticeUrls = [ordered]@{
@@ -135,7 +141,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v17 boshlandi (API javob bermasa xizmatni o'zi qayta yoqadi)"
+Write-Log "relay v18 boshlandi (kirim hujjatlari bazadan olinadi)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -262,6 +268,79 @@ for ($i = $Days - 1; $i -ge 0; $i--) {
       }
     }
   }
+}
+
+# ---- Kirim hujjatlari bazadan --------------------------------------------
+# 20-hisobotdagi TOP 1 ni aylanib o'tamiz: hujjatlarni to'g'ridan-to'g'ri
+# MSSQL dan o'qib, 20-hisobot maydonlari nomi bilan yuboramiz (N, O, D, SS).
+# Shunda ERP tomondagi mavjud kod o'zgarishsiz ishlayveradi.
+function Send-IncomeDocs([datetime]$From, [datetime]$To) {
+  $fromText = $From.ToString("yyyy-MM-dd")
+  $toText   = $To.ToString("yyyy-MM-dd")
+  $label    = "kirim hujjatlari $fromText..$toText"
+
+  try {
+    $conn = New-Object System.Data.SqlClient.SqlConnection($SqlConn)
+    $conn.Open()
+    $cmd = $conn.CreateCommand()
+    # STATE va DOCTYPE ning ma'nosi hali aniqlanmagan, shuning uchun
+    # filtrlanmaydi - ikkalasi ham yuboriladi va jurnalda ko'rinadi.
+    # Summasi nol hujjatdan qarz chiqmaydi, faqat o'sha chetlatiladi.
+    $cmd.CommandText = @"
+SELECT i.NUMBER AS N, i.ORG AS O,
+       CONVERT(varchar(10), i.DATA, 120) AS D,
+       i.SUMMAPOZ AS SS,
+       CONVERT(varchar(10), i.DATAOTS, 120) AS DOTS,
+       i.STATE AS ST, i.DOCTYPE AS DT, i.OTDEL AS OTD
+FROM INCOME i
+WHERE i.DATA >= @f AND i.DATA < DATEADD(day, 1, @t) AND i.SUMMAPOZ > 0
+ORDER BY i.DATA, i.NUMBER
+"@
+    [void]$cmd.Parameters.AddWithValue("@f", $From.Date)
+    [void]$cmd.Parameters.AddWithValue("@t", $To.Date)
+
+    $rows = @()
+    $reader = $cmd.ExecuteReader()
+    while ($reader.Read()) {
+      $rows += [ordered]@{
+        N = [string]$reader["N"]
+        O = [string]$reader["O"]
+        D = [string]$reader["D"]
+        SS = [string]$reader["SS"]
+        DOTS = [string]$reader["DOTS"]
+        ST = [string]$reader["ST"]
+        DT = [string]$reader["DT"]
+        OTD = [string]$reader["OTD"]
+      }
+    }
+    $reader.Close()
+    $conn.Close()
+  } catch {
+    Write-Log ("XATO  {0}  BAZA: {1}" -f $label, $_.Exception.Message)
+    return
+  }
+
+  if ($rows.Count -eq 0) {
+    Write-Log ("BOSH  {0}" -f $label)
+    return
+  }
+
+  try {
+    $body = @{ kind = "incomingDocs"; dateFrom = $fromText; dateTo = $toText; rows = @($rows) } |
+            ConvertTo-Json -Depth 4 -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+    $api = New-Object System.Net.WebClient
+    $api.Headers.Add("Authorization", "Bearer $Token")
+    $api.Headers.Add("Content-Type", "application/json; charset=utf-8")
+    $answer = [System.Text.Encoding]::UTF8.GetString($api.UploadData($SqlUrl, "POST", $bytes))
+    Write-Log ("OK    {0}  {1} hujjat  {2}" -f $label, $rows.Count, $answer)
+  } catch {
+    Write-Log ("XATO  {0}  ERP: {1}" -f $label, (Get-ErrorText $_))
+  }
+}
+
+if (-not $Only) {
+  Send-IncomeDocs (Get-Date).Date.AddDays(-($Days - 1)) (Get-Date).Date
 }
 
 # ---- Narx nazorati --------------------------------------------------------
