@@ -37,7 +37,16 @@ function toDateInput(value: string | Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: string[] }) {
+export function ExpensesPanel({
+  list,
+  units = [],
+  exportHref,
+}: {
+  list: Expense[];
+  units?: string[];
+  /** Shu oyning harajatlarini Excelga yuklash havolasi */
+  exportHref?: string;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("ALL");
@@ -164,6 +173,15 @@ export function ExpensesPanel({ list, units = [] }: { list: Expense[]; units?: s
               </option>
             ))}
           </Select>
+          {exportHref && (
+            <a
+              href={exportHref}
+              className="rounded-lg border border-edge px-3 py-1.5 text-xs hover:bg-surface"
+              title="Shu oyning harajatlari, dorixona bo'yicha jami bilan"
+            >
+              Excelga
+            </a>
+          )}
           <PrimaryButton onClick={openCreate}>+ Qo&apos;shish</PrimaryButton>
         </div>
       </div>

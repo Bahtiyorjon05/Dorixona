@@ -101,7 +101,7 @@ export default async function BoshqaruvPage() {
           icon="📦"
           label="Ombor qiymati"
           value={formatNumber(d.stockValue)}
-          sub={`${formatNumber(d.stockPositions)} pozitsiya`}
+          sub={`Tan narxida · ${formatNumber(d.stockPositions)} pozitsiya`}
         />
       </div>
 

@@ -23,7 +23,10 @@ export async function GET(
   }
 
   const format = req.nextUrl.searchParams.get("format") ?? "csv";
-  const data = await buildReport(report as ReportKind);
+  // ?oy=2026-9 — harajatlar hisoboti uchun tanlangan oy
+  const monthMatch = /^(\d{4})-(\d{1,2})$/.exec(req.nextUrl.searchParams.get("oy") ?? "");
+  const month = monthMatch ? new Date(Number(monthMatch[1]), Number(monthMatch[2]) - 1, 1) : undefined;
+  const data = await buildReport(report as ReportKind, { month });
 
   if (format === "xlsx") {
     const wb = new ExcelJS.Workbook();
@@ -33,7 +36,15 @@ export async function GET(
     header.eachCell((c) => {
       c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F5F0" } };
     });
-    data.rows.forEach((r) => ws.addRow(r));
+    data.rows.forEach((r) => {
+      const row = ws.addRow(r);
+      if (report !== "harajatlar") return;
+      // Summalar minglik ajratgich bilan, jami qatorlari qalin
+      row.eachCell((cell) => {
+        if (typeof cell.value === "number") cell.numFmt = "#,##0";
+      });
+      if (r.some((value) => typeof value === "string" && value.startsWith("JAMI"))) row.font = { bold: true };
+    });
     ws.columns.forEach((col) => {
       let max = 10;
       col.eachCell?.({ includeEmpty: true }, (cell) => {

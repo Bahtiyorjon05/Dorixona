@@ -199,6 +199,7 @@ export default async function HarajatlarPage({
       )}
 
       <ExpensesPanel
+        exportHref={`/api/export/harajatlar?format=xlsx&oy=${monthKey(d.period)}`}
         units={d.byUnit.map((u) => u.unit).filter((u) => u !== "Umumiy")}
         list={d.list.map((e) => ({
           id: e.id,

@@ -1,4 +1,10 @@
-import { getAttendanceData, getFinanceData, getKpiData, getPriceWatchData } from "@/lib/queries";
+import {
+  getAttendanceData,
+  getExpensesData,
+  getFinanceData,
+  getKpiData,
+  getPriceWatchData,
+} from "@/lib/queries";
 import { formatTime, monthName } from "@/lib/format";
 
 export type ReportData = {
@@ -9,12 +15,62 @@ export type ReportData = {
   rows: (string | number)[][];
 };
 
-export const REPORTS = ["kpi", "finance", "attendance", "narxlar"] as const;
+export const REPORTS = ["kpi", "finance", "attendance", "narxlar", "harajatlar"] as const;
 export type ReportKind = (typeof REPORTS)[number];
 
-export async function buildReport(kind: ReportKind): Promise<ReportData> {
+const EXPENSE_CATEGORY: Record<string, string> = {
+  RENT: "Ijara",
+  UTILITIES: "Kommunal",
+  GOODS: "Tovar",
+  SALARY: "Oylik",
+  LICENSE: "Soliq / litsenziya",
+  OTHER: "Boshqa",
+};
+
+export async function buildReport(kind: ReportKind, options: { month?: Date } = {}): Promise<ReportData> {
   const now = new Date();
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  if (kind === "harajatlar") {
+    // Tanlangan oyning harajatlari, dorixona bo'yicha, har birining jami bilan.
+    // Tovar xaridi harajatga kirmaydi — oxirida bitta qatorda ko'rsatiladi.
+    const d = await getExpensesData(options.month);
+    const period = `${d.period.getFullYear()}-${String(d.period.getMonth() + 1).padStart(2, "0")}`;
+    const items = d.list.filter((e) => e.category !== "GOODS");
+    const units = [...new Set(items.map((e) => e.unit ?? "Umumiy (filialsiz)"))].sort();
+
+    const rows: (string | number)[][] = [];
+    for (const unit of units) {
+      const own = items
+        .filter((e) => (e.unit ?? "Umumiy (filialsiz)") === unit)
+        .sort((a, b) => b.amount - a.amount);
+      for (const e of own) {
+        const day = new Date(e.spentAt);
+        rows.push([
+          unit,
+          `${String(day.getDate()).padStart(2, "0")}.${String(day.getMonth() + 1).padStart(2, "0")}.${day.getFullYear()}`,
+          e.title,
+          EXPENSE_CATEGORY[e.category] ?? e.category,
+          e.isRecurring ? "Doimiy" : "",
+          Math.round(e.amount),
+        ]);
+      }
+      rows.push([unit, "", `JAMI — ${unit}`, "", "", Math.round(own.reduce((sum, e) => sum + e.amount, 0))]);
+      rows.push(["", "", "", "", "", ""]);
+    }
+    rows.push(["", "", "JAMI HARAJAT", "", "", Math.round(items.reduce((sum, e) => sum + e.amount, 0))]);
+    if (d.goods > 0) {
+      rows.push(["", "", "Tovar xaridi (harajatga kirmaydi)", "Tovar", "", Math.round(d.goods)]);
+    }
+
+    return {
+      filename: `harajatlar-${period}`,
+      sheet: "Harajatlar",
+      title: `${d.period.getFullYear()}-yil ${monthName(d.period.getMonth() + 1)} harajatlari`,
+      columns: ["Dorixona", "Sana", "Nomi", "Toifa", "Turi", "Summa (so'm)"],
+      rows,
+    };
+  }
 
   if (kind === "narxlar") {
     // Narxni tushirish kerak bo'lganlar: tavsiyadan qimmat turgan dorilar.

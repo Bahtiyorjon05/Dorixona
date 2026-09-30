@@ -1338,10 +1338,11 @@ export async function getDashboardData() {
         return retail.known ? [{ turnover: retail.turnover, profit: retail.profit }] : rows;
       }),
     db.$queryRaw<{ value: number; positions: number }[]>`
-      SELECT COALESCE(SUM(p.stock * p."salePrice"), 0)::float8 AS value,
-             COUNT(*)::float8 AS positions
+      -- Tan narxida — Moliya va Ombor sahifalaridagi bilan bir xil raqam
+      SELECT COALESCE(SUM(p.stock * p."costPrice"), 0)::float8 AS value,
+             (COUNT(*) FILTER (WHERE p.stock > 0))::float8 AS positions
       FROM "Product" p
-      WHERE p."isActive" = true AND p."branchId" = ${branchId} AND p.stock > 0`,
+      WHERE p."isActive" = true AND p."branchId" = ${branchId}`,
     db.product.findMany({
       // Tugab qolganlar emas, tugayotganlar kerak: qoldig'i bor, lekin ozaygan
       where: { isActive: true, branchId, stock: { gt: 0, lte: 3 } },
