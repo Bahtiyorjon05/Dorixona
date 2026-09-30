@@ -267,19 +267,26 @@ export async function salesMessage() {
 
 /** Shuncha kun ichida sotilgan bo'lsa — tugagani ogohlantirishga kiradi */
 const SOLD_OUT_RECENT_DAYS = 60;
+/** Shuncha yoki undan kam qolsa tugab qolgan hisoblanadi */
+const LOW_STOCK_LEVEL = 3;
 
 /**
- * Tugagan tovar: qoldig'i 0 va oxirgi 60 kunda sotilgan.
+ * Tugab qolayotgan tovar: qoldig'i ozaygan va oxirgi 60 kunda sotilgan.
  *
- * Faqat "qoldiq 0" deb sanalsa 1 200 dan ortiq chiqardi — ularning ko'pi
- * bir vaqtlar kelgan-u, oylab sotilmagan, qayta buyurtma ham qilinmaydigan
- * dorilar. Yaqinda sotilgani tugasa esa mijoz so'raydi — buyurtma kerak.
+ * Nega "qoldiq 0" emas: SITE.exe faqat qoldig'i bor tovarni yuboradi.
+ * Dori butunlay tugasa u push'ga tushmay qoladi va bizdagi qoldiq oxirgi
+ * ko'rsatkichda qotib turadi — shuning uchun "stock = 0" deyarli hech
+ * qachon rost bo'lmaydi va eslatma umuman kelmasdi (tekshirilgan: 0 ta).
+ *
+ * Nega "yaqinda sotilgan" sharti bor: shusiz minglab dori chiqadi —
+ * ularning ko'pi bir vaqtlar kelgan-u, qayta buyurtma qilinmaydi. Yaqinda
+ * sotilgani tugab qolsa esa mijoz so'raydi, buyurtma berish kerak.
  */
 function soldOutWhere() {
   const since = new Date(Date.now() - SOLD_OUT_RECENT_DAYS * 864e5);
   return {
     isActive: true,
-    stock: 0,
+    stock: { lte: LOW_STOCK_LEVEL },
     saleItems: { some: { sale: { createdAt: { gte: since } } } },
   };
 }
@@ -310,8 +317,10 @@ export async function stockMessage() {
     `\nTovar turi: ${som(total)} ta`,
     `Ombor qiymati: ${money(num(valueRows[0]?.value))}`,
     low.length
-      ? `\n🔴 Tugagan:\n${low.map((p) => `• ${esc(p.name)}`).join("\n")}`
-      : "\n✅ Tugagan tovar yo'q",
+      ? `\n🔴 Tugab qolgan:\n${low
+          .map((p) => `• ${esc(p.name)} — ${p.stock} dona`)
+          .join("\n")}`
+      : "\n✅ Tugab qolgan dori yo'q",
     expiring.length
       ? `\n🟡 Muddati yaqin (60 kun):\n${expiring
           .map((p) => `• ${esc(p.name)} — ${p.expiryDate ? formatDate(p.expiryDate) : "-"}`)
@@ -391,9 +400,9 @@ export async function digestMessage() {
       where: { spentAt: { gte: monthStart, lt: nextMonth }, category: { not: "GOODS" } },
     }),
     debtSummary(),
-    // Tugagan tovar. Avval "stock <= 5" sanalardi, lekin dorixonada deyarli
-    // hamma dorining qoldig'i kichik - 5600 tadan 4438 tasi chiqib, raqam
-    // ma'nosini yo'qotgandi. Tugagani esa aniq harakat talab qiladi.
+    // Tugab qolganlar: qoldig'i oz va yaqinda sotilgan (soldOutWhere).
+    // Faqat "stock <= 5" deb sanalsa 4438 ta chiqardi, faqat "stock = 0"
+    // desa 0 ta - ikkalasi ham foydasiz. Sotuv sharti ma'no beradi.
     db.product.count({ where: soldOutWhere() }),
   ]);
 
@@ -405,7 +414,7 @@ export async function digestMessage() {
     `Oy boshidan: ${money(monthSplit.net)}`,
     `Oylik xarajat: ${money(num(expenses._sum.amount))}`,
     `\nOchiq qarz: ${debts.openCount} ta${red ? ` · 🔴 shoshilinch ${red} ta` : ""}${debts.soon.length ? ` · 🟡 ${debts.soon.length} ta` : ""}`,
-    low ? `Tugagan tovar: ${som(low)} ta` : "Tugagan tovar yo'q",
+    low ? `Tugab qolgan: ${som(low)} ta dori` : "Tugab qolgan dori yo'q",
   ];
 
   return parts.filter(Boolean).join("\n");
@@ -419,17 +428,16 @@ export async function digestMessage() {
  */
 export async function stockAlert() {
   const soon = new Date(Date.now() + 30 * 864e5);
-  // Ogohlantirish tugagan tovar bo'yicha. "Qoldig'i 3 dan kam" deb
-  // sanalganda 5600 tadan minglabi chiqib ketardi — dorixonada dorining
-  // qoldig'i tabiiy ravishda kichik bo'ladi. Tugagani esa aniq harakat
-  // talab qiladi: buyurtma berish kerak.
+  // Ogohlantirish tugab qolgan tovar bo'yicha — qoldig'i oz va yaqinda
+  // sotilgan. Sharti soldOutWhere() da izohlangan.
   const [lowCount, low, expiringCount, expiring] = await Promise.all([
     db.product.count({ where: soldOutWhere() }),
     db.product.findMany({
       where: soldOutWhere(),
-      orderBy: { name: "asc" },
+      // Eng kam qolgani tepada — birinchi navbatda o'sha buyurtma qilinadi
+      orderBy: { stock: "asc" },
       take: 15,
-      select: { name: true },
+      select: { name: true, stock: true },
     }),
     db.product.count({
       where: { isActive: true, expiryDate: { not: null, lte: soon }, stock: { gt: 0 } },
@@ -454,7 +462,9 @@ export async function stockAlert() {
   const parts = [
     "📦 <b>Ombor ogohlantirishi</b>",
     lowCount
-      ? `\n🔴 Tugagan (${som(lowCount)} ta):\n${low.map((p) => `• ${esc(p.name)}`).join("\n")}` +
+      ? `\n🔴 Tugab qolgan (${som(lowCount)} ta):\n${low
+          .map((p) => `• ${esc(p.name)} — ${p.stock} dona`)
+          .join("\n")}` +
         more(low.length, lowCount)
       : "",
     expiringCount
