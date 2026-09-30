@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { stockAlert } from "@/lib/telegram/digest";
+import { stockAlert, stockRuleCounts } from "@/lib/telegram/digest";
 import { runDailyNotice } from "@/lib/telegram/daily-notice";
 
 export const runtime = "nodejs";
@@ -25,7 +25,14 @@ async function handle(request: NextRequest) {
     section: "inventory",
     build: async () => {
       const alert = await stockAlert();
-      return { text: alert.text, holat: { tugagan: alert.low, muddati: alert.expiring } };
+      // Mezonni tanlash uchun: tekshiruv rejimida har xil shartning
+      // natijasi ham ko'rsatiladi
+      const variantlar =
+        request.nextUrl.searchParams.get("tekshir") === "1" ? await stockRuleCounts() : undefined;
+      return {
+        text: alert.text,
+        holat: { tugagan: alert.low, muddati: alert.expiring, ...(variantlar ? { variantlar } : {}) },
+      };
     },
   });
 }

@@ -464,3 +464,37 @@ export async function stockAlert() {
 
   return { text: parts.filter(Boolean).join("\n"), low: lowCount, expiring: expiringCount };
 }
+
+/**
+ * Ombor mezonini tanlash uchun: har xil shartda nechta dori chiqishini
+ * sanaydi. Faqat tekshiruv rejimida chaqiriladi — oddiy ishda keraksiz
+ * so'rov qilmaymiz.
+ */
+export async function stockRuleCounts() {
+  const since = (days: number) => new Date(Date.now() - days * 864e5);
+  const rule = (stock: number, days: number) => ({
+    isActive: true,
+    stock: stock === 0 ? 0 : { lte: stock },
+    saleItems: { some: { sale: { createdAt: { gte: since(days) } } } },
+  });
+
+  const [nol30, nol60, kam1_30, kam3_30, kam3_60, faqatNol, faqatKam3] = await Promise.all([
+    db.product.count({ where: rule(0, 30) }),
+    db.product.count({ where: rule(0, 60) }),
+    db.product.count({ where: rule(1, 30) }),
+    db.product.count({ where: rule(3, 30) }),
+    db.product.count({ where: rule(3, 60) }),
+    db.product.count({ where: { isActive: true, stock: 0 } }),
+    db.product.count({ where: { isActive: true, stock: { lte: 3 } } }),
+  ]);
+
+  return {
+    "qoldiq 0 + 30 kun": nol30,
+    "qoldiq 0 + 60 kun": nol60,
+    "qoldiq <=1 + 30 kun": kam1_30,
+    "qoldiq <=3 + 30 kun": kam3_30,
+    "qoldiq <=3 + 60 kun": kam3_60,
+    "faqat qoldiq 0 (savdosiz)": faqatNol,
+    "faqat qoldiq <=3 (savdosiz)": faqatKam3,
+  };
+}
