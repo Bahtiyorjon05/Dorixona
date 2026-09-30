@@ -267,23 +267,55 @@ export async function salesMessage() {
 
 /** Shuncha kun ichida sotilgan bo'lsa — tugagani ogohlantirishga kiradi */
 const SOLD_OUT_RECENT_DAYS = 30;
+/** Shuncha yoki undan kam qolgan dori "tugayapti" hisoblanadi */
+const RUNNING_OUT_STOCK = 3;
+/** Oxirgi 30 kunda shuncha dona sotilgan bo'lsa — tez ketadigan dori */
+const RUNNING_OUT_MIN_SOLD = 20;
 
 /**
- * Tugagan tovar: qoldig'i 0 va oxirgi 30 kunda sotilgan.
+ * Tugayotgan dorilar: qoldig'i oz, lekin tez ketadi.
  *
- * Ikki shart ham kerak. Faqat "qoldiq 0" desa mingdan ortiq chiqadi —
- * ularning ko'pi bir vaqtlar kelgan-u, qayta buyurtma qilinmaydigan
- * dorilar. Faqat "kam qoldiq" desa yana ko'payib ketadi: dorixonada
- * dorining qoldig'i tabiiy ravishda kichik. Yaqinda sotilgani tugasa
- * esa mijoz so'raydi — buyurtma berish kerak.
+ * "Qoldiq 0" deb izlash ishlamaydi: SITE.exe faqat qoldig'i bor tovarni
+ * yuboradi, dori butunlay tugasa push'dan chiqib ketadi va bizdagi son
+ * oxirgi ko'rsatkichda qotib qoladi. Tekshirilgan: qoldig'i 0 bo'lgan
+ * 1207 ta dorining birortasi ham oxirgi 60 kunda sotilmagan — ular
+ * allaqachon tashlab ketilganlar.
+ *
+ * Shuning uchun boshqa tomondan qaraymiz: qoldig'i RUNNING_OUT_STOCK dan
+ * kam VA oxirgi oyda RUNNING_OUT_MIN_SOLD donadan ko'p sotilgan. Bu
+ * amalda foydaliroq ham — dori tugagandan keyin emas, tugashidan oldin
+ * buyurtma beriladi.
+ *
+ * Mezon raqamlari o'lchab tanlangan (stockRuleCounts): qoldiq<=3 bilan
+ * 1406 ta chiqadi, savdo sharti qo'shilsa 10+ da 106 ta, 20+ da 30 ta.
  */
-function soldOutWhere() {
+export async function runningOut(limit = 15) {
   const since = new Date(Date.now() - SOLD_OUT_RECENT_DAYS * 864e5);
-  return {
-    isActive: true,
-    stock: 0,
-    saleItems: { some: { sale: { createdAt: { gte: since } } } },
-  };
+
+  const [rows, countRows] = await Promise.all([
+    db.$queryRaw<{ name: string; stock: number; sold: number }[]>`
+      SELECT p.name, p.stock, SUM(si.quantity)::float8 AS sold
+      FROM "Product" p
+      JOIN "SaleItem" si ON si."productId" = p.id
+      JOIN "Sale" s ON s.id = si."saleId"
+      WHERE p."isActive" = true AND p.stock <= ${RUNNING_OUT_STOCK} AND s."createdAt" >= ${since}
+      GROUP BY p.id, p.name, p.stock
+      HAVING SUM(si.quantity) >= ${RUNNING_OUT_MIN_SOLD}
+      ORDER BY SUM(si.quantity) DESC
+      LIMIT ${limit}`,
+    db.$queryRaw<{ soni: number }[]>`
+      SELECT COUNT(*)::float8 AS soni FROM (
+        SELECT p.id
+        FROM "Product" p
+        JOIN "SaleItem" si ON si."productId" = p.id
+        JOIN "Sale" s ON s.id = si."saleId"
+        WHERE p."isActive" = true AND p.stock <= ${RUNNING_OUT_STOCK} AND s."createdAt" >= ${since}
+        GROUP BY p.id
+        HAVING SUM(si.quantity) >= ${RUNNING_OUT_MIN_SOLD}
+      ) x`,
+  ]);
+
+  return { rows, count: Math.round(num(countRows[0]?.soni)) };
 }
 
 /** /ombor — kam qoldiq va muddati yaqin dorilar */
@@ -293,12 +325,7 @@ export async function stockMessage() {
     db.product.count({ where: { isActive: true } }),
     db.$queryRaw<{ value: number }[]>`
       SELECT COALESCE(SUM(stock * "costPrice"), 0)::float8 AS value FROM "Product" WHERE "isActive" = true`,
-    db.product.findMany({
-      where: soldOutWhere(),
-      orderBy: { stock: "asc" },
-      take: 10,
-      select: { name: true, stock: true, minStock: true },
-    }),
+    runningOut(10),
     db.product.findMany({
       where: { isActive: true, expiryDate: { not: null, lte: soon }, stock: { gt: 0 } },
       orderBy: { expiryDate: "asc" },
@@ -311,9 +338,11 @@ export async function stockMessage() {
     `📦 <b>Ombor</b>`,
     `\nTovar turi: ${som(total)} ta`,
     `Ombor qiymati: ${money(num(valueRows[0]?.value))}`,
-    low.length
-      ? `\n🔴 Tugagan:\n${low.map((p) => `• ${esc(p.name)}`).join("\n")}`
-      : "\n✅ Tugagan dori yo'q",
+    low.count
+      ? `\n🔴 Tugayapti (${som(low.count)} ta):\n${low.rows
+          .map((p) => `• ${esc(p.name)} — ${p.stock} dona qoldi, oyiga ${Math.round(p.sold)} ketadi`)
+          .join("\n")}`
+      : "\n✅ Tugayotgan dori yo'q",
     expiring.length
       ? `\n🟡 Muddati yaqin (60 kun):\n${expiring
           .map((p) => `• ${esc(p.name)} — ${p.expiryDate ? formatDate(p.expiryDate) : "-"}`)
@@ -393,8 +422,8 @@ export async function digestMessage() {
       where: { spentAt: { gte: monthStart, lt: nextMonth }, category: { not: "GOODS" } },
     }),
     debtSummary(),
-    // Tugagan tovar: soldOutWhere() da izohlangan ikki shart bo'yicha
-    db.product.count({ where: soldOutWhere() }),
+    // Tugayotgan dorilar soni — runningOut() da izohlangan mezon bo'yicha
+    runningOut(1),
   ]);
 
   const red = debts.overdue.length + debts.urgent.length;
@@ -405,7 +434,7 @@ export async function digestMessage() {
     `Oy boshidan: ${money(monthSplit.net)}`,
     `Oylik xarajat: ${money(num(expenses._sum.amount))}`,
     `\nOchiq qarz: ${debts.openCount} ta${red ? ` · 🔴 shoshilinch ${red} ta` : ""}${debts.soon.length ? ` · 🟡 ${debts.soon.length} ta` : ""}`,
-    low ? `Tugagan: ${som(low)} ta dori` : "Tugagan dori yo'q",
+    low.count ? `Tugayapti: ${som(low.count)} ta dori` : "Tugayotgan dori yo'q",
   ];
 
   return parts.filter(Boolean).join("\n");
@@ -419,16 +448,9 @@ export async function digestMessage() {
  */
 export async function stockAlert() {
   const soon = new Date(Date.now() + 30 * 864e5);
-  // Ogohlantirish tugab qolgan tovar bo'yicha — qoldig'i oz va yaqinda
-  // sotilgan. Sharti soldOutWhere() da izohlangan.
-  const [lowCount, low, expiringCount, expiring] = await Promise.all([
-    db.product.count({ where: soldOutWhere() }),
-    db.product.findMany({
-      where: soldOutWhere(),
-      orderBy: { name: "asc" },
-      take: 15,
-      select: { name: true },
-    }),
+  // Ogohlantirish tugayotgan dorilar bo'yicha — runningOut() ga qarang
+  const [low, expiringCount, expiring] = await Promise.all([
+    runningOut(15),
     db.product.count({
       where: { isActive: true, expiryDate: { not: null, lte: soon }, stock: { gt: 0 } },
     }),
@@ -440,7 +462,7 @@ export async function stockAlert() {
     }),
   ]);
 
-  if (!lowCount && !expiringCount) {
+  if (!low.count && !expiringCount) {
     return { text: null, low: 0, expiring: 0 };
   }
 
@@ -451,9 +473,10 @@ export async function stockAlert() {
 
   const parts = [
     "📦 <b>Ombor ogohlantirishi</b>",
-    lowCount
-      ? `\n🔴 Tugagan (${som(lowCount)} ta):\n${low.map((p) => `• ${esc(p.name)}`).join("\n")}` +
-        more(low.length, lowCount)
+    low.count
+      ? `\n🔴 Tugayapti (${som(low.count)} ta):\n${low.rows
+          .map((p) => `• ${esc(p.name)} — ${p.stock} dona qoldi, oyiga ${Math.round(p.sold)} ketadi`)
+          .join("\n")}` + more(low.rows.length, low.count)
       : "",
     expiringCount
       ? `\n🟡 Muddati 30 kun ichida (${som(expiringCount)} ta):\n${expiring
@@ -462,7 +485,7 @@ export async function stockAlert() {
       : "",
   ];
 
-  return { text: parts.filter(Boolean).join("\n"), low: lowCount, expiring: expiringCount };
+  return { text: parts.filter(Boolean).join("\n"), low: low.count, expiring: expiringCount };
 }
 
 /**
