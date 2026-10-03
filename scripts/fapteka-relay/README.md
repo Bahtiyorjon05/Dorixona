@@ -83,7 +83,7 @@ xizmati o'chiq. `netstat -ano | findstr :8081` da `LISTENING` bo'lishi kerak.
 oching va bir marta ishga tushiring:
 
 ```
-Invoke-WebRequest https://raw.githubusercontent.com/QudratovaGulshoda/ERP/main/scripts/fapteka-relay/install-tasks.ps1 -OutFile D:\FAptekaRelay\install-tasks.ps1 -UseBasicParsing
+Invoke-WebRequest https://raw.githubusercontent.com/Bahtiyorjon05/Dorixona/main/scripts/fapteka-relay/install-tasks.ps1 -OutFile D:\FAptekaRelay\install-tasks.ps1 -UseBasicParsing
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\install-tasks.ps1
 ```
 

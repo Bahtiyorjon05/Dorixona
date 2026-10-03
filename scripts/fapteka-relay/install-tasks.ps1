@@ -20,7 +20,7 @@
 
 $ErrorActionPreference = "Stop"
 $Dir = "D:\FAptekaRelay"
-$Raw = "https://raw.githubusercontent.com/QudratovaGulshoda/ERP/main/scripts/fapteka-relay"
+$Raw = "https://raw.githubusercontent.com/Bahtiyorjon05/Dorixona/main/scripts/fapteka-relay"
 $Exe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 
 $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()

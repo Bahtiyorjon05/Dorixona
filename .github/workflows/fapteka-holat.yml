@@ -1,7 +1,7 @@
 # F-Apteka'dan ma'lumot kelib turibdimi — har 15 daqiqada tekshiradi.
 # 40 daqiqa hech narsa kelmasa, sayt adminlarga Telegram'da xabar beradi
 # (src/app/api/integrations/fapteka/holat). Kod ikkala repoga ham push
-# qilinadi — ikki marta ishlamasligi uchun faqat bittasida ishga tushadi.
+# qilinadi — ikki marta ishlamasligi uchun faqat ochiq repoda (Actions bepul) ishlaydi.
 name: F-Apteka holati
 
 on:
@@ -11,7 +11,7 @@ on:
 
 jobs:
   check:
-    if: github.repository == 'QudratovaGulshoda/ERP'
+    if: github.repository == 'Bahtiyorjon05/Dorixona'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
