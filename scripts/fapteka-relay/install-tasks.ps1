@@ -13,7 +13,7 @@
 #   FApteka SITE nazorat - har 10 daqiqa, SITE.exe to'xtasa qayta ishga tushiradi
 #                          (foydalanuvchi sessiyasida - SITE.exe oynali dastur).
 #
-# Skriptlarni GitHub'dan yangilaydi. token.txt va sql.txt (parollar) faqat
+# Skriptlarni ERP saytidan yangilaydi. token.txt va sql.txt (parollar) faqat
 # shu kompyuterda turadi - GitHub'ga chiqmaydi.
 #
 # Ishga tushirish (administrator PowerShell'da, bir marta):
@@ -21,7 +21,8 @@
 
 $ErrorActionPreference = "Stop"
 $Dir = "D:\FAptekaRelay"
-$Raw = "https://raw.githubusercontent.com/Bahtiyorjon05/Dorixona/main/scripts/fapteka-relay"
+# Skriptlar ERP saytidan olinadi (GitHub repo yopiq), token.txt bilan
+$Raw = "https://dorixonaa.vercel.app/api/integrations/fapteka/skript"
 $Exe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 
 $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
@@ -46,13 +47,15 @@ if (-not (Test-Path $SqlFile)) {
   Write-Host "DIQQAT  $SqlFile yo'q - kirim hujjatlari bazadan olinmaydi"
 }
 
+if (-not (Test-Path "$Dir\token.txt")) {
+  Write-Host "XATO  $Dir\token.txt yo'q - skriptlarni yuklab bo'lmaydi va relay ERP'ga yubora olmaydi"
+  exit 1
+}
+$Token = (Get-Content "$Dir\token.txt" -Raw).Trim()
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 foreach ($file in "fapteka-relay.ps1", "site-watchdog.ps1", "install-tasks.ps1") {
-  Invoke-WebRequest "$Raw/$file" -OutFile "$Dir\$file" -UseBasicParsing
+  Invoke-WebRequest "$Raw/${file}?token=$Token" -OutFile "$Dir\$file" -UseBasicParsing
   Write-Host "OK    yuklandi: $file"
-}
-if (-not (Test-Path "$Dir\token.txt")) {
-  Write-Host "DIQQAT  $Dir\token.txt yo'q - relay ERP'ga yubora olmaydi"
 }
 
 # Antivirus skriptlarni o'chirib yubormasin (360 shunday qilgan edi)

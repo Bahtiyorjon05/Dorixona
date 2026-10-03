@@ -1,17 +1,18 @@
-# F-Apteka'dan ma'lumot kelib turibdimi — har 15 daqiqada tekshiradi.
+# F-Apteka'dan ma'lumot kelib turibdimi — har 30 daqiqada tekshiradi.
 # 40 daqiqa hech narsa kelmasa, sayt adminlarga Telegram'da xabar beradi
 # (src/app/api/integrations/fapteka/holat). Kod ikkala repoga ham push
-# qilinadi — ikki marta ishlamasligi uchun faqat ochiq repoda (Actions bepul) ishlaydi.
+# qilinadi — ikki marta ishlamasligi uchun faqat bittasida ishlaydi.
 name: F-Apteka holati
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Yopiq repoda Actions oyiga 2000 daqiqa: 30 daqiqada bir ~1440 daqiqa
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:
   check:
-    if: github.repository == 'Bahtiyorjon05/Dorixona'
+    if: github.repository == 'QudratovaGulshoda/ERP'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

@@ -82,14 +82,18 @@ tovar kelganda u hali dorixonalarga bo'linmagan bo'ladi.
 xizmati o'chiq. `netstat -ano | findstr :8081` da `LISTENING` bo'lishi kerak.
 
 **5. Avtomatik ishga tushirish.** PowerShell'ni **administrator sifatida**
-oching va bir marta ishga tushiring:
+oching va bir marta ishga tushiring (`token.txt` allaqachon `D:\FAptekaRelay`
+da bo'lishi kerak):
 
 ```
-Invoke-WebRequest https://raw.githubusercontent.com/Bahtiyorjon05/Dorixona/main/scripts/fapteka-relay/install-tasks.ps1 -OutFile D:\FAptekaRelay\install-tasks.ps1 -UseBasicParsing
+$t = (Get-Content D:\FAptekaRelay\token.txt -Raw).Trim()
+Invoke-WebRequest "https://dorixonaa.vercel.app/api/integrations/fapteka/skript/install-tasks.ps1?token=$t" -OutFile D:\FAptekaRelay\install-tasks.ps1 -UseBasicParsing
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\install-tasks.ps1
 ```
 
-`install-tasks.ps1` skriptlarni GitHub'dan yangilaydi va uchta vazifa yaratadi:
+Skriptlar GitHub'dan emas, ERP saytidan token bilan olinadi — repo yopiq.
+
+`install-tasks.ps1` skriptlarni saytdan yangilaydi va uchta vazifa yaratadi:
 
 | Vazifa | Qachon | Nima qiladi |
 |---|---|---|
@@ -103,7 +107,7 @@ xatoda qayta urinadi, kompyuter o'chiq bo'lganda o'tkazib yuborilgani
 yonishi bilan ishlaydi.
 
 **6. Ogohlantirish.** GitHub Actions (`.github/workflows/fapteka-holat.yml`)
-har 15 daqiqada `/api/integrations/fapteka/holat` ni chaqiradi: savdo yoki
+har 30 daqiqada `/api/integrations/fapteka/holat` ni chaqiradi: savdo yoki
 SITE.exe'dan 40 daqiqa hech narsa kelmasa, adminlarga Telegram'da xabar
 boradi (08:00-23:00), tiklanganda ham. Holatni qo'lda ko'rish:
 `https://dorixonaa.vercel.app/api/integrations/fapteka/holat`

@@ -146,7 +146,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v18 boshlandi (kirim hujjatlari bazadan olinadi)"
+Write-Log "relay v19 boshlandi (kirim hujjatlari bazadan, turi bo'yicha filtrlangan)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -293,9 +293,13 @@ function Send-IncomeDocs([datetime]$From, [datetime]$To) {
     $conn = New-Object System.Data.SqlClient.SqlConnection($SqlConn)
     $conn.Open()
     $cmd = $conn.CreateCommand()
-    # STATE va DOCTYPE ning ma'nosi hali aniqlanmagan, shuning uchun
-    # filtrlanmaydi - ikkalasi ham yuboriladi va jurnalda ko'rinadi.
-    # Summasi nol hujjatdan qarz chiqmaydi, faqat o'sha chetlatiladi.
+    # Qaysi hujjat olinadi (butun baza bo'yicha sanab aniqlangan):
+    #   DOCTYPE 19 STATE 3 - 5796 ta, 67.3 mlrd  <- asosiy kirim
+    #   DOCTYPE 1  STATE 3 -  990 ta, 10.1 mlrd  <- kirimning ikkinchi turi
+    #   DOCTYPE 9  STATE 12 -  16 ta,  1.27 mlrd <- boshqa tur, olinmaydi
+    #   STATE 2            -    8 ta             <- qoralama/bekor, olinmaydi
+    # Ya'ni hujjatlarning 99.6% i olinadi, g'alati turlari chetlatiladi:
+    # noto'g'ri qarz yozilgandan ko'ra yozilmagani yaxshi.
     $cmd.CommandText = @"
 SELECT i.NUMBER AS N, i.ORG AS O,
        CONVERT(varchar(10), i.DATA, 120) AS D,
@@ -303,7 +307,8 @@ SELECT i.NUMBER AS N, i.ORG AS O,
        CONVERT(varchar(10), i.DATAOTS, 120) AS DOTS,
        i.STATE AS ST, i.DOCTYPE AS DT, i.OTDEL AS OTD
 FROM INCOME i
-WHERE i.DATA >= @f AND i.DATA < DATEADD(day, 1, @t) AND i.SUMMAPOZ > 0
+WHERE i.DATA >= @f AND i.DATA < DATEADD(day, 1, @t)
+  AND i.SUMMAPOZ > 0 AND i.STATE = 3 AND i.DOCTYPE IN (1, 19)
 ORDER BY i.DATA, i.NUMBER
 "@
     [void]$cmd.Parameters.AddWithValue("@f", $From.Date)
