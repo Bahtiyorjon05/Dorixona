@@ -48,8 +48,10 @@ qarz yarim ko'rinadi (tekshirilgan: 29.09.2026 da 3 ta hujjat bo'lgan, hisobot
 1 tasini bergan). Shuning uchun skript hujjatlarni F-Apteka bazasidan
 o'zi o'qiydi (`INCOME` jadvali) va `/api/integrations/fapteka/sql` ga yuboradi.
 
-Baza shu kompyuterda, `$SqlConn` dagi parol ham shu yerda qoladi — saytga
-faqat tayyor qatorlar ketadi. Faqat o'qiladi, hech narsa yozilmaydi.
+Bazaga ulanish (login va parol) skriptda emas — yonidagi `sql.txt` faylida,
+faqat shu kompyuterda turadi. Uni `install-tasks.ps1` o'zi yaratadi; qo'lda:
+`Server=localhost;Database=NAPTSKLAD;User Id=<login>;Password=<parol>;TrustServerCertificate=True`.
+Saytga faqat tayyor qatorlar ketadi. Faqat o'qiladi, hech narsa yozilmaydi.
 
 **O'zini tuzatish.** API javob bermasa skript hisobot xizmatini (`ServiceReport`)
 bir marta qayta yoqib ko'radi va davom etadi. Kompyuter yoqilganda xizmat

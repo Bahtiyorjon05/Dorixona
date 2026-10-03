@@ -13,7 +13,8 @@
 #   FApteka SITE nazorat - har 10 daqiqa, SITE.exe to'xtasa qayta ishga tushiradi
 #                          (foydalanuvchi sessiyasida - SITE.exe oynali dastur).
 #
-# Skriptlarni GitHub'dan yangilaydi, token.txt ga tegmaydi.
+# Skriptlarni GitHub'dan yangilaydi. token.txt va sql.txt (parollar) faqat
+# shu kompyuterda turadi - GitHub'ga chiqmaydi.
 #
 # Ishga tushirish (administrator PowerShell'da, bir marta):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\install-tasks.ps1
@@ -30,6 +31,21 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 }
 
 New-Item -ItemType Directory -Force $Dir | Out-Null
+
+# Baza paroli endi skriptda emas, sql.txt da. Eski skriptda turgan bo'lsa,
+# yangisini yuklashdan OLDIN o'sha yerdan ko'chirib olamiz.
+$SqlFile = "$Dir\sql.txt"
+if (-not (Test-Path $SqlFile) -and (Test-Path "$Dir\fapteka-relay.ps1")) {
+  $old = [regex]::Match((Get-Content "$Dir\fapteka-relay.ps1" -Raw), '\$SqlConn\s*=\s*"([^"]*Password[^"]*)"')
+  if ($old.Success) {
+    Set-Content -Path $SqlFile -Value $old.Groups[1].Value -NoNewline -Encoding ASCII
+    Write-Host "OK    baza ulanishi sql.txt ga ko'chirildi"
+  }
+}
+if (-not (Test-Path $SqlFile)) {
+  Write-Host "DIQQAT  $SqlFile yo'q - kirim hujjatlari bazadan olinmaydi"
+}
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 foreach ($file in "fapteka-relay.ps1", "site-watchdog.ps1", "install-tasks.ps1") {
   Invoke-WebRequest "$Raw/$file" -OutFile "$Dir\$file" -UseBasicParsing

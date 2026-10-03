@@ -44,9 +44,14 @@ $DebtUrl = "https://dorixonaa.vercel.app/api/notifications/debts"
 # Kirim hujjatlari to'g'ridan-to'g'ri F-Apteka bazasidan olinadi.
 # Sabab: 20-hisobotda "SELECT TOP 1 *" turibdi - bir so'rovga bitta
 # hujjat qaytaradi, qolgani yo'qoladi va qarz yarim ko'rinadi.
-# Parol shu kompyuterda qoladi, saytga faqat tayyor qatorlar ketadi.
+# Login va parol skriptda EMAS - yonidagi sql.txt faylida, faqat shu
+# kompyuterda turadi (skript GitHub'da ochiq). Fayl yo'q bo'lsa bu qism
+# o'tkazib yuboriladi. sql.txt ni install-tasks.ps1 o'zi yaratadi, qo'lda:
+#   Server=localhost;Database=NAPTSKLAD;User Id=<login>;Password=<parol>;TrustServerCertificate=True
 $SqlUrl  = "https://dorixonaa.vercel.app/api/integrations/fapteka/sql"
-$SqlConn = "Server=localhost;Database=NAPTSKLAD;User Id=<login>;Password=<parol>;TrustServerCertificate=True"
+$SqlConn = ""
+$SqlFile = Join-Path $PSScriptRoot "sql.txt"
+if (Test-Path $SqlFile) { $SqlConn = (Get-Content $SqlFile -Raw).Trim() }
 # Kunlik xulosa (kechqurun) va ombor ogohlantirishi (ertalab). Qaysi
 # paytda yuborishni server o'zi hal qiladi, bu yerda faqat turtki beramiz.
 $NoticeUrls = [ordered]@{
@@ -278,6 +283,11 @@ function Send-IncomeDocs([datetime]$From, [datetime]$To) {
   $fromText = $From.ToString("yyyy-MM-dd")
   $toText   = $To.ToString("yyyy-MM-dd")
   $label    = "kirim hujjatlari $fromText..$toText"
+
+  if (-not $SqlConn) {
+    Write-Log ("BOSH  {0}  (sql.txt yo'q - bazaga ulanish sozlanmagan)" -f $label)
+    return
+  }
 
   try {
     $conn = New-Object System.Data.SqlClient.SqlConnection($SqlConn)
