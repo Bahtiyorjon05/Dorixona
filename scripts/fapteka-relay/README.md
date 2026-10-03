@@ -79,26 +79,40 @@ tovar kelganda u hali dorixonalarga bo'linmagan bo'ladi.
 `F-APTEKA: Невозможно соединиться с удаленным сервером` chiqsa, hisobot
 xizmati o'chiq. `netstat -ano | findstr :8081` da `LISTENING` bo'lishi kerak.
 
-**5. Avtomatik ishga tushirish.** `cmd` ni **administrator sifatida** oching:
+**5. Avtomatik ishga tushirish.** PowerShell'ni **administrator sifatida**
+oching va bir marta ishga tushiring:
 
 ```
-schtasks /Create /TN "FApteka ERP" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-relay.ps1" /SC MINUTE /MO 15 /RU SYSTEM /F
+Invoke-WebRequest https://raw.githubusercontent.com/QudratovaGulshoda/ERP/main/scripts/fapteka-relay/install-tasks.ps1 -OutFile D:\FAptekaRelay\install-tasks.ps1 -UseBasicParsing
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\install-tasks.ps1
 ```
 
-**6. Kunlik tuzatish vazifasi.** Har 15 daqiqalik vazifa faqat bugun va
-kechani yangilaydi. Undan eski yozuvlar (masalan yetkazib beruvchi nomi
-keyinroq ma'lum bo'lsa) o'zi tuzalishi uchun kuniga bir marta oxirgi 30 kun
-qayta tortiladi:
+`install-tasks.ps1` skriptlarni GitHub'dan yangilaydi va uchta vazifa yaratadi:
 
-```
-schtasks /Create /TN "FApteka ERP kunlik" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File D:\FAptekaRelay\fapteka-relay.ps1 -Days 30" /SC DAILY /ST 03:30 /F
-```
+| Vazifa | Qachon | Nima qiladi |
+|---|---|---|
+| FApteka ERP | har 15 daqiqa + kompyuter yonganda | bugun va kechani yuboradi |
+| FApteka ERP kunlik | har kuni 03:30 | oxirgi 30 kunni qayta yozadi |
+| FApteka SITE nazorat | har 10 daqiqa | SITE.exe to'xtasa qayta ishga tushiradi |
 
-Kechasi ishlaydi, hujjat bo'lmagan kunlar o'tkazib yuboriladi, shuning uchun
-bir necha daqiqada tugaydi.
+Eski `schtasks /SC MINUTE` vazifasidan farqi: 12 daqiqadan oshgan ish
+to'xtatiladi (eskisida 72 soat kutardi va shu orada yangisi boshlanmasdi),
+xatoda qayta urinadi, kompyuter o'chiq bo'lganda o'tkazib yuborilgani
+yonishi bilan ishlaydi.
+
+**6. Ogohlantirish.** GitHub Actions (`.github/workflows/fapteka-holat.yml`)
+har 15 daqiqada `/api/integrations/fapteka/holat` ni chaqiradi: savdo yoki
+SITE.exe'dan 40 daqiqa hech narsa kelmasa, adminlarga Telegram'da xabar
+boradi (08:00-23:00), tiklanganda ham. Holatni qo'lda ko'rish:
+`https://dorixonaa.vercel.app/api/integrations/fapteka/holat`
+
+**Antivirus.** 360 Total Security skriptni bir necha marta o'chirib yuborgan.
+`install-tasks.ps1` papkani Windows Defender istisnosiga qo'shadi; boshqa
+antivirus bo'lsa, `D:\FAptekaRelay` ni uning oq ro'yxatiga qo'shing.
 
 O'chirish kerak bo'lsa:
-`schtasks /Delete /TN "FApteka ERP" /F` va `schtasks /Delete /TN "FApteka ERP kunlik" /F`
+`schtasks /Delete /TN "FApteka ERP" /F`, `schtasks /Delete /TN "FApteka ERP kunlik" /F`
+va `schtasks /Delete /TN "FApteka SITE nazorat" /F`
 
 ## ERP'da tekshirish
 
