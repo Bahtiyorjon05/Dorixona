@@ -84,12 +84,11 @@ function New-Settings([timespan]$Limit, [int]$Retries) {
     StartWhenAvailable = $true; AllowStartIfOnBatteries = $true; DontStopIfGoingOnBatteries = $true
     MultipleInstances = "IgnoreNew"; ExecutionTimeLimit = $Limit
   }
-  # Qayta urinish 0 bo'lsa bu ikkisi umuman berilmaydi - aks holda Windows
-  # vazifani "Count yo'q" deb rad etadi
-  if ($Retries -gt 0) {
-    $options.RestartCount = $Retries
-    $options.RestartInterval = New-TimeSpan -Minutes 2
-  }
+  # Qayta urinish soni HAR DOIM berilishi kerak: 0 bo'lsa Windows vazifani
+  # "XML da Count yo'q" deb rad etadi (03.10.2026 da SITE nazorat shunday
+  # yaratilmay qolgan edi). Shuning uchun eng kami 1 qilinadi.
+  $options.RestartCount = [Math]::Max($Retries, 1)
+  $options.RestartInterval = New-TimeSpan -Minutes 2
   New-ScheduledTaskSettingsSet @options
 }
 
@@ -127,8 +126,11 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
   Where-Object { $_.CommandLine -match 'fapteka-relay\.ps1' -and $_.ProcessId -ne $PID } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Host "OK    osilib qolgan relay to'xtatildi (PID $($_.ProcessId))" }
 
-Start-ScheduledTask -TaskName "FApteka ERP"
-Start-ScheduledTask -TaskName "FApteka SITE nazorat"
+# Bittasi yaratilmay qolsa ham qolgani ishga tushsin
+foreach ($task in @("FApteka ERP", "FApteka SITE nazorat")) {
+  try { Start-ScheduledTask -TaskName $task }
+  catch { Write-Host ("DIQQAT  {0} ishga tushmadi: {1}" -f $task, $_.Exception.Message) }
+}
 Write-Host ""
 Write-Host "TAYYOR. Relay ishga tushirildi. 3 daqiqadan keyin tekshirish:"
 Write-Host "  Get-Content $Dir\relay.log -Tail 5"
