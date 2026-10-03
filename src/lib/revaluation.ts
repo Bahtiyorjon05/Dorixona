@@ -172,3 +172,102 @@ export async function syncRevaluationFromSite(rows: Row[]): Promise<RevaluationP
   }
   return result;
 }
+
+/** F-Apteka bazasidan kelgan pereotsenka: kun × otdel jamlanmasi */
+export type RevaluationDbRow = {
+  /** Sana, yyyy-mm-dd */
+  D?: string;
+  /** F-Apteka otdel: 2 = Yunusobod, 3 = Shayxontohur */
+  OTD?: string;
+  /** Hujjatlar soni */
+  N?: string;
+  /** "Сумма" — Цена розничная bo'yicha */
+  S?: string;
+  /** "Сумма 1" — Цена розничная 1 bo'yicha (asosiy) */
+  S1?: string;
+};
+
+/** DailySales'da pereotsenka shu docType bilan turadi: amount = Сумма 1, cost = Сумма */
+export const REVALUATION_DOC_TYPE = "REVAL";
+
+const toNumber = (value: unknown) => {
+  const n = Number(String(value ?? "").replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * Pereotsenka F-Apteka bazasidan (NGLOBAL: REVAL + REVALLN, STATE = 12).
+ *
+ * Relay skript oy bo'yicha kun × otdel jamlanmasini yuboradi. Summa
+ * F-Apteka "Переоценка" oynasidagi bilan tiyinigacha bir xil (28.09.2026
+ * da hujjatma-hujjat tekshirilgan). SITE.exe narxlaridan hisoblangan
+ * taxminiy summa o'rniga shu ishlatiladi.
+ *
+ * Oraliqdagi eski yozuvlar almashtiriladi (hujjat o'chirilgan bo'lsa ham
+ * to'g'ri chiqadi). Oy jami — zarar musbat — MonthlyFinance.revaluation ga
+ * ("Qayta baholash" qatori) yoziladi; harajat emas, sof foydadan ayirilmaydi.
+ */
+export async function syncRevaluationFromDb(input: { rows: RevaluationDbRow[]; dateFrom: string; dateTo: string }) {
+  const units = otdelUnitMap();
+  const from = new Date(`${input.dateFrom}T00:00:00Z`);
+  const to = new Date(new Date(`${input.dateTo}T00:00:00Z`).getTime() + 864e5);
+
+  // kun × dorixona
+  const byDay = new Map<string, { day: Date; unit: string; amount: number; cost: number }>();
+  let skipped = 0;
+  for (const row of input.rows) {
+    const unit = units.get(String(row.OTD ?? "").trim());
+    const day = String(row.D ?? "").slice(0, 10);
+    if (!unit || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      skipped += 1;
+      continue;
+    }
+    const key = `${day}|${unit}`;
+    const entry = byDay.get(key) ?? { day: new Date(`${day}T00:00:00Z`), unit, amount: 0, cost: 0 };
+    entry.amount += toNumber(row.S1);
+    entry.cost += toNumber(row.S);
+    byDay.set(key, entry);
+  }
+
+  const unitNames = [...new Set(units.values())];
+  await db.$transaction([
+    db.dailySales.deleteMany({
+      where: { docType: REVALUATION_DOC_TYPE, unit: { in: unitNames }, day: { gte: from, lt: to } },
+    }),
+    db.dailySales.createMany({
+      data: [...byDay.values()].map((e) => ({
+        day: e.day,
+        unit: e.unit,
+        docType: REVALUATION_DOC_TYPE,
+        amount: Math.round(e.amount * 100) / 100,
+        cost: Math.round(e.cost * 100) / 100,
+      })),
+    }),
+  ]);
+
+  // Oraliqqa tushgan har oy × dorixona uchun oy jami
+  const branch = await db.branch.findFirst({ where: { isActive: true } });
+  const totals: { unit: string; month: string; loss: number }[] = [];
+  if (branch) {
+    for (let cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)); cursor < to; ) {
+      const next = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+      for (const unit of unitNames) {
+        const sum = await db.dailySales.aggregate({
+          _sum: { amount: true },
+          where: { docType: REVALUATION_DOC_TYPE, unit, day: { gte: cursor, lt: next } },
+        });
+        // Narx tushsa "Сумма 1" manfiy — bu zarar, kartada musbat ko'rinadi
+        const loss = Math.round(-Number(sum._sum.amount ?? 0) * 100) / 100;
+        await db.monthlyFinance.upsert({
+          where: { unit_periodMonth: { unit, periodMonth: cursor } },
+          create: { unit, periodMonth: cursor, branchId: branch.id, revaluation: loss },
+          update: { revaluation: loss },
+        });
+        totals.push({ unit, month: cursor.toISOString().slice(0, 7), loss });
+      }
+      cursor = next;
+    }
+  }
+
+  return { days: byDay.size, skipped, totals };
+}

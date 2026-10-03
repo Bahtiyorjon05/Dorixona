@@ -6,6 +6,7 @@ import {
   syncFaptekaSupplierDebts,
 } from "@/lib/integrations/fapteka/sync";
 import type { FaptekaRow } from "@/lib/integrations/fapteka/client";
+import { syncRevaluationFromDb, type RevaluationDbRow } from "@/lib/revaluation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +74,31 @@ export async function POST(request: NextRequest) {
   const dateTo = payload.dateTo ?? dateFrom;
   if (!DAY.test(dateFrom) || !DAY.test(dateTo)) {
     return NextResponse.json({ ok: false, error: "Sana yyyy-mm-dd bo'lishi kerak" }, { status: 400 });
+  }
+
+  // Pereotsenka (REVAL/REVALLN) — kun × otdel jamlanmasi, butun oy bo'yicha.
+  // Bo'sh ro'yxat ham qabul qilinadi: oy boshida hujjat yo'q bo'lsa nol yoziladi.
+  if (payload.kind === "revaluation") {
+    const label = `revaluation ${dateFrom}..${dateTo}`;
+    try {
+      const result = await syncRevaluationFromDb({ rows: rows as RevaluationDbRow[], dateFrom, dateTo });
+      await writeLog({
+        rowCount: rows.length,
+        sample: rows.length ? JSON.stringify(rows[0]).slice(0, 500) : undefined,
+        note:
+          `${label} | ${result.days} kun×dorixona` +
+          (result.skipped ? `, o'tkazildi: ${result.skipped}` : "") +
+          ` | ${result.totals.map((t) => `${t.month} ${t.unit}: ${Math.round(t.loss)}`).join(", ")}`,
+        ok: true,
+      });
+      revalidatePath("/harajatlar");
+      revalidatePath("/moliya");
+      return NextResponse.json({ ok: true, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "xato";
+      await writeLog({ rowCount: rows.length, note: `${label} | XATO: ${message}`, ok: false });
+      return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    }
   }
 
   if (payload.kind !== "incomingDocs") {

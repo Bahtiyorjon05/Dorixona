@@ -95,7 +95,10 @@ $Reports = [ordered]@{
 # ----------------------------------------------------------------------------
 
 if (-not $Days) { $Days = $DaysDefault }
-if ($Only) {
+if ($Only -eq "revaluation") {
+  # Faqat pereotsenka (bazadan) - API hisobotlari o'tkazib yuboriladi
+  $Reports = [ordered]@{}
+} elseif ($Only) {
   if (-not $Reports.Contains($Only)) {
     Write-Output "XATO  Bunday hisobot yo'q: $Only"
     exit 1
@@ -146,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v19 boshlandi (kirim hujjatlari bazadan, turi bo'yicha filtrlangan)"
+Write-Log "relay v20 boshlandi (pereotsenka bazadan)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -356,6 +359,74 @@ ORDER BY i.DATA, i.NUMBER
 
 if (-not $Only) {
   Send-IncomeDocs (Get-Date).Date.AddDays(-($Days - 1)) (Get-Date).Date
+}
+
+# ---- Pereotsenka bazadan ---------------------------------------------------
+# Dorixonalar (otdel 2, 3) ma'lumoti NGLOBAL bazasida (NAPTSKLAD - faqat
+# ombor). REVAL + REVALLN dan kun x otdel jamlanmasi olinadi; summasi
+# F-Apteka "Pereocenka" oynasidagi "Summa 1" bilan tiyinigacha bir xil
+# (28.09.2026 da hujjatma-hujjat tekshirilgan). Faqat yopilgan hujjatlar
+# (STATE = 12). Butun oy yuboriladi - ERP o'sha oyni to'liq almashtiradi;
+# oyning birinchi 5 kunida o'tgan oy ham qayta yuboriladi.
+function Send-Revaluation([datetime]$MonthStart) {
+  $monthEnd = $MonthStart.AddMonths(1)
+  $label = "pereotsenka {0:yyyy-MM}" -f $MonthStart
+  $inv = [Globalization.CultureInfo]::InvariantCulture
+
+  try {
+    $conn = New-Object System.Data.SqlClient.SqlConnection($SqlConn)
+    $conn.Open()
+    $cmd = $conn.CreateCommand()
+    $cmd.CommandText = @"
+SELECT CONVERT(varchar(10), r.DATA, 120) AS D, r.OTDEL AS OTD, COUNT(DISTINCT r.ID) AS N,
+       SUM(l.KOL * (l.PRICEROZNEW - l.PRICEROZOLD)) AS S,
+       SUM(l.KOL * (l.PRICEROZ1NEW - l.PRICEROZ1OLD)) AS S1
+FROM [NGLOBAL].dbo.REVAL r
+JOIN [NGLOBAL].dbo.REVALLN l ON l.REVAL = r.ID
+WHERE r.STATE = 12 AND r.DATA >= @f AND r.DATA < @t
+GROUP BY CONVERT(varchar(10), r.DATA, 120), r.OTDEL
+"@
+    [void]$cmd.Parameters.AddWithValue("@f", $MonthStart)
+    [void]$cmd.Parameters.AddWithValue("@t", $monthEnd)
+    $rows = @()
+    $reader = $cmd.ExecuteReader()
+    while ($reader.Read()) {
+      $s  = 0; if ($reader["S"]  -isnot [DBNull]) { $s  = [decimal]$reader["S"] }
+      $s1 = 0; if ($reader["S1"] -isnot [DBNull]) { $s1 = [decimal]$reader["S1"] }
+      $rows += [ordered]@{
+        D   = [string]$reader["D"]
+        OTD = [string]$reader["OTD"]
+        N   = [string]$reader["N"]
+        S   = $s.ToString($inv)
+        S1  = $s1.ToString($inv)
+      }
+    }
+    $reader.Close()
+    $conn.Close()
+  } catch {
+    Write-Log ("XATO  {0}  BAZA: {1}" -f $label, $_.Exception.Message)
+    return
+  }
+
+  try {
+    $body = @{ kind = "revaluation"; dateFrom = $MonthStart.ToString("yyyy-MM-dd");
+               dateTo = $monthEnd.AddDays(-1).ToString("yyyy-MM-dd"); rows = @($rows) } |
+            ConvertTo-Json -Depth 4 -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+    $api = New-Object System.Net.WebClient
+    $api.Headers.Add("Authorization", "Bearer $Token")
+    $api.Headers.Add("Content-Type", "application/json; charset=utf-8")
+    $answer = [System.Text.Encoding]::UTF8.GetString($api.UploadData($SqlUrl, "POST", $bytes))
+    Write-Log ("OK    {0}  {1} qator  {2}" -f $label, $rows.Count, $answer)
+  } catch {
+    Write-Log ("XATO  {0}  ERP: {1}" -f $label, (Get-ErrorText $_))
+  }
+}
+
+if ((-not $Only -or $Only -eq "revaluation") -and $SqlConn) {
+  $thisMonth = Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
+  if ((Get-Date).Day -le 5) { Send-Revaluation $thisMonth.AddMonths(-1) }
+  Send-Revaluation $thisMonth
 }
 
 # ---- Narx nazorati --------------------------------------------------------
