@@ -54,7 +54,10 @@ if (-not (Test-Path "$Dir\token.txt")) {
 $Token = (Get-Content "$Dir\token.txt" -Raw).Trim()
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 foreach ($file in "fapteka-relay.ps1", "site-watchdog.ps1", "install-tasks.ps1") {
-  Invoke-WebRequest "$Raw/${file}?token=$Token" -OutFile "$Dir\$file" -UseBasicParsing
+  # Oxiridagi vaqt belgisi keshni aylanib o'tadi: Vercel eski javobni
+  # saqlab qolsa, skript o'rniga HTML yuklanib qolardi.
+  $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  Invoke-WebRequest "$Raw/${file}?token=$Token&v=$bust" -OutFile "$Dir\$file" -UseBasicParsing
   Write-Host "OK    yuklandi: $file"
 }
 

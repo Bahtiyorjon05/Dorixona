@@ -26,13 +26,22 @@ function allowed(request: NextRequest) {
   return token !== "" && expected.includes(token);
 }
 
+/**
+ * Xato javoblar ham keshlanmasin.
+ *
+ * Deploy'dan oldin bu manzil Next.js ning 404 sahifasini qaytargan va
+ * Vercel o'shani keshlab qolgan: endpoint chiqqandan keyin ham eski 404
+ * berilaverdi, skript o'rniga HTML yuklandi. no-store shuni qaytarmaydi.
+ */
+const noStore = { "Cache-Control": "no-store" };
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   if (!allowed(request)) {
-    return NextResponse.json({ ok: false, error: "Token noto'g'ri" }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Token noto'g'ri" }, { status: 401, headers: noStore });
   }
   const { name } = await params;
   if (!ALLOWED.has(name)) {
-    return NextResponse.json({ ok: false, error: "Bunday skript yo'q" }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Bunday skript yo'q" }, { status: 404, headers: noStore });
   }
   try {
     const text = await readFile(path.join(process.cwd(), "scripts", "fapteka-relay", name), "utf8");
@@ -40,6 +49,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   } catch {
-    return NextResponse.json({ ok: false, error: "Skript build'ga kirmagan" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Skript build'ga kirmagan" }, { status: 500, headers: noStore });
   }
 }
