@@ -80,9 +80,17 @@ function New-RepeatTrigger([int]$Minutes) {
 }
 
 function New-Settings([timespan]$Limit, [int]$Retries) {
-  New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-    -MultipleInstances IgnoreNew -ExecutionTimeLimit $Limit `
-    -RestartCount $Retries -RestartInterval (New-TimeSpan -Minutes 2)
+  $options = @{
+    StartWhenAvailable = $true; AllowStartIfOnBatteries = $true; DontStopIfGoingOnBatteries = $true
+    MultipleInstances = "IgnoreNew"; ExecutionTimeLimit = $Limit
+  }
+  # Qayta urinish 0 bo'lsa bu ikkisi umuman berilmaydi - aks holda Windows
+  # vazifani "Count yo'q" deb rad etadi
+  if ($Retries -gt 0) {
+    $options.RestartCount = $Retries
+    $options.RestartInterval = New-TimeSpan -Minutes 2
+  }
+  New-ScheduledTaskSettingsSet @options
 }
 
 $system = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
