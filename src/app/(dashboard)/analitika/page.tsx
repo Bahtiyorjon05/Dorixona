@@ -67,6 +67,8 @@ export default async function AnalitikaPage({
         checks={extra.checks}
         groups={extra.groups}
         suppliers={extra.suppliers}
+        supplierStock={extra.supplierStock}
+        hasSupplierMap={extra.hasSupplierMap}
       />
 
       {!d.hasFinance && !d.hasInventory && (

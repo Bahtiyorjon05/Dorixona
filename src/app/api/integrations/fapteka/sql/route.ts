@@ -8,6 +8,7 @@ import {
 import type { FaptekaRow } from "@/lib/integrations/fapteka/client";
 import { syncRevaluationFromDb, type RevaluationDbRow } from "@/lib/revaluation";
 import { syncShiftsFromDb, type ShiftDbRow } from "@/lib/cashiers";
+import { syncGoodSuppliers, syncSupplierSales } from "@/lib/suppliers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,6 +95,24 @@ export async function POST(request: NextRequest) {
       });
       revalidatePath("/harajatlar");
       revalidatePath("/moliya");
+      return NextResponse.json({ ok: true, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "xato";
+      await writeLog({ rowCount: rows.length, note: `${label} | XATO: ${message}`, ok: false });
+      return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    }
+  }
+
+  // Yetkazib beruvchilar: tovar -> oxirgi yetkazib beruvchi; oylik savdo
+  if (payload.kind === "goodSuppliers" || payload.kind === "supplierSales") {
+    const label = `${payload.kind} ${dateFrom}..${dateTo}`;
+    try {
+      const result =
+        payload.kind === "goodSuppliers"
+          ? await syncGoodSuppliers(rows)
+          : await syncSupplierSales({ rows, dateFrom, dateTo });
+      await writeLog({ rowCount: rows.length, note: `${label} | ${JSON.stringify(result)}`, ok: true });
+      revalidatePath("/analitika");
       return NextResponse.json({ ok: true, ...result });
     } catch (error) {
       const message = error instanceof Error ? error.message : "xato";

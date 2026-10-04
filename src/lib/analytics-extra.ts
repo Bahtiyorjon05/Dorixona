@@ -18,6 +18,8 @@ export type PaymentRow = { day: string; unit: string; method: string; amount: nu
 export type CheckRow = { day: string; unit: string; checks: number; net: number };
 export type GroupRow = { name: string; qty: number; turnover: number };
 export type SupplierRow = { name: string; amount: number; docs: number };
+/** Yetkazib beruvchi bo'yicha: hozirgi qoldiq (tan narxda) va yil savdosi */
+export type SupplierStockRow = { name: string; stock: number; sales: number; months: number };
 
 const SUPPLIER_RE = / — (.+?) \(F-Apteka #/;
 
@@ -27,7 +29,7 @@ export async function getAnalyticsExtra(year: number) {
   const localStart = new Date(year, 0, 1);
   const localEnd = new Date(year + 1, 0, 1);
 
-  const [payRows, shiftRows, groupRows, goodsRows] = await Promise.all([
+  const [payRows, shiftRows, groupRows, goodsRows, stockRows, supSalesRows, orgs] = await Promise.all([
     db.dailySales
       .findMany({
         where: { day: { gte: start, lt: end }, docType: { startsWith: "PAY:" } },
@@ -55,6 +57,19 @@ export async function getAnalyticsExtra(year: number) {
         select: { title: true, amount: true },
       })
       .catch(() => []),
+    // Qoldiq: tovarning oxirgi yetkazib beruvchisi bo'yicha (ustun SQL bilan qo'shiladi)
+    db.$queryRaw<{ org: string | null; value: number }[]>`
+      SELECT p."supplierOrg" AS org, SUM(p.stock * p."costPrice")::float8 AS value
+      FROM "Product" p
+      WHERE p."isActive" = true AND p.stock > 0 AND p.sku LIKE 'FA:%'
+      GROUP BY 1`.catch(() => []),
+    db.dailySales
+      .findMany({
+        where: { day: { gte: start, lt: end }, docType: { startsWith: "SUP:" } },
+        select: { day: true, docType: true, amount: true },
+      })
+      .catch(() => []),
+    db.faptekaOrg.findMany({ select: { id: true, name: true } }).catch(() => []),
   ]);
 
   const payments: PaymentRow[] = payRows
@@ -85,7 +100,30 @@ export async function getAnalyticsExtra(year: number) {
     supplierMap.set(name, entry);
   }
 
+  // Yetkazib beruvchilar: qoldiq va savdo bir jadvalda
+  const orgName = new Map(orgs.map((o) => [o.id, o.name]));
+  const nameOf = (org: string | null | undefined) =>
+    (org && org !== "0" && orgName.get(org)) || (org && org !== "0" ? `Tashkilot #${org}` : "Noma'lum");
+  const supplierStock = new Map<string, SupplierStockRow>();
+  const salesMonths = new Set<string>();
+  for (const row of stockRows) {
+    const name = nameOf(row.org);
+    const entry = supplierStock.get(name) ?? { name, stock: 0, sales: 0, months: 0 };
+    entry.stock += row.value;
+    supplierStock.set(name, entry);
+  }
+  for (const row of supSalesRows) {
+    const name = nameOf(row.docType.slice(4));
+    const entry = supplierStock.get(name) ?? { name, stock: 0, sales: 0, months: 0 };
+    entry.sales += Number(row.amount);
+    supplierStock.set(name, entry);
+    salesMonths.add(row.day.toISOString().slice(0, 7));
+  }
+  for (const entry of supplierStock.values()) entry.months = salesMonths.size;
+
   return {
+    supplierStock: [...supplierStock.values()].filter((r) => r.stock > 0 || r.sales > 0),
+    hasSupplierMap: stockRows.some((r) => r.org),
     payments,
     checks: [...checkMap.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.unit.localeCompare(b.unit))),
     groups: groupRows.map((row) => ({ name: row.name, qty: Math.round(row.qty), turnover: row.turnover })),

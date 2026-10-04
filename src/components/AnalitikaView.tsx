@@ -24,6 +24,7 @@ type PaymentRow = { day: string; unit: string; method: string; amount: number };
 type CheckRow = { day: string; unit: string; checks: number; net: number };
 type GroupRow = { name: string; qty: number; turnover: number };
 type SupplierRow = { name: string; amount: number; docs: number };
+type SupplierStockRow = { name: string; stock: number; sales: number; months: number };
 
 type Props = {
   year: number;
@@ -42,6 +43,8 @@ type Props = {
   checks: CheckRow[];
   groups: GroupRow[];
   suppliers: SupplierRow[];
+  supplierStock: SupplierStockRow[];
+  hasSupplierMap: boolean;
 };
 
 /** F-Apteka "Отчеты" ro'yxati — o'zbekcha. `ready` = bizda ma'lumot bormi. */
@@ -63,10 +66,10 @@ const CHARTS = [
   { key: "filiallar", label: "Dorixonalar taqqoslashi", ready: true },
   { key: "ombor", label: "Ombor qiymati (toifalar)", ready: true },
   { key: "kunlik", label: "Kunlik savdo grafigi", ready: true },
-  { key: "postavshik_qoldiq", label: "Yetkazib beruvchilar — qoldiq", ready: false },
-  { key: "postavshik_qoldiq_savdo", label: "Yetkazib beruvchilar — qoldiq/savdo", ready: false },
+  { key: "postavshik_qoldiq", label: "Yetkazib beruvchilar — qoldiq", ready: true },
+  { key: "postavshik_qoldiq_savdo", label: "Yetkazib beruvchilar — qoldiq/savdo", ready: true },
   { key: "postavshik_kirim", label: "Yetkazib beruvchilar — kirim", ready: true },
-  { key: "postavshik_savdo", label: "Yetkazib beruvchilar — savdo", ready: false },
+  { key: "postavshik_savdo", label: "Yetkazib beruvchilar — savdo", ready: true },
 ] as const;
 
 type ReportKey = (typeof REPORTS)[number]["key"];
@@ -134,6 +137,8 @@ export function AnalitikaView({
   checks,
   groups,
   suppliers,
+  supplierStock,
+  hasSupplierMap,
 }: Props) {
   const router = useRouter();
   const [report, setReport] = useState<ReportKey>("assortiment");
@@ -172,6 +177,9 @@ export function AnalitikaView({
   const checkNet = checkRange.reduce((s, c) => s + c.net, 0);
   const groupTotal = groups.reduce((s, g) => s + g.turnover, 0);
   const supplierTotal = suppliers.reduce((s, x) => s + x.amount, 0);
+  const supStockTotal = supplierStock.reduce((s, x) => s + x.stock, 0);
+  const supSalesTotal = supplierStock.reduce((s, x) => s + x.sales, 0);
+  const mln = (value: number) => (value / 1_000_000).toFixed(1);
 
   const activeReport = REPORTS.find((r) => r.key === report)!;
   const activeChart = CHARTS.find((c) => c.key === chart)!;
@@ -448,7 +456,67 @@ export function AnalitikaView({
             </>
           )
         )}
-        {!activeChart.ready && <Kutilyapti nima="har bir tovarning yetkazib beruvchisini (F-Apteka bazasidan)" />}
+        {chart === "postavshik_qoldiq" && (
+          !hasSupplierMap ? <Kutilyapti nima="har bir tovarning yetkazib beruvchisini (F-Apteka bazasidan)" /> : (
+            <>
+              <p className="mb-3 text-sm text-muted">
+                Hozirgi qoldiq tan narxda, jami {mln(supStockTotal)} mln so&apos;m
+              </p>
+              <DataTable
+                head={["Yetkazib beruvchi", "Qoldiq (mln)", "Ulush"]}
+                rows={[...supplierStock]
+                  .filter((x) => x.stock > 0)
+                  .sort((a, b) => b.stock - a.stock)
+                  .map((x) => [
+                    x.name,
+                    mln(x.stock),
+                    supStockTotal > 0 ? `${((x.stock / supStockTotal) * 100).toFixed(1)}%` : "—",
+                  ])}
+              />
+            </>
+          )
+        )}
+        {chart === "postavshik_savdo" && (
+          supSalesTotal === 0 ? <Kutilyapti nima="chek qatorlari bo'yicha yetkazib beruvchi savdosini (F-Apteka bazasidan)" /> : (
+            <>
+              <p className="mb-3 text-sm text-muted">
+                {year}-yil — yetkazib beruvchilar tovari savdosi, jami {mln(supSalesTotal)} mln so&apos;m
+              </p>
+              <DataTable
+                head={["Yetkazib beruvchi", "Savdo (mln)", "Ulush"]}
+                rows={[...supplierStock]
+                  .filter((x) => x.sales !== 0)
+                  .sort((a, b) => b.sales - a.sales)
+                  .map((x) => [
+                    x.name,
+                    mln(x.sales),
+                    supSalesTotal > 0 ? `${((x.sales / supSalesTotal) * 100).toFixed(1)}%` : "—",
+                  ])}
+              />
+            </>
+          )
+        )}
+        {chart === "postavshik_qoldiq_savdo" && (
+          !hasSupplierMap || supSalesTotal === 0 ? (
+            <Kutilyapti nima="yetkazib beruvchi bo'yicha qoldiq va savdoni (F-Apteka bazasidan)" />
+          ) : (
+            <>
+              <p className="mb-3 text-sm text-muted">
+                Qoldiq necha oylik savdoga yetadi — raqam katta bo&apos;lsa, tovar ko&apos;p turib qolgan
+              </p>
+              <DataTable
+                head={["Yetkazib beruvchi", "Qoldiq (mln)", "Oylik savdo (mln)", "Necha oyga yetadi"]}
+                rows={[...supplierStock]
+                  .filter((x) => x.stock > 0)
+                  .sort((a, b) => b.stock - a.stock)
+                  .map((x) => {
+                    const monthly = x.months > 0 ? x.sales / x.months : 0;
+                    return [x.name, mln(x.stock), mln(monthly), monthly > 0 ? (x.stock / monthly).toFixed(1) : "—"];
+                  })}
+              />
+            </>
+          )
+        )}
       </Card>
     </div>
   );
