@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { otdelUnitMap } from "@/lib/integrations/fapteka/otdel";
@@ -96,36 +97,41 @@ export async function syncShiftsFromDb(rows: ShiftDbRow[]) {
     });
   }
 
-  // Ketma-ket yozilganda 40 kunlik (200+ smena) yuborish Vercel vaqtiga
-  // sig'masdi (504) — 10 tadan parallel
-  for (let index = 0; index < items.length; index += 10) {
-    await Promise.all(
-      items.slice(index, index + 10).map(({ unit, shiftId, userId, data }) =>
-        db.cashierShift.upsert({
-          where: { unit_shiftId_userId: { unit, shiftId, userId } },
-          create: { unit, shiftId, userId, ...data },
-          update: data,
-        }),
-      ),
-    );
-  }
-
-  // Tan narx (KPI marjasi uchun) — bitta so'rov bilan. Ustun Prisma
-  // sxemasida yo'q: prisma/manual/smena-tan-narx.sql ishga tushirilmagan
-  // bo'lsa ham smenalar yozilaveradi.
-  const costed = items.filter((item) => item.cost !== null);
-  for (let index = 0; index < costed.length; index += 500) {
-    const chunk = costed.slice(index, index + 500);
+  // Bitta so'rov bilan (INSERT ... ON CONFLICT). Har smenaga alohida upsert
+  // bazaga bir necha marta borib kelardi — 40 kunlik (200+ smena) yuborish
+  // Vercel vaqtiga sig'masdi (504).
+  // Bir so'rovda bitta smena ikki marta kelsa Postgres hammasini rad etadi
+  const unique = [...new Map(items.map((item) => [`${item.unit}|${item.shiftId}|${item.userId}`, item])).values()];
+  for (let index = 0; index < unique.length; index += 500) {
+    const chunk = unique.slice(index, index + 500);
+    const values = (withCost: boolean) =>
+      Prisma.join(
+        chunk.map(({ unit, shiftId, userId, data, cost }) =>
+          withCost
+            ? Prisma.sql`(${randomUUID()}, ${unit}, ${shiftId}, ${userId}, ${data.cashier}, ${data.openedAt}, ${data.closedAt}, ${data.day}, ${data.checks}::int, ${data.sales}::numeric, ${data.returns}::numeric, NOW(), ${cost}::numeric)`
+            : Prisma.sql`(${randomUUID()}, ${unit}, ${shiftId}, ${userId}, ${data.cashier}, ${data.openedAt}, ${data.closedAt}, ${data.day}, ${data.checks}::int, ${data.sales}::numeric, ${data.returns}::numeric, NOW())`,
+        ),
+      );
+    const update = Prisma.sql`"cashier" = EXCLUDED."cashier", "openedAt" = EXCLUDED."openedAt",
+      "closedAt" = EXCLUDED."closedAt", "day" = EXCLUDED."day", "checks" = EXCLUDED."checks",
+      "sales" = EXCLUDED."sales", "returns" = EXCLUDED."returns", "updatedAt" = NOW()`;
     try {
+      // Tan narx (KPI marjasi uchun). Ustun Prisma sxemasida yo'q —
+      // prisma/manual/smena-tan-narx.sql. Eski relay (CS yo'q) yozgan
+      // tan narxni o'chirmasin: yangisi bo'lmasa eskisi qoladi.
       await db.$executeRaw`
-        UPDATE "CashierShift" s SET "cost" = v.cost
-        FROM (VALUES ${Prisma.join(
-          chunk.map((item) => Prisma.sql`(${item.unit}, ${item.shiftId}, ${item.userId}, ${item.cost}::numeric)`),
-        )}) AS v(unit, "shiftId", "userId", cost)
-        WHERE s."unit" = v.unit AND s."shiftId" = v."shiftId" AND s."userId" = v."userId"`;
+        INSERT INTO "CashierShift" ("id", "unit", "shiftId", "userId", "cashier", "openedAt", "closedAt",
+          "day", "checks", "sales", "returns", "updatedAt", "cost")
+        VALUES ${values(true)}
+        ON CONFLICT ("unit", "shiftId", "userId") DO UPDATE SET ${update},
+          "cost" = COALESCE(EXCLUDED."cost", "CashierShift"."cost")`;
     } catch {
-      // Ustun hali yaratilmagan
-      break;
+      // "cost" ustuni hali yaratilmagan — tan narxsiz yozamiz
+      await db.$executeRaw`
+        INSERT INTO "CashierShift" ("id", "unit", "shiftId", "userId", "cashier", "openedAt", "closedAt",
+          "day", "checks", "sales", "returns", "updatedAt")
+        VALUES ${values(false)}
+        ON CONFLICT ("unit", "shiftId", "userId") DO UPDATE SET ${update}`;
     }
   }
 
