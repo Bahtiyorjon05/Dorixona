@@ -95,7 +95,7 @@ $Reports = [ordered]@{
 # ----------------------------------------------------------------------------
 
 if (-not $Days) { $Days = $DaysDefault }
-if ($Only -eq "revaluation" -or $Only -eq "shifts") {
+if ($Only -eq "revaluation" -or $Only -eq "shifts" -or $Only -eq "suppliers") {
   # Faqat bazadan olinadigan qism - API hisobotlari o'tkazib yuboriladi
   $Reports = [ordered]@{}
 } elseif ($Only) {
@@ -149,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v23 boshlandi (smenalarda tan narx)"
+Write-Log "relay v24 boshlandi (yetkazib beruvchilar)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -528,6 +528,86 @@ GROUP BY i.OTDEL, i.SMENA, i.USERS, CONVERT(varchar(8), DATEADD(hour, -6, i.DATA
 if ((-not $Only -or $Only -eq "shifts") -and $SqlConn) {
   # Bir kun oldindan boshlanadi - kechki smena yarim tundan oshgan bo'lishi mumkin
   Send-Shifts (Get-Date).Date.AddDays(-$Days) (Get-Date).Date.AddDays(1)
+}
+
+# ---- Yetkazib beruvchilar bazadan -----------------------------------------
+# Har kirim qatorida yetkazib beruvchi (INCOMELN.ORG) bor, har chek qatori
+# esa qaysi kirim partiyasidan sotilganini ko'rsatadi (INVOICELN.INCOMELN).
+#   goodSuppliers  - har tovarning oxirgi yetkazib beruvchisi (qoldiq uchun);
+#                    kuniga bir marta (kunlik vazifa) yoki -Only suppliers
+#   supplierSales  - joriy oy savdosi yetkazib beruvchi bo'yicha, har safar
+function Send-SqlRows([string]$Kind, [string]$From, [string]$To, $Rows, [string]$Label) {
+  try {
+    $body = @{ kind = $Kind; dateFrom = $From; dateTo = $To; rows = @($Rows) } | ConvertTo-Json -Depth 4 -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+    $api = New-Object System.Net.WebClient
+    $api.Headers.Add("Authorization", "Bearer $Token")
+    $api.Headers.Add("Content-Type", "application/json; charset=utf-8")
+    $answer = [System.Text.Encoding]::UTF8.GetString($api.UploadData($SqlUrl, "POST", $bytes))
+    Write-Log ("OK    {0}  {1} qator  {2}" -f $Label, @($Rows).Count, $answer)
+  } catch {
+    Write-Log ("XATO  {0}  ERP: {1}" -f $Label, (Get-ErrorText $_))
+  }
+}
+
+function Send-Suppliers([bool]$WithGoods) {
+  $inv = [Globalization.CultureInfo]::InvariantCulture
+  $monthStart = Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
+  if ((Get-Date).Day -le 5) { $monthStart = $monthStart.AddMonths(-1) }
+  $monthEnd = (Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0).AddMonths(1)
+  try {
+    $conn = New-Object System.Data.SqlClient.SqlConnection($SqlConn)
+    $conn.Open()
+    $cmd = $conn.CreateCommand()
+    $cmd.CommandTimeout = 300
+
+    if ($WithGoods) {
+      $cmd.CommandText = @"
+SELECT x.GOOD AS G, x.ORG AS O FROM (
+  SELECT GOOD, ORG, ROW_NUMBER() OVER (PARTITION BY GOOD ORDER BY DATA DESC, ID DESC) AS rn
+  FROM [NGLOBAL].dbo.INCOMELN WHERE STATE = 3 AND ORG IS NOT NULL
+) x WHERE x.rn = 1
+"@
+      $goods = @()
+      $reader = $cmd.ExecuteReader()
+      while ($reader.Read()) { $goods += [ordered]@{ G = [string]$reader["G"]; O = [string]$reader["O"] } }
+      $reader.Close()
+      $today = (Get-Date).ToString("yyyy-MM-dd")
+      Send-SqlRows "goodSuppliers" $today $today $goods "tovar -> yetkazib beruvchi"
+    }
+
+    $cmd.CommandText = @"
+SELECT CONVERT(varchar(7), i.DATA, 120) AS M, i.OTDEL AS OTD, x.ORG AS O,
+       SUM(CASE WHEN i.DOCTYPE = 2 THEN l.KOL * l.PRICE ELSE -ABS(l.KOL * l.PRICE) END) AS S,
+       SUM(CASE WHEN i.DOCTYPE = 2 THEN l.KOL * x.PRICESKID ELSE -ABS(l.KOL * x.PRICESKID) END) AS C
+FROM [NGLOBAL].dbo.INVOICE i
+JOIN [NGLOBAL].dbo.INVOICELN l ON l.INVOICE = i.ID
+LEFT JOIN [NGLOBAL].dbo.INCOMELN x ON x.ID = l.INCOMELN
+WHERE i.DOCTYPE IN (2, 4) AND i.DATA >= @f AND i.DATA < @t
+GROUP BY CONVERT(varchar(7), i.DATA, 120), i.OTDEL, x.ORG
+"@
+    [void]$cmd.Parameters.AddWithValue("@f", $monthStart)
+    [void]$cmd.Parameters.AddWithValue("@t", $monthEnd)
+    $sales = @()
+    $reader = $cmd.ExecuteReader()
+    while ($reader.Read()) {
+      $sv = 0; if ($reader["S"] -isnot [DBNull]) { $sv = [decimal]$reader["S"] }
+      $cv = 0; if ($reader["C"] -isnot [DBNull]) { $cv = [decimal]$reader["C"] }
+      $org = ""; if ($reader["O"] -isnot [DBNull]) { $org = [string]$reader["O"] }
+      $sales += [ordered]@{ M = [string]$reader["M"]; OTD = [string]$reader["OTD"]; O = $org;
+                            S = $sv.ToString($inv); C = $cv.ToString($inv) }
+    }
+    $reader.Close()
+    $conn.Close()
+    Send-SqlRows "supplierSales" $monthStart.ToString("yyyy-MM-dd") $monthEnd.AddDays(-1).ToString("yyyy-MM-dd") $sales ("yetkazib beruvchi savdosi {0:yyyy-MM}.." -f $monthStart)
+  } catch {
+    Write-Log ("XATO  yetkazib beruvchilar  BAZA: {0}" -f $_.Exception.Message)
+  }
+}
+
+if ((-not $Only -or $Only -eq "suppliers") -and $SqlConn) {
+  # Tovar -> yetkazib beruvchi: kunlik vazifada (-Days 30) yoki qo'lda
+  Send-Suppliers ($Only -eq "suppliers" -or $Days -ge 30)
 }
 
 # ---- Narx nazorati --------------------------------------------------------
