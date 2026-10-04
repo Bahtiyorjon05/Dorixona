@@ -12,6 +12,8 @@ const schema = z.object({
   employeeId: z.string(),
   status: z.enum(["PRESENT", "ABSENT", "ON_LEAVE"]),
   checkInTime: z.string().optional(), // "HH:MM"
+  /** Qaysi kun uchun ("YYYY-MM-DD"); berilmasa bugun */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 /** Bugungi davomatni belgilash (upsert) */
@@ -21,7 +23,9 @@ export async function markAttendance(input: z.input<typeof schema>): Promise<Act
     const d = schema.parse(input);
 
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = d.date
+      ? new Date(Number(d.date.slice(0, 4)), Number(d.date.slice(5, 7)) - 1, Number(d.date.slice(8, 10)))
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     let checkIn: Date | null = null;
     let lateMinutes = 0;

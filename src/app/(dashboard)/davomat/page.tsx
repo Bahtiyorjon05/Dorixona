@@ -1,8 +1,10 @@
 import { getAttendanceData } from "@/lib/queries";
-import { getCashierData, todayShiftsByEmployee } from "@/lib/cashiers";
+import Link from "next/link";
+import { currentWorkDay, getCashierData, todayShiftsByEmployee } from "@/lib/cashiers";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { db } from "@/lib/db";
 import { ShiftCalendar } from "@/components/CashierViews";
-import { formatTime, monthName } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 import { Card, MetricCard, PageHeader } from "@/components/ui";
 import { AttendancePanel } from "@/components/panels/AttendancePanel";
 
@@ -14,15 +16,34 @@ const RULES = [
   { range: "60+ daqiqa", text: "−10 ball + rahbariyat xabardor", bg: "var(--c-danger-light)", border: "var(--c-danger)", fg: "var(--c-danger)" },
 ];
 
-export default async function DavomatPage() {
-  const d = await getAttendanceData();
-  const now = new Date();
-  // Bugungi smenalar (F-Apteka) — xodimlarga ism bo'yicha bog'lanadi
+/** "YYYY-MM-DD" ga N kun qo'shadi */
+function shiftDay(day: string, delta: number) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+export default async function DavomatPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Ko'riladigan kun: ?kun=YYYY-MM-DD, standart — bugungi ish kuni
+  const raw = (await searchParams).kun;
+  const requested = Array.isArray(raw) ? raw[0] : raw;
+  const today = currentWorkDay();
+  const day = requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) && requested <= today ? requested : today;
+  const isToday = day === today;
+  const dayDate = new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
+
+  const d = await getAttendanceData(dayDate);
+  const now = isToday ? new Date() : new Date(dayDate.getFullYear(), dayDate.getMonth() + 1, 0);
+  // Kun smenalari (F-Apteka) — xodimlarga ism bo'yicha bog'lanadi
   const employees = await db.employee.findMany({
     where: { status: { not: "INACTIVE" } },
     select: { id: true, fullName: true, unit: true },
   });
-  const smena = await todayShiftsByEmployee(employees);
+  const smena = await todayShiftsByEmployee(employees, day);
   const presentCount = d.records.filter(
     (r) => r.status === "PRESENT" || r.status === "LATE" || (r.status === null && smena.byEmployee[r.employeeId]),
   ).length;
@@ -34,14 +55,35 @@ export default async function DavomatPage() {
 
   return (
     <div>
+      {/* Bugungi kun ochiq bo'lsa — smenalar har daqiqada yangilanadi */}
+      {isToday && <AutoRefresh seconds={60} />}
       <PageHeader
         title="Davomat nazorati"
-        subtitle={`${monthName(now.getMonth() + 1)} ${now.getFullYear()} — kechikish va penalti tizimi`}
+        subtitle={`${formatDate(dayDate)}${isToday ? " — bugun" : ""}`}
+        action={
+          <form method="get" className="flex items-center gap-2">
+            <Link href={`/davomat?kun=${shiftDay(day, -1)}`} className="btn" aria-label="Oldingi kun">‹</Link>
+            <input
+              type="date"
+              name="kun"
+              defaultValue={day}
+              max={today}
+              className="rounded-lg border border-edge bg-card px-3 py-2 text-sm text-fg outline-none focus:border-primary"
+            />
+            <button type="submit" className="btn btn-primary">Ko&apos;rsatish</button>
+            {!isToday && (
+              <>
+                <Link href={`/davomat?kun=${shiftDay(day, 1)}`} className="btn" aria-label="Keyingi kun">›</Link>
+                <Link href="/davomat" className="btn">Bugun</Link>
+              </>
+            )}
+          </form>
+        }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
-          label="Bugun kelganlar"
+          label={isToday ? "Bugun kelganlar" : "Kelganlar"}
           value={`${presentCount}/${d.totalEmployees}`}
           valueColor="var(--c-primary)"
         />
@@ -81,6 +123,8 @@ export default async function DavomatPage() {
             ]),
           )}
           unmatched={smena.unmatched}
+          date={day}
+          title={isToday ? "Bugungi davomat" : `${formatDate(dayDate)} davomati`}
         />
       </div>
 

@@ -204,7 +204,7 @@ export function nameKey(name: string) {
     .replace(/[^a-z]/g, "");
 }
 
-function namesMatch(a: string, b: string) {
+export function namesMatch(a: string, b: string) {
   if (!a || !b) return false;
   if (a === b) return true;
   return a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a));
@@ -212,24 +212,38 @@ function namesMatch(a: string, b: string) {
 
 export type TodayShift = { opened: Date; closed: Date; active: boolean; unit: string; checks: number; cashier: string };
 
+/** Hozirgi ish kuni ("YYYY-MM-DD"): ish kuni 06:00 da boshlanadi (Toshkent) */
+export function currentWorkDay(now = new Date()) {
+  return new Date(now.getTime() + 5 * 3600_000 - 6 * 3600_000).toISOString().slice(0, 10);
+}
+
+/** Kassa ochiq deb hisoblanadigan eng uzoq tanaffus (oxirgi chekdan) */
+const OPEN_GAP_MS = 3 * 3600_000;
+
 /**
- * Bugungi smenalar (ish kuni: 06:00 dan) — ERP xodimlariga ism bo'yicha
+ * Kun smenalari (ish kuni: 06:00 dan) — ERP xodimlariga ism bo'yicha
  * bog'langan. Kassir ikki xodimga to'g'ri kelsa, o'sha dorixonadagisi
  * tanlanadi; baribir aniq bo'lmasa — bog'lanmagan qoladi.
+ *
+ * Kassa yopilgani F-Apteka'dan kelmaydi (SMENA jadvali eskirgan), shuning
+ * uchun: shu dorixonada keyingi kassir smena ochgan bo'lsa yoki oxirgi
+ * chekdan 3 soat o'tgan bo'lsa — yopilgan; aks holda hali smenada.
  */
 export async function todayShiftsByEmployee(
   employees: { id: string; fullName: string; unit: string | null }[],
+  day: string = currentWorkDay(),
 ): Promise<{ byEmployee: Record<string, TodayShift>; unmatched: { cashier: string; unit: string }[] }> {
   const now = new Date();
-  // Ish kuni 06:00 da boshlanadi (Toshkent): 06:00 gacha — kechagi kun
-  const workDay = new Date(now.getTime() + 5 * 3600_000 - 6 * 3600_000);
-  const day = new Date(Date.UTC(workDay.getUTCFullYear(), workDay.getUTCMonth(), workDay.getUTCDate()));
   let rows: Awaited<ReturnType<typeof db.cashierShift.findMany>> = [];
   try {
-    rows = await db.cashierShift.findMany({ where: { day }, orderBy: { openedAt: "asc" } });
+    rows = await db.cashierShift.findMany({
+      where: { day: new Date(`${day}T00:00:00Z`) },
+      orderBy: { openedAt: "asc" },
+    });
   } catch {
     return { byEmployee: {}, unmatched: [] };
   }
+  const isToday = day === currentWorkDay(now);
 
   const keyed = employees.map((e) => ({ ...e, key: nameKey(e.fullName) }));
   const byEmployee: Record<string, TodayShift> = {};
@@ -248,11 +262,13 @@ export async function todayShiftsByEmployee(
     // Kun ichida bir nechta smena bo'lsa — eng erta ochilishdan eng kech yopilishgacha
     const opened = prev && prev.opened < row.openedAt ? prev.opened : row.openedAt;
     const closed = prev && prev.closed > row.closedAt ? prev.closed : row.closedAt;
+    const relievedBy = rows.some(
+      (other) => other !== row && other.unit === row.unit && other.userId !== row.userId && other.openedAt > closed,
+    );
     byEmployee[id] = {
       opened,
       closed,
-      // Oxirgi chekdan 60 daqiqa o'tmagan bo'lsa — hali smenada
-      active: now.getTime() - closed.getTime() < 60 * 60_000,
+      active: isToday && !relievedBy && now.getTime() - closed.getTime() < OPEN_GAP_MS,
       unit: row.unit,
       checks: (prev?.checks ?? 0) + row.checks,
       cashier: row.cashier,

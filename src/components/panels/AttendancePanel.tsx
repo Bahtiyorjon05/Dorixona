@@ -36,10 +36,15 @@ export function AttendancePanel({
   records,
   shifts = {},
   unmatched = [],
+  date,
+  title = "Bugungi davomat",
 }: {
   records: Rec[];
   shifts?: Record<string, ShiftInfo>;
   unmatched?: { cashier: string; unit: string }[];
+  /** Ko'rilayotgan kun ("YYYY-MM-DD") — belgilash shu kunga yoziladi */
+  date?: string;
+  title?: string;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<Rec | null>(null);
@@ -55,6 +60,7 @@ export function AttendancePanel({
         employeeId: target.employeeId,
         status: fd.get("status") as never,
         checkInTime: String(fd.get("checkInTime")) || undefined,
+        date,
       });
       if (res.ok) {
         setTarget(null);
@@ -72,7 +78,7 @@ export function AttendancePanel({
   return (
     <div className="card p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-medium">📅 Bugungi davomat</span>
+        <span className="flex items-center gap-2 text-sm font-medium">📅 {title}</span>
         <SearchBox
           value={query}
           onChange={setQuery}
@@ -87,7 +93,7 @@ export function AttendancePanel({
             <tr className="border-b border-edge text-left text-[11px] uppercase text-muted">
               <th className="pb-2 pr-3 font-medium">Xodim</th>
               <th className="pb-2 pr-3 font-medium">Kelish</th>
-              <th className="pb-2 pr-3 font-medium">Smena</th>
+              <th className="pb-2 pr-3 font-medium">Kassa yopish</th>
               <th className="pb-2 pr-3 font-medium">Kechikish</th>
               <th className="pb-2 pr-3 font-medium">Penalti</th>
               <th className="pb-2 pr-3 font-medium">Holat</th>
@@ -98,16 +104,20 @@ export function AttendancePanel({
             {shown.map((r) => (
               <tr key={r.employeeId} className="border-b border-edge last:border-0 hover:bg-surface">
                 <td className="py-2.5 pr-3 font-medium">{r.name}</td>
-                <td className="py-2.5 pr-3">{r.checkIn ? formatTime(r.checkIn) : "—"}</td>
-                <td className="py-2.5 pr-3 whitespace-nowrap">
-                  {shifts[r.employeeId] ? (
-                    <span title={`${shifts[r.employeeId].checks} ta chek`}>
-                      {formatTime(shifts[r.employeeId].opened)} –{" "}
-                      {shifts[r.employeeId].active ? "hozir" : formatTime(shifts[r.employeeId].closed)}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
+                {/* Kelish: kassada smena ochilgani (birinchi chek), bo'lmasa qo'lda kiritilgani */}
+                <td className="py-2.5 pr-3" title={shifts[r.employeeId] ? `${shifts[r.employeeId].checks} ta chek` : undefined}>
+                  {shifts[r.employeeId]
+                    ? formatTime(shifts[r.employeeId].opened)
+                    : r.checkIn
+                      ? formatTime(r.checkIn)
+                      : "—"}
+                </td>
+                <td className="py-2.5 pr-3">
+                  {shifts[r.employeeId]
+                    ? shifts[r.employeeId].active
+                      ? <span className="text-primary">ochiq</span>
+                      : formatTime(shifts[r.employeeId].closed)
+                    : "—"}
                 </td>
                 <td
                   className="py-2.5 pr-3"

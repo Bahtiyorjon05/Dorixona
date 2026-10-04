@@ -668,10 +668,11 @@ export async function getKpiData() {
 // ─────────────────────────────────────────────────────────────
 //  DAVOMAT
 // ─────────────────────────────────────────────────────────────
-export async function getAttendanceData() {
-  const today = startOfDay();
+/** day — ko'riladigan kun (mahalliy yarim tun); berilmasa bugun */
+export async function getAttendanceData(day?: Date) {
+  const today = day ? startOfDay(day) : startOfDay();
   const tomorrow = new Date(today.getTime() + 864e5);
-  const monthStart = startOfMonth(0);
+  const monthStart = startOfMonth(0, today);
 
   const [employees, todayRecords, monthRecords] = await Promise.all([
     db.employee.findMany({ where: { status: { not: "INACTIVE" } }, orderBy: { createdAt: "asc" } }),
