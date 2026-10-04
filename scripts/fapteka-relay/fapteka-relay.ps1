@@ -149,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v25 boshlandi (yetkazib beruvchi = FIRSTORG)"
+Write-Log "relay v26 boshlandi (yetkazib beruvchilar: -Days bilan to'ldirish)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -556,6 +556,11 @@ function Send-Suppliers([bool]$WithGoods) {
   $inv = [Globalization.CultureInfo]::InvariantCulture
   $monthStart = Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
   if ((Get-Date).Day -le 5) { $monthStart = $monthStart.AddMonths(-1) }
+  # Qo'lda to'ldirish: -Only suppliers -Days 280 -> o'sha kun tushgan oy boshidan
+  if ($Only -eq "suppliers" -and $Days -gt 31) {
+    $back = (Get-Date).AddDays(-$Days)
+    $monthStart = Get-Date -Year $back.Year -Month $back.Month -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
+  }
   $monthEnd = (Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0).AddMonths(1)
   try {
     $conn = New-Object System.Data.SqlClient.SqlConnection($SqlConn)
