@@ -149,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v24 boshlandi (yetkazib beruvchilar)"
+Write-Log "relay v25 boshlandi (yetkazib beruvchi = FIRSTORG)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -531,11 +531,13 @@ if ((-not $Only -or $Only -eq "shifts") -and $SqlConn) {
 }
 
 # ---- Yetkazib beruvchilar bazadan -----------------------------------------
-# Har kirim qatorida yetkazib beruvchi (INCOMELN.ORG) bor, har chek qatori
+# Har kirim qatorida yetkazib beruvchi bor, har chek qatori
 # esa qaysi kirim partiyasidan sotilganini ko'rsatadi (INVOICELN.INCOMELN).
 #   goodSuppliers  - har tovarning oxirgi yetkazib beruvchisi (qoldiq uchun);
 #                    kuniga bir marta (kunlik vazifa) yoki -Only suppliers
 #   supplierSales  - joriy oy savdosi yetkazib beruvchi bo'yicha, har safar
+# Dorixonaga tovar ombordan ko'chirib keladi - u yerdagi ORG ombor bo'ladi.
+# Haqiqiy firma FIRSTORG da (ko'chirishlarda o'zgarmaydi), bo'sh bo'lsa ORG.
 function Send-SqlRows([string]$Kind, [string]$From, [string]$To, $Rows, [string]$Label) {
   try {
     $body = @{ kind = $Kind; dateFrom = $From; dateTo = $To; rows = @($Rows) } | ConvertTo-Json -Depth 4 -Compress
@@ -564,8 +566,9 @@ function Send-Suppliers([bool]$WithGoods) {
     if ($WithGoods) {
       $cmd.CommandText = @"
 SELECT x.GOOD AS G, x.ORG AS O FROM (
-  SELECT GOOD, ORG, ROW_NUMBER() OVER (PARTITION BY GOOD ORDER BY DATA DESC, ID DESC) AS rn
-  FROM [NGLOBAL].dbo.INCOMELN WHERE STATE = 3 AND ORG IS NOT NULL
+  SELECT GOOD, ISNULL(NULLIF(FIRSTORG, 0), ORG) AS ORG,
+         ROW_NUMBER() OVER (PARTITION BY GOOD ORDER BY DATA DESC, ID DESC) AS rn
+  FROM [NGLOBAL].dbo.INCOMELN WHERE STATE = 3 AND ISNULL(NULLIF(FIRSTORG, 0), ORG) IS NOT NULL
 ) x WHERE x.rn = 1
 "@
       $goods = @()
@@ -577,14 +580,14 @@ SELECT x.GOOD AS G, x.ORG AS O FROM (
     }
 
     $cmd.CommandText = @"
-SELECT CONVERT(varchar(7), i.DATA, 120) AS M, i.OTDEL AS OTD, x.ORG AS O,
+SELECT CONVERT(varchar(7), i.DATA, 120) AS M, i.OTDEL AS OTD, ISNULL(NULLIF(x.FIRSTORG, 0), x.ORG) AS O,
        SUM(CASE WHEN i.DOCTYPE = 2 THEN l.KOL * l.PRICE ELSE -ABS(l.KOL * l.PRICE) END) AS S,
        SUM(CASE WHEN i.DOCTYPE = 2 THEN l.KOL * x.PRICESKID ELSE -ABS(l.KOL * x.PRICESKID) END) AS C
 FROM [NGLOBAL].dbo.INVOICE i
 JOIN [NGLOBAL].dbo.INVOICELN l ON l.INVOICE = i.ID
 LEFT JOIN [NGLOBAL].dbo.INCOMELN x ON x.ID = l.INCOMELN
 WHERE i.DOCTYPE IN (2, 4) AND i.DATA >= @f AND i.DATA < @t
-GROUP BY CONVERT(varchar(7), i.DATA, 120), i.OTDEL, x.ORG
+GROUP BY CONVERT(varchar(7), i.DATA, 120), i.OTDEL, ISNULL(NULLIF(x.FIRSTORG, 0), x.ORG)
 "@
     [void]$cmd.Parameters.AddWithValue("@f", $monthStart)
     [void]$cmd.Parameters.AddWithValue("@t", $monthEnd)
