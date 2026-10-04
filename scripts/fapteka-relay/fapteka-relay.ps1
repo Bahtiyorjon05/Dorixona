@@ -149,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v22 boshlandi (kassir smenalari)"
+Write-Log "relay v23 boshlandi (smenalarda tan narx)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -460,9 +460,21 @@ SELECT i.OTDEL AS OTD,
        CONVERT(varchar(19), MAX(i.DATAENTER), 126) AS B,
        SUM(CASE WHEN i.DOCTYPE = 2 THEN 1 ELSE 0 END) AS C,
        SUM(CASE WHEN i.DOCTYPE = 2 THEN i.SUMMA ELSE 0 END) AS S,
-       SUM(CASE WHEN i.DOCTYPE = 4 THEN ABS(i.SUMMA) ELSE 0 END) AS R
+       SUM(CASE WHEN i.DOCTYPE = 4 THEN ABS(i.SUMMA) ELSE 0 END) AS R,
+       SUM(CASE WHEN i.DOCTYPE = 2 THEN ISNULL(lc.COST, 0) ELSE 0 END) AS CS,
+       SUM(CASE WHEN i.DOCTYPE = 4 THEN ISNULL(lc.COST, 0) ELSE 0 END) AS CR
 FROM [NGLOBAL].dbo.INVOICE i
 LEFT JOIN [NGLOBAL].dbo.USERS u ON u.ID = i.USERS
+-- Tan narx: 22-hisobot bilan bir xil (KOL x INCOMELN.PRICESKID), chek bo'yicha.
+-- 03.10.2026 da tekshirilgan: Shayxontohur 25 552 908 - 22-hisobot bilan aynan.
+LEFT JOIN (
+  SELECT l.INVOICE, SUM(ABS(l.KOL) * x.PRICESKID) AS COST
+  FROM [NGLOBAL].dbo.INVOICELN l
+  JOIN [NGLOBAL].dbo.INCOMELN x ON x.ID = l.INCOMELN
+  JOIN [NGLOBAL].dbo.INVOICE ii ON ii.ID = l.INVOICE
+  WHERE ii.DOCTYPE IN (2, 4) AND ii.DATA >= @f AND ii.DATA < @t
+  GROUP BY l.INVOICE
+) lc ON lc.INVOICE = i.ID
 WHERE i.DOCTYPE IN (2, 4) AND i.SMENA IS NOT NULL AND i.USERS IS NOT NULL
   AND i.DATA >= @f AND i.DATA < @t
 GROUP BY i.OTDEL, i.SMENA, i.USERS, CONVERT(varchar(8), DATEADD(hour, -6, i.DATAENTER), 112)
@@ -474,6 +486,8 @@ GROUP BY i.OTDEL, i.SMENA, i.USERS, CONVERT(varchar(8), DATEADD(hour, -6, i.DATA
     while ($reader.Read()) {
       $sum = 0; if ($reader["S"] -isnot [DBNull]) { $sum = [decimal]$reader["S"] }
       $ret = 0; if ($reader["R"] -isnot [DBNull]) { $ret = [decimal]$reader["R"] }
+      $cs = 0; if ($reader["CS"] -isnot [DBNull]) { $cs = [decimal]$reader["CS"] }
+      $cr = 0; if ($reader["CR"] -isnot [DBNull]) { $cr = [decimal]$reader["CR"] }
       $rows += [ordered]@{
         OTD  = [string]$reader["OTD"]
         SM   = [string]$reader["SM"]
@@ -484,6 +498,8 @@ GROUP BY i.OTDEL, i.SMENA, i.USERS, CONVERT(varchar(8), DATEADD(hour, -6, i.DATA
         C    = [string]$reader["C"]
         S    = $sum.ToString($inv)
         R    = $ret.ToString($inv)
+        CS   = $cs.ToString($inv)
+        CR   = $cr.ToString($inv)
       }
     }
     $reader.Close()

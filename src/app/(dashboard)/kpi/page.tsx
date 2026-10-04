@@ -25,7 +25,7 @@ function bonusBadge(p: number): "green" | "amber" | "red" {
 
 const WEIGHTS = [
   { key: "sales", label: "Savdo KPI", icon: "🪙", color: "var(--c-primary)" },
-  { key: "margin", label: "Marja KPI (o'rtacha chek)", icon: "📈", color: "var(--c-info)" },
+  { key: "margin", label: "Marja KPI", icon: "📈", color: "var(--c-info)" },
   { key: "attendance", label: "Davomat KPI", icon: "🕐", color: "var(--c-accent)" },
   { key: "discipline", label: "Intizom KPI", icon: "🛡️", color: "var(--c-purple)" },
   { key: "customer", label: "Mijoz KPI", icon: "⭐", color: "var(--c-danger)" },

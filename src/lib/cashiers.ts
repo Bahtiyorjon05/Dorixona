@@ -32,6 +32,10 @@ export type ShiftDbRow = {
   S?: string;
   /** qaytarish summasi (musbat) */
   R?: string;
+  /** sotilgan tovarning tan narxi (KOL x INCOMELN.PRICESKID, relay v23+) */
+  CS?: string;
+  /** qaytarilgan tovarning tan narxi */
+  CR?: string;
 };
 
 const toNumber = (value: unknown) => {
@@ -75,6 +79,19 @@ export async function syncShiftsFromDb(rows: ShiftDbRow[]) {
       create: { unit, shiftId, userId, ...data },
       update: data,
     });
+    // Tan narx (KPI marjasi uchun). Ustun Prisma sxemasida yo'q —
+    // prisma/manual/smena-tan-narx.sql ishga tushirilmagan bo'lsa ham
+    // smenalar yozilaveradi. Eski relay (CS yo'q) tan narxni o'chirmasin.
+    if (row.CS !== undefined) {
+      const cost = Math.round((toNumber(row.CS) - Math.abs(toNumber(row.CR))) * 100) / 100;
+      try {
+        await db.$executeRaw`
+          UPDATE "CashierShift" SET "cost" = ${cost}
+          WHERE "unit" = ${unit} AND "shiftId" = ${shiftId} AND "userId" = ${userId}`;
+      } catch {
+        // Ustun hali yaratilmagan
+      }
+    }
     saved += 1;
   }
   return { saved, skipped };

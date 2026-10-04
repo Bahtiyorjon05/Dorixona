@@ -11,7 +11,8 @@ import { bonusAmount, bonusPercentForScore, computeTotalScore, type KpiComponent
  * solishtirish adolatli. O'rtachaga teng natija — 80 ball, 25% yuqori — 100.
  *
  *   Savdo   40% — bir soatlik savdo (qaytarish ayirilgan)
- *   Marja   20% — o'rtacha chek (kassir bo'yicha tan narx hali kelmaydi)
+ *   Marja   20% — (savdo − tan narx) ÷ savdo; tan narx hali kelmagan
+ *                 dorixonada vaqtincha o'rtacha chek olinadi
  *   Davomat 15% — ishlagan kunlar, dorixonada eng ko'p ishlaganga nisbatan
  *   Intizom 10% — 100 − qaytarish ulushi − Davomat bo'limidagi jarimalar
  *   Mijoz   15% — bir soatda xizmat qilingan mijoz (cheklar)
@@ -25,13 +26,31 @@ const AT_AVERAGE = 80;
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
 const relative = (value: number, average: number) => (average > 0 ? clamp((value / average) * AT_AVERAGE) : 0);
 
-type Totals = { net: number; sales: number; returns: number; hours: number; checks: number; days: Set<string> };
+type Totals = {
+  net: number; sales: number; returns: number; hours: number; checks: number; days: Set<string>;
+  /** tan narxi ma'lum smenalar: savdo va tan narx */
+  costedNet: number; cost: number;
+};
+
+/** Smena tan narxlari — ustun Prisma'da yo'q (prisma/manual/smena-tan-narx.sql) */
+async function shiftCosts(from: Date, to: Date) {
+  try {
+    const rows = await db.$queryRaw<{ id: string; cost: number }[]>`
+      SELECT "id", "cost"::float8 AS cost FROM "CashierShift"
+      WHERE "day" >= ${from} AND "day" < ${to} AND "cost" IS NOT NULL`;
+    return new Map(rows.map((row) => [row.id, Number(row.cost)]));
+  } catch {
+    return new Map<string, number>();
+  }
+}
+
+const marginRate = (net: number, cost: number) => (net > 0 ? (net - cost) / net : 0);
 
 export async function syncAutoKpi(year: number, month: number) {
   const from = new Date(Date.UTC(year, month - 1, 1));
   const to = new Date(Date.UTC(year, month, 1));
 
-  const [employees, shifts, attendance] = await Promise.all([
+  const [employees, shifts, attendance, costs] = await Promise.all([
     db.employee.findMany({
       where: { status: "ACTIVE" },
       select: { id: true, fullName: true, unit: true, baseSalary: true },
@@ -42,6 +61,7 @@ export async function syncAutoKpi(year: number, month: number) {
       _sum: { penalty: true },
       where: { date: { gte: from, lt: to } },
     }),
+    shiftCosts(from, to),
   ]);
   if (!shifts.length) return { updated: 0, unmatched: [] as string[] };
 
@@ -60,12 +80,18 @@ export async function syncAutoKpi(year: number, month: number) {
     const id = candidates[0].id;
     const t = totals.get(id) ?? {
       unit: shift.unit, net: 0, sales: 0, returns: 0, hours: 0, checks: 0, days: new Set<string>(),
+      costedNet: 0, cost: 0,
     };
     const sales = Number(shift.sales);
     const returns = Number(shift.returns);
     t.sales += sales;
     t.returns += returns;
     t.net += sales - returns;
+    const cost = costs.get(shift.id);
+    if (cost !== undefined) {
+      t.costedNet += sales - returns;
+      t.cost += cost;
+    }
     t.hours += Math.max(0, (shift.closedAt.getTime() - shift.openedAt.getTime()) / 3_600_000);
     t.checks += shift.checks;
     t.days.add(shift.day.toISOString().slice(0, 10));
@@ -73,10 +99,15 @@ export async function syncAutoKpi(year: number, month: number) {
   }
 
   // Dorixona o'rtachalari — shu oyda smenasi bo'lgan xodimlar bo'yicha
-  const units = new Map<string, { net: number; hours: number; checks: number; maxDays: number }>();
+  const units = new Map<
+    string,
+    { net: number; hours: number; checks: number; maxDays: number; costedNet: number; cost: number }
+  >();
   for (const t of totals.values()) {
-    const u = units.get(t.unit) ?? { net: 0, hours: 0, checks: 0, maxDays: 0 };
+    const u = units.get(t.unit) ?? { net: 0, hours: 0, checks: 0, maxDays: 0, costedNet: 0, cost: 0 };
     u.net += t.net;
+    u.costedNet += t.costedNet;
+    u.cost += t.cost;
     u.hours += t.hours;
     u.checks += t.checks;
     u.maxDays = Math.max(u.maxDays, t.days.size);
@@ -95,7 +126,11 @@ export async function syncAutoKpi(year: number, month: number) {
     const returnShare = t.sales > 0 ? t.returns / t.sales : 0;
     const components: KpiComponents = {
       salesScore: relative(perHour(t.net, t.hours), perHour(u.net, u.hours)),
-      marginScore: relative(t.checks > 0 ? t.net / t.checks : 0, u.checks > 0 ? u.net / u.checks : 0),
+      // Tan narx bor bo'lsa — haqiqiy marja, aks holda o'rtacha chek
+      marginScore:
+        u.costedNet > 0
+          ? relative(marginRate(t.costedNet, t.cost), marginRate(u.costedNet, u.cost))
+          : relative(t.checks > 0 ? t.net / t.checks : 0, u.checks > 0 ? u.net / u.checks : 0),
       attendanceScore: u.maxDays > 0 ? clamp((t.days.size / u.maxDays) * 100) : 0,
       // 1% qaytarish = 5 ball
       disciplineScore: clamp(100 - returnShare * 500 - (penalties.get(employee.id) ?? 0)),
