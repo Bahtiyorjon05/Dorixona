@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard, Keyboard, webhookCallback, type Context } from "grammy";
 import { db } from "@/lib/db";
+import { adminChatIds, sendTelegram } from "@/lib/telegram/notify";
 import {
   SIGNUP_BONUS_POINTS,
   TIERS,
@@ -102,18 +103,34 @@ async function handleStaffPhone(ctx: Context, phone: string) {
   if (!employee || !ctx.from) return false;
 
   if (!employee.userId) {
-    const url = getTelegramWebAppUrl();
+    // Loginni faqat admin ochadi (Sozlamalar -> Xodimlar kirishi). Xodim o'zi
+    // ro'yxatdan o'ta olmaydi — shuning uchun adminlarga xabar beramiz.
     await ctx.reply(
       `Salom, ${employee.fullName}! Siz Evomed apteka xodimi sifatida tanildingiz ✅\n\n` +
         `Lavozim: ${employee.position}\n\n` +
-        "Ishni boshlash uchun Evomed apteka boshqaruv panelidan ro'yxatdan o'ting. " +
-        "Shundan keyin Telegram'ingiz bog'lanadi va keyingi safar /start bosishning o'zi kifoya.",
-      {
-        reply_markup: url
-          ? new InlineKeyboard().webApp("Boshqaruv panelini ochish", url)
-          : { remove_keyboard: true },
-      },
+        "Panelga kirish uchun sizga login kerak — rahbariyatga xabar yuborildi. " +
+        "Login ochilgach shu yerda yana /start bosing, panel o'zi ochiladi.",
+      { reply_markup: { remove_keyboard: true } },
     );
+    // Bitta xodim uchun kuniga bir marta — /start ni qayta bossa adminlar bezovta bo'lmasin
+    const recent = await db.integrationLog
+      .findFirst({
+        where: { source: "xodim-login-sorov", note: employee.id, createdAt: { gte: new Date(Date.now() - 864e5) } },
+        select: { id: true },
+      })
+      .catch(() => null);
+    if (recent) return true;
+    await db.integrationLog
+      .create({ data: { source: "xodim-login-sorov", note: employee.id, ok: true } })
+      .catch(() => null);
+    const who = ctx.from.username ? ` (@${ctx.from.username})` : "";
+    await sendTelegram(
+      adminChatIds(),
+      `👤 <b>Xodim botga kirdi, logini yo'q</b>\n\n` +
+        `${employee.fullName} — ${employee.position}\nTelefon: ${phone}${who}\n\n` +
+        "Saytda Sozlamalar → Xodimlar kirishi bo'limida unga login oching. " +
+        "Keyin u botda /start bossa, panel o'zi ochiladi.",
+    ).catch(() => null);
     return true;
   }
 
