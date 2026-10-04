@@ -1,29 +1,46 @@
-import { getReportsData } from "@/lib/queries";
+import { getReportInsights } from "@/lib/report-insights";
 import { getCashierData } from "@/lib/cashiers";
 import { CashierTotals } from "@/components/CashierViews";
 import { Badge, Card, PageHeader } from "@/components/ui";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
-function CorrelationBars({ data }: { data: { label: string; value: number; kpi: number }[] }) {
-  const max = Math.max(...data.map((item) => item.value), 0.01);
+type Row = { key: string; label: string; unit: string; net: number; profit: number | null; kpi: number | null };
+
+/** Kassirlar: foyda (tan narx bo'lsa) yoki savdo, KPI balli bilan */
+function CorrelationBars({ data }: { data: Row[] }) {
+  const value = (row: Row) => row.profit ?? row.net;
+  const max = Math.max(...data.map(value), 1);
+  const sorted = [...data].sort((a, b) => value(b) - value(a));
   return (
     <div className="space-y-3">
-      {data.length ? data.map((item) => (
-        <div key={item.label} className="grid grid-cols-[120px_1fr_70px] items-center gap-3 text-xs">
-          <span className="truncate text-muted">{item.label}</span>
+      {sorted.length ? sorted.map((item) => (
+        <div key={item.key} className="grid grid-cols-[140px_1fr_150px] items-center gap-3 text-xs">
+          <span className="truncate" title={item.unit}>
+            {item.label} <span className="text-muted">· {item.unit}</span>
+          </span>
           <div className="h-3 overflow-hidden rounded-full bg-surface">
-            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(4, (item.value / max) * 100)}%` }} />
+            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(4, (value(item) / max) * 100)}%` }} />
           </div>
-          <span className="text-right text-muted">{item.value}M · KPI {item.kpi}</span>
+          <span className="text-right text-muted">
+            {(value(item) / 1_000_000).toFixed(1)}M{item.kpi !== null ? ` · KPI ${item.kpi}` : ""}
+          </span>
         </div>
-      )) : <p className="text-sm text-muted">Savdo ma'lumotlari to'planmoqda.</p>}
+      )) : <p className="text-sm text-muted">Shu oy smena ma&apos;lumoti hali kelmagan.</p>}
     </div>
   );
 }
 
+const TONE: Record<string, { bg: string; border: string }> = {
+  good: { bg: "var(--c-primary-light)", border: "var(--c-primary)" },
+  warn: { bg: "var(--c-accent-light)", border: "var(--c-accent)" },
+  bad: { bg: "var(--c-danger-light)", border: "var(--c-danger)" },
+  info: { bg: "var(--c-info-light)", border: "var(--c-info)" },
+};
+
 export default async function HisobotlarPage() {
-  const d = await getReportsData();
+  const insight = await getReportInsights();
   const kassaNow = new Date();
   const kassa = await getCashierData({
     from: new Date(kassaNow.getFullYear(), kassaNow.getMonth(), 1),
@@ -31,31 +48,11 @@ export default async function HisobotlarPage() {
     unit: null,
   });
 
-  const tips = [
-    {
-      bg: "var(--c-primary-light)",
-      border: "var(--c-primary)",
-      text:
-        d.correlation[0]
-          ? `${d.correlation[0].label.split(" ")[0]} bu oyda eng ko'p foyda keltirdi — uning sotgan toifalarini tahlil qiling`
-          : "Savdo ma'lumotlari to'planmoqda",
-    },
-    {
-      bg: "var(--c-accent-light)",
-      border: "var(--c-accent)",
-      text: d.critical
-        ? `${d.critical} ombori kritik darajada — zudlik bilan buyurtma bering`
-        : "Ombor qoldiqlari normal darajada",
-    },
-    {
-      bg: "var(--c-info-light)",
-      border: "var(--c-info)",
-      text: "KPI va moliya birlashgan tahlil yangi insight beradi — yuqori KPI yuqori foyda bilan bog'liq",
-    },
-  ];
+  const tips = insight.insights.map((item) => ({ ...TONE[item.tone], text: item.text }));
 
   return (
     <div>
+      <AutoRefresh seconds={120} />
       <PageHeader title="Hisobotlar va tahlil" subtitle="KPI va moliya integratsiyasi" />
 
       <Card
@@ -65,9 +62,11 @@ export default async function HisobotlarPage() {
         className="mb-4"
       >
         <p className="mb-4 text-sm text-muted">
-          Qaysi xodim qancha foyda keltirdi — KPI va moliya birlashgan tahlil (joriy oy, mln so'm)
+          {insight.hasCost
+            ? "Har bir kassir shu oy qancha foyda keltirdi (QQSsiz, mln so'm) va KPI balli"
+            : "Har bir kassir shu oy qancha savdo qildi (mln so'm) va KPI balli"}
         </p>
-        <CorrelationBars data={d.correlation} />
+        <CorrelationBars data={insight.correlation} />
       </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -76,8 +75,9 @@ export default async function HisobotlarPage() {
             {[
               { icon: "📊", label: "Oylik KPI hisoboti (.xlsx)", href: "/api/export/kpi?format=xlsx" },
               { icon: "📑", label: "Oylik KPI hisoboti (.csv)", href: "/api/export/kpi?format=csv" },
-              { icon: "💰", label: "Moliyaviy hisobot (.xlsx)", href: "/api/export/finance?format=xlsx" },
-              { icon: "🕐", label: "Davomat jadvali (.csv)", href: "/api/export/attendance?format=csv" },
+              { icon: "💰", label: "Moliyaviy hisobot — yil, dorixonalar (.xlsx)", href: "/api/export/finance?format=xlsx" },
+              { icon: "🧑‍💼", label: "Kassirlar va smenalar — shu oy (.xlsx)", href: "/api/export/kassirlar?format=xlsx" },
+              { icon: "🕐", label: "Davomat — shu oy, smenalar bilan (.xlsx)", href: "/api/export/attendance?format=xlsx" },
             ].map((b) => (
               <a
                 key={b.label}
@@ -94,6 +94,7 @@ export default async function HisobotlarPage() {
             {[
               { label: "KPI hisoboti (PDF)", href: "/chop/kpi" },
               { label: "Moliyaviy hisobot (PDF)", href: "/chop/finance" },
+              { label: "Kassirlar va smenalar (PDF)", href: "/chop/kassirlar" },
               { label: "Davomat (PDF)", href: "/chop/attendance" },
             ].map((b) => (
               <a
