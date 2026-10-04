@@ -185,3 +185,78 @@ export async function getCashierData(input: { from: Date; to: Date; unit: string
     totalNet,
   };
 }
+
+const CYR: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "j", з: "z", и: "i", й: "y",
+  к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f",
+  х: "x", ц: "ts", ч: "ch", ш: "sh", щ: "sh", ъ: "", ы: "i", ь: "", э: "e", ю: "yu", я: "ya",
+  ў: "o", қ: "q", ғ: "g", ҳ: "x",
+};
+
+/** Ismning birinchi so'zi: lotincha, kichik harf, faqat harflar ("УМИДЖОН" -> "umidjon") */
+export function nameKey(name: string) {
+  const first = name.trim().toLowerCase().split(/\s+/)[0] ?? "";
+  return [...first]
+    .map((ch) => CYR[ch] ?? ch)
+    .join("")
+    // Shuhrat / Shuxrat bir xil bo'lsin, lekin "sh", "ch" buzilmasin
+    .replace(/(?<![sc])h/g, "x")
+    .replace(/[^a-z]/g, "");
+}
+
+function namesMatch(a: string, b: string) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a));
+}
+
+export type TodayShift = { opened: Date; closed: Date; active: boolean; unit: string; checks: number; cashier: string };
+
+/**
+ * Bugungi smenalar (ish kuni: 06:00 dan) — ERP xodimlariga ism bo'yicha
+ * bog'langan. Kassir ikki xodimga to'g'ri kelsa, o'sha dorixonadagisi
+ * tanlanadi; baribir aniq bo'lmasa — bog'lanmagan qoladi.
+ */
+export async function todayShiftsByEmployee(
+  employees: { id: string; fullName: string; unit: string | null }[],
+): Promise<{ byEmployee: Record<string, TodayShift>; unmatched: { cashier: string; unit: string }[] }> {
+  const now = new Date();
+  // Ish kuni 06:00 da boshlanadi (Toshkent): 06:00 gacha — kechagi kun
+  const workDay = new Date(now.getTime() + 5 * 3600_000 - 6 * 3600_000);
+  const day = new Date(Date.UTC(workDay.getUTCFullYear(), workDay.getUTCMonth(), workDay.getUTCDate()));
+  let rows: Awaited<ReturnType<typeof db.cashierShift.findMany>> = [];
+  try {
+    rows = await db.cashierShift.findMany({ where: { day }, orderBy: { openedAt: "asc" } });
+  } catch {
+    return { byEmployee: {}, unmatched: [] };
+  }
+
+  const keyed = employees.map((e) => ({ ...e, key: nameKey(e.fullName) }));
+  const byEmployee: Record<string, TodayShift> = {};
+  const unmatched = new Map<string, { cashier: string; unit: string }>();
+
+  for (const row of rows) {
+    const key = nameKey(row.cashier);
+    let candidates = keyed.filter((e) => namesMatch(key, e.key));
+    if (candidates.length > 1) candidates = candidates.filter((e) => e.unit === row.unit);
+    if (candidates.length !== 1) {
+      unmatched.set(`${row.unit}|${row.userId}`, { cashier: row.cashier, unit: row.unit });
+      continue;
+    }
+    const id = candidates[0].id;
+    const prev = byEmployee[id];
+    // Kun ichida bir nechta smena bo'lsa — eng erta ochilishdan eng kech yopilishgacha
+    const opened = prev && prev.opened < row.openedAt ? prev.opened : row.openedAt;
+    const closed = prev && prev.closed > row.closedAt ? prev.closed : row.closedAt;
+    byEmployee[id] = {
+      opened,
+      closed,
+      // Oxirgi chekdan 60 daqiqa o'tmagan bo'lsa — hali smenada
+      active: now.getTime() - closed.getTime() < 60 * 60_000,
+      unit: row.unit,
+      checks: (prev?.checks ?? 0) + row.checks,
+      cashier: row.cashier,
+    };
+  }
+  return { byEmployee, unmatched: [...unmatched.values()] };
+}

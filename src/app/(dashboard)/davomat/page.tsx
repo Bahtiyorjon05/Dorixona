@@ -1,5 +1,6 @@
 import { getAttendanceData } from "@/lib/queries";
-import { getCashierData } from "@/lib/cashiers";
+import { getCashierData, todayShiftsByEmployee } from "@/lib/cashiers";
+import { db } from "@/lib/db";
 import { ShiftCalendar } from "@/components/CashierViews";
 import { formatTime, monthName } from "@/lib/format";
 import { Card, MetricCard, PageHeader } from "@/components/ui";
@@ -16,6 +17,15 @@ const RULES = [
 export default async function DavomatPage() {
   const d = await getAttendanceData();
   const now = new Date();
+  // Bugungi smenalar (F-Apteka) — xodimlarga ism bo'yicha bog'lanadi
+  const employees = await db.employee.findMany({
+    where: { status: { not: "INACTIVE" } },
+    select: { id: true, fullName: true, unit: true },
+  });
+  const smena = await todayShiftsByEmployee(employees);
+  const presentCount = d.records.filter(
+    (r) => r.status === "PRESENT" || r.status === "LATE" || (r.status === null && smena.byEmployee[r.employeeId]),
+  ).length;
   const kassa = await getCashierData({
     from: new Date(now.getFullYear(), now.getMonth(), 1),
     to: now,
@@ -32,7 +42,7 @@ export default async function DavomatPage() {
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
           label="Bugun kelganlar"
-          value={`${d.presentCount}/${d.totalEmployees}`}
+          value={`${presentCount}/${d.totalEmployees}`}
           valueColor="var(--c-primary)"
         />
         <MetricCard
@@ -64,6 +74,13 @@ export default async function DavomatPage() {
             penalty: r.penalty,
             status: r.status,
           }))}
+          shifts={Object.fromEntries(
+            Object.entries(smena.byEmployee).map(([id, sh]) => [
+              id,
+              { opened: sh.opened.toISOString(), closed: sh.closed.toISOString(), active: sh.active, checks: sh.checks },
+            ]),
+          )}
+          unmatched={smena.unmatched}
         />
       </div>
 

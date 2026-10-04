@@ -17,15 +17,30 @@ type Rec = {
   status: string | null;
 };
 
-function statusBadge(status: string | null, late: number) {
+/** F-Apteka smenasi (birinchi va oxirgi chek) */
+export type ShiftInfo = { opened: string; closed: string; active: boolean; checks: number };
+
+function statusBadge(status: string | null, late: number, shift?: ShiftInfo) {
   if (status === "ON_LEAVE") return <Badge color="blue">Ta&apos;til</Badge>;
   if (status === "ABSENT") return <Badge color="red">Kelmadi</Badge>;
+  // Qo'lda belgilanmagan, lekin kassada smenasi bor
+  if (status === null && shift) {
+    return shift.active ? <Badge color="green">Smenada</Badge> : <Badge color="blue">Smena tugadi</Badge>;
+  }
   if (status === null) return <Badge color="amber">Belgilanmagan</Badge>;
   if (late > 5) return <Badge color="amber">Kechikdi</Badge>;
   return <Badge color="green">Keldi</Badge>;
 }
 
-export function AttendancePanel({ records }: { records: Rec[] }) {
+export function AttendancePanel({
+  records,
+  shifts = {},
+  unmatched = [],
+}: {
+  records: Rec[];
+  shifts?: Record<string, ShiftInfo>;
+  unmatched?: { cashier: string; unit: string }[];
+}) {
   const router = useRouter();
   const [target, setTarget] = useState<Rec | null>(null);
   const [query, setQuery] = useState("");
@@ -72,6 +87,7 @@ export function AttendancePanel({ records }: { records: Rec[] }) {
             <tr className="border-b border-edge text-left text-[11px] uppercase text-muted">
               <th className="pb-2 pr-3 font-medium">Xodim</th>
               <th className="pb-2 pr-3 font-medium">Kelish</th>
+              <th className="pb-2 pr-3 font-medium">Smena</th>
               <th className="pb-2 pr-3 font-medium">Kechikish</th>
               <th className="pb-2 pr-3 font-medium">Penalti</th>
               <th className="pb-2 pr-3 font-medium">Holat</th>
@@ -83,6 +99,16 @@ export function AttendancePanel({ records }: { records: Rec[] }) {
               <tr key={r.employeeId} className="border-b border-edge last:border-0 hover:bg-surface">
                 <td className="py-2.5 pr-3 font-medium">{r.name}</td>
                 <td className="py-2.5 pr-3">{r.checkIn ? formatTime(r.checkIn) : "—"}</td>
+                <td className="py-2.5 pr-3 whitespace-nowrap">
+                  {shifts[r.employeeId] ? (
+                    <span title={`${shifts[r.employeeId].checks} ta chek`}>
+                      {formatTime(shifts[r.employeeId].opened)} –{" "}
+                      {shifts[r.employeeId].active ? "hozir" : formatTime(shifts[r.employeeId].closed)}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td
                   className="py-2.5 pr-3"
                   style={{ color: r.lateMinutes > 5 ? "var(--c-danger)" : "var(--c-muted)" }}
@@ -92,7 +118,7 @@ export function AttendancePanel({ records }: { records: Rec[] }) {
                 <td className="py-2.5 pr-3" style={{ color: r.penalty > 0 ? "var(--c-danger)" : "var(--c-muted)" }}>
                   {r.penalty > 0 ? `-${r.penalty} ball` : "—"}
                 </td>
-                <td className="py-2.5 pr-3">{statusBadge(r.status, r.lateMinutes)}</td>
+                <td className="py-2.5 pr-3">{statusBadge(r.status, r.lateMinutes, shifts[r.employeeId])}</td>
                 <td className="py-2.5 text-right">
                   <button
                     onClick={() => { setError(""); setTarget(r); }}
@@ -106,6 +132,11 @@ export function AttendancePanel({ records }: { records: Rec[] }) {
           </tbody>
         </table>
       </div>
+      {unmatched.length > 0 && (
+        <p className="mt-3 text-xs text-muted">
+          Xodimga bog&apos;lanmagan kassir: {unmatched.map((u) => `${u.cashier} (${u.unit})`).join(", ")}
+        </p>
+      )}
 
       <Modal open={!!target} onClose={() => setTarget(null)} title={`Davomat: ${target?.name ?? ""}`}>
         <form action={submit} className="space-y-3">
