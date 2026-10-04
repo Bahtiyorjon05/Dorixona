@@ -149,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v20 boshlandi (pereotsenka bazadan)"
+Write-Log "relay v21 boshlandi (API uzilsa ham bazadagilari ketadi)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -190,8 +190,13 @@ function Restart-FaptekaService {
   try {
     Write-Log ("      Xizmatni qayta yoqamiz: {0}" -f $ServiceName)
     Restart-Service -Name $ServiceName -Force -ErrorAction Stop
-    Start-Sleep -Seconds 10
     $script:RestartDone = $true
+    # Xizmat 8081-portni darrov ochmaydi (10 soniya yetmagan edi) -
+    # 90 soniyagacha har 5 soniyada tekshiramiz
+    for ($try = 0; $try -lt 18; $try++) {
+      Start-Sleep -Seconds 5
+      if (Test-FaptekaApi) { break }
+    }
   } catch {
     Write-Log ("XATO  Xizmat qayta yoqilmadi: {0}" -f $_.Exception.Message)
     Write-Log "      Administrator huquqi kerak bo'lishi mumkin. Qo'lda:"
@@ -199,6 +204,7 @@ function Restart-FaptekaService {
   }
 }
 
+$ApiOk = $true
 if (Test-FaptekaApi) {
   Write-Log "OK    F-Apteka API javob berdi"
 } else {
@@ -213,11 +219,15 @@ if (Test-FaptekaApi) {
     Write-Log "      Tekshiring: 1) ServiceReports / API dasturi ishlab turibdimi"
     Write-Log "                  2) cmd da: netstat -ano | findstr :8081  -> LISTENING bo'lsin"
     Write-Log "                  3) brauzerda shu manzilni ochib ko'ring, XML chiqishi kerak"
-    exit 1
+    # API hisobotlarisiz davom etamiz: kirim hujjatlari va pereotsenka
+    # bazadan olinadi, eslatmalar ham ketadi
+    Write-Log "      API hisobotlari o'tkazib yuboriladi, bazadan olinadiganlari davom etadi"
+    $ApiOk = $false
   }
 }
 
 for ($i = $Days - 1; $i -ge 0; $i--) {
+  if (-not $ApiOk) { break }
   $day = (Get-Date).Date.AddDays(-$i)
   $apiDate = $day.ToString("dd.MM.yyyy")
   $erpDate = $day.ToString("yyyy-MM-dd")
@@ -467,3 +477,37 @@ if (-not $Only) {
     }
   }
 }
+
+# ---- O'z-o'zini yangilash --------------------------------------------------
+# Skriptlar ERP saytida turadi (token bilan). Yangisi bo'lsa yuklab olinadi,
+# lekin faqat PowerShell sintaksis xatosiz o'qisa va ichida "relay v" bo'lsa
+# almashtiriladi - buzuq fayl kelsa eskisi qoladi. Keyingi ishga tushishdan
+# yangi versiya ishlaydi. Qo'lda yuklash shart emas.
+if (-not $Only) {
+  foreach ($file in "fapteka-relay.ps1", "site-watchdog.ps1") {
+    $target = Join-Path $PSScriptRoot $file
+    $temp = "$target.new"
+    try {
+      $web = New-Object System.Net.WebClient
+      $web.Headers.Add("Authorization", "Bearer $Token")
+      $web.DownloadFile("https://dorixonaa.vercel.app/api/integrations/fapteka/skript/$file", $temp)
+      $errors = $null
+      [void][System.Management.Automation.Language.Parser]::ParseFile($temp, [ref]$null, [ref]$errors)
+      $text = Get-Content $temp -Raw
+      $marker = if ($file -eq "fapteka-relay.ps1") { 'relay v' } else { 'SITE.exe' }
+      if ($errors.Count -gt 0 -or -not $text.Contains($marker)) {
+        Write-Log ("XATO  yangilash: {0} yaroqsiz keldi, eskisi qoldi" -f $file)
+      } elseif (-not (Test-Path $target) -or $text -ne (Get-Content $target -Raw)) {
+        Copy-Item $temp $target -Force
+        Write-Log ("OK    yangilandi: {0}" -f $file)
+      }
+    } catch {
+      Write-Log ("XATO  yangilash: {0}  {1}" -f $file, $_.Exception.Message)
+    } finally {
+      Remove-Item $temp -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
+# API ishlamagan bo'lsa vazifa natijasi xato bo'lib ko'rinsin
+if (-not $ApiOk) { exit 1 }
