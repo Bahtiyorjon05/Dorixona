@@ -17,6 +17,15 @@ const amount = z
   })
   .refine((v) => v === null || v >= 0, "Summa manfiy bo'lishi mumkin emas");
 
+/** Pereotsenka: narx ko'tarilgan oyda manfiy bo'ladi (zarar emas, foyda) */
+const signedAmount = z
+  .union([z.number(), z.string(), z.null(), z.undefined()])
+  .transform((v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  });
+
 const schema = z.object({
   unit: z.string().min(1, "Dorixona tanlanmagan"),
   year: z.number().int().min(2000).max(2100),
@@ -24,7 +33,7 @@ const schema = z.object({
   turnover: amount,
   profit: amount,
   stockValue: amount,
-  revaluation: amount,
+  revaluation: signedAmount,
   bankBalance: amount,
   note: z.string().max(500).optional().nullable(),
 });

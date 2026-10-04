@@ -1183,6 +1183,7 @@ export function TelegramAdminClient() {
                       {u.profit > 0 && <span>Foyda: {formatMoney(u.profit)}</span>}
                       {u.stockValue > 0 && <span>Astatka: {formatMoney(u.stockValue)}</span>}
                       {u.revaluation > 0 && <span>Pereotsenka: {formatMoney(u.revaluation)}</span>}
+                      {u.revaluation < 0 && <span>Pereotsenka: +{formatMoney(-u.revaluation)} (narx oshdi)</span>}
                       {u.expenses > 0 && <span>Harajat: {formatMoney(u.expenses)}</span>}
                     </div>
                   </div>
