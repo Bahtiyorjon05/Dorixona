@@ -1,4 +1,5 @@
 import "server-only";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { otdelUnitMap } from "@/lib/integrations/fapteka/otdel";
 import { utcDay } from "@/lib/monthly-finance";
@@ -52,8 +53,17 @@ function tashkentDate(value: string | undefined) {
 
 export async function syncShiftsFromDb(rows: ShiftDbRow[]) {
   const units = otdelUnitMap();
-  let saved = 0;
   let skipped = 0;
+  const items: {
+    unit: string;
+    shiftId: string;
+    userId: string;
+    data: {
+      cashier: string; openedAt: Date; closedAt: Date; day: Date;
+      checks: number; sales: number; returns: number;
+    };
+    cost: number | null;
+  }[] = [];
 
   for (const row of rows) {
     const unit = units.get(String(row.OTD ?? "").trim());
@@ -65,36 +75,61 @@ export async function syncShiftsFromDb(rows: ShiftDbRow[]) {
       skipped += 1;
       continue;
     }
-    const data = {
-      cashier: (row.NAME ?? "").trim() || `Kassir ${userId}`,
-      openedAt,
-      closedAt,
-      day: new Date(`${String(row.A).slice(0, 10)}T00:00:00Z`),
-      checks: Math.round(toNumber(row.C)),
-      sales: Math.round(toNumber(row.S) * 100) / 100,
-      returns: Math.round(Math.abs(toNumber(row.R)) * 100) / 100,
-    };
-    await db.cashierShift.upsert({
-      where: { unit_shiftId_userId: { unit, shiftId, userId } },
-      create: { unit, shiftId, userId, ...data },
-      update: data,
+    items.push({
+      unit,
+      shiftId,
+      userId,
+      data: {
+        cashier: (row.NAME ?? "").trim() || `Kassir ${userId}`,
+        openedAt,
+        closedAt,
+        day: new Date(`${String(row.A).slice(0, 10)}T00:00:00Z`),
+        checks: Math.round(toNumber(row.C)),
+        sales: Math.round(toNumber(row.S) * 100) / 100,
+        returns: Math.round(Math.abs(toNumber(row.R)) * 100) / 100,
+      },
+      // Eski relay (CS yo'q) yozgan tan narxni o'chirmasin
+      cost:
+        row.CS !== undefined
+          ? Math.round((toNumber(row.CS) - Math.abs(toNumber(row.CR))) * 100) / 100
+          : null,
     });
-    // Tan narx (KPI marjasi uchun). Ustun Prisma sxemasida yo'q —
-    // prisma/manual/smena-tan-narx.sql ishga tushirilmagan bo'lsa ham
-    // smenalar yozilaveradi. Eski relay (CS yo'q) tan narxni o'chirmasin.
-    if (row.CS !== undefined) {
-      const cost = Math.round((toNumber(row.CS) - Math.abs(toNumber(row.CR))) * 100) / 100;
-      try {
-        await db.$executeRaw`
-          UPDATE "CashierShift" SET "cost" = ${cost}
-          WHERE "unit" = ${unit} AND "shiftId" = ${shiftId} AND "userId" = ${userId}`;
-      } catch {
-        // Ustun hali yaratilmagan
-      }
-    }
-    saved += 1;
   }
-  return { saved, skipped };
+
+  // Ketma-ket yozilganda 40 kunlik (200+ smena) yuborish Vercel vaqtiga
+  // sig'masdi (504) — 10 tadan parallel
+  for (let index = 0; index < items.length; index += 10) {
+    await Promise.all(
+      items.slice(index, index + 10).map(({ unit, shiftId, userId, data }) =>
+        db.cashierShift.upsert({
+          where: { unit_shiftId_userId: { unit, shiftId, userId } },
+          create: { unit, shiftId, userId, ...data },
+          update: data,
+        }),
+      ),
+    );
+  }
+
+  // Tan narx (KPI marjasi uchun) — bitta so'rov bilan. Ustun Prisma
+  // sxemasida yo'q: prisma/manual/smena-tan-narx.sql ishga tushirilmagan
+  // bo'lsa ham smenalar yozilaveradi.
+  const costed = items.filter((item) => item.cost !== null);
+  for (let index = 0; index < costed.length; index += 500) {
+    const chunk = costed.slice(index, index + 500);
+    try {
+      await db.$executeRaw`
+        UPDATE "CashierShift" s SET "cost" = v.cost
+        FROM (VALUES ${Prisma.join(
+          chunk.map((item) => Prisma.sql`(${item.unit}, ${item.shiftId}, ${item.userId}, ${item.cost}::numeric)`),
+        )}) AS v(unit, "shiftId", "userId", cost)
+        WHERE s."unit" = v.unit AND s."shiftId" = v."shiftId" AND s."userId" = v."userId"`;
+    } catch {
+      // Ustun hali yaratilmagan
+      break;
+    }
+  }
+
+  return { saved: items.length, skipped };
 }
 
 export type CashierShiftView = {
