@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { syncAutoKpiNow } from "@/lib/kpi-auto";
 import { overlayRetail, retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
 import type { AppPermission } from "@/lib/permissions";
@@ -445,6 +446,8 @@ async function getEmployees() {
 }
 
 async function getKpi() {
+  // Web KPI sahifasi bilan bir xil: kassir smenalaridan qayta hisoblanadi
+  await syncAutoKpiNow().catch(() => null);
   const now = new Date();
   const ranking = await db.kpiRecord.findMany({
     where: { year: now.getFullYear(), month: now.getMonth() + 1 },

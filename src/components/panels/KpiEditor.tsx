@@ -17,7 +17,7 @@ type Components = {
 
 const FIELDS: { key: keyof Components; label: string }[] = [
   { key: "sales", label: "Savdo (40%)" },
-  { key: "margin", label: "Marja (20%)" },
+  { key: "margin", label: "Marja — o'rtacha chek (20%)" },
   { key: "attendance", label: "Davomat (15%)" },
   { key: "discipline", label: "Intizom (10%)" },
   { key: "customer", label: "Mijoz (15%)" },

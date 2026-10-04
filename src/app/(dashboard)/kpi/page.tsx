@@ -1,4 +1,5 @@
 import { getKpiData } from "@/lib/queries";
+import { syncAutoKpiNow } from "@/lib/kpi-auto";
 import { getCashierData } from "@/lib/cashiers";
 import { CashierTotals } from "@/components/CashierViews";
 import { formatNumber, monthName } from "@/lib/format";
@@ -24,13 +25,15 @@ function bonusBadge(p: number): "green" | "amber" | "red" {
 
 const WEIGHTS = [
   { key: "sales", label: "Savdo KPI", icon: "🪙", color: "var(--c-primary)" },
-  { key: "margin", label: "Marja KPI", icon: "📈", color: "var(--c-info)" },
+  { key: "margin", label: "Marja KPI (o'rtacha chek)", icon: "📈", color: "var(--c-info)" },
   { key: "attendance", label: "Davomat KPI", icon: "🕐", color: "var(--c-accent)" },
   { key: "discipline", label: "Intizom KPI", icon: "🛡️", color: "var(--c-purple)" },
   { key: "customer", label: "Mijoz KPI", icon: "⭐", color: "var(--c-danger)" },
 ] as const;
 
 export default async function KpiPage() {
+  // Kassir smenalaridan KPI qayta hisoblanadi (smenasi yo'q xodimga tegilmaydi)
+  await syncAutoKpiNow().catch(() => null);
   const d = await getKpiData();
   const kassaNow = new Date();
   const kassa = await getCashierData({
