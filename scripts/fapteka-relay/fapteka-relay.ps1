@@ -149,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v26 boshlandi (yetkazib beruvchilar: -Days bilan to'ldirish)"
+Write-Log "relay v27 boshlandi (-Days bilan hammasi orqaga to'ldiriladi)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -435,8 +435,15 @@ GROUP BY CONVERT(varchar(10), r.DATA, 120), r.OTDEL
 
 if ((-not $Only -or $Only -eq "revaluation") -and $SqlConn) {
   $thisMonth = Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
-  if ((Get-Date).Day -le 5) { Send-Revaluation $thisMonth.AddMonths(-1) }
-  Send-Revaluation $thisMonth
+  if ($Days -gt 31) {
+    # Orqaga to'ldirish (-Days 365): o'sha kun tushgan oydan joriy oygacha
+    $back = (Get-Date).AddDays(-$Days)
+    $m = Get-Date -Year $back.Year -Month $back.Month -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
+    while ($m -le $thisMonth) { Send-Revaluation $m; $m = $m.AddMonths(1) }
+  } else {
+    if ((Get-Date).Day -le 5) { Send-Revaluation $thisMonth.AddMonths(-1) }
+    Send-Revaluation $thisMonth
+  }
 }
 
 # ---- Kassir smenalari bazadan ---------------------------------------------
@@ -556,8 +563,8 @@ function Send-Suppliers([bool]$WithGoods) {
   $inv = [Globalization.CultureInfo]::InvariantCulture
   $monthStart = Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
   if ((Get-Date).Day -le 5) { $monthStart = $monthStart.AddMonths(-1) }
-  # Qo'lda to'ldirish: -Only suppliers -Days 280 -> o'sha kun tushgan oy boshidan
-  if ($Only -eq "suppliers" -and $Days -gt 31) {
+  # Orqaga to'ldirish: -Days 365 -> o'sha kun tushgan oy boshidan
+  if ($Days -gt 31) {
     $back = (Get-Date).AddDays(-$Days)
     $monthStart = Get-Date -Year $back.Year -Month $back.Month -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
   }

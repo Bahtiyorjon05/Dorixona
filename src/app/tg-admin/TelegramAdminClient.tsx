@@ -178,6 +178,8 @@ type DashboardData = {
   reports: {
     correlation: { employee: string; label: string; margin: number; marginMln: number; kpi: number }[];
     critical: { id: string; name: string; stock: number; minStock: number } | null;
+    insights?: { tone: "good" | "warn" | "info" | "bad"; text: string }[];
+    hasCost?: boolean;
   };
   analytics?: {
     year: number;
@@ -750,7 +752,7 @@ export function TelegramAdminClient() {
   const activeTab = availableTabs.some(([key]) => key === tab) ? tab : "overview";
   const activeMeta = pageMeta[activeTab];
   const tips = [
-    topReport ? `${topReport.employee.split(" ")[0]} bu oyda eng ko'p foyda keltirdi` : "Savdo ma'lumotlari to'planmoqda",
+    topReport ? `${topReport.employee} bu oyda eng ko'p foyda keltirdi` : "Smena ma'lumoti hali kelmagan",
     data.reports.critical ? `${data.reports.critical.name} ombori kritik darajada` : "Ombor qoldiqlari normal",
     `Bugungi savdo: ${formatMoney(data.sales.todayTotal)}`,
   ];
@@ -1706,15 +1708,23 @@ export function TelegramAdminClient() {
 
         {activeTab === "reports" && (
           <div className="space-y-3">
-            <Card title="Xodim va Foyda">
+            <Card title={data.reports.hasCost ? "Kassirlar — shu oy foyda" : "Kassirlar — shu oy savdo"}>
               {data.reports.correlation.length ? data.reports.correlation.map((row) => (
-                <Row key={row.employee} left={row.label} right={`${row.marginMln}M`} sub={`KPI: ${row.kpi} · foyda ${formatMoney(row.margin)}`} />
-              )) : <p className="text-sm text-muted">Savdo ma'lumotlari to'planmoqda.</p>}
+                <Row key={row.label} left={row.label} right={`${row.marginMln}M`} sub={formatMoney(row.margin)} />
+              )) : <p className="text-sm text-muted">Shu oy smena ma&apos;lumoti hali kelmagan.</p>}
             </Card>
             <Card title="Tavsiyalar">
-              <Row left={topReport ? `${topReport.employee.split(" ")[0]} bu oyda eng ko'p foyda keltirdi` : "Savdo ma'lumotlari to'planmoqda"} />
-              <Row left={data.reports.critical ? `${data.reports.critical.name} ombori kritik darajada` : "Ombor qoldiqlari normal"} />
-              <Row left="KPI va moliya birlashgan tahlil yangi insight beradi" />
+              {(data.reports.insights ?? []).map((item, index) => (
+                <div
+                  key={index}
+                  className="mb-2 rounded-lg p-2 text-sm last:mb-0"
+                  style={{
+                    background: `var(--c-${item.tone === "good" ? "primary" : item.tone === "warn" ? "accent" : item.tone === "bad" ? "danger" : "info"}-light)`,
+                  }}
+                >
+                  {item.text}
+                </div>
+              ))}
             </Card>
           </div>
         )}

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { getReportInsights } from "@/lib/report-insights";
 import { syncAutoKpiNow } from "@/lib/kpi-auto";
 import { overlayRetail, retailByLocalDate, retailDaily, retailTotals, utcDay } from "@/lib/monthly-finance";
 import { canRead, type RequestAccess, verifyRequestAccess } from "@/lib/request-access";
@@ -521,44 +522,32 @@ async function getAttendance() {
 }
 
 async function getReports() {
-  const now = new Date();
-  const monthStart = startOfMonth(0);
-  const [marginRows, kpis, lowProducts] = await Promise.all([
-    db.$queryRaw<{ id: string; name: string; margin: number }[]>`
-      SELECT e.id, e."fullName" AS name,
-        COALESCE(SUM(si."lineTotal" - si."costPrice" * si.quantity),0)::float8 AS margin
-      FROM "Sale" s JOIN "Employee" e ON e.id = s."employeeId"
-      JOIN "SaleItem" si ON si."saleId" = s.id
-      WHERE s."createdAt" >= ${monthStart}
-      GROUP BY e.id, e."fullName"`,
-    db.kpiRecord.findMany({
-      where: { year: now.getFullYear(), month: now.getMonth() + 1 },
-      include: { employee: true },
-    }),
-    db.product.findMany({ where: { isActive: true } }),
+  // Web Hisobotlar bilan bir xil: kassir smenalaridan foyda/savdo, KPI balli,
+  // hisoblangan tavsiyalar (src/lib/report-insights.ts)
+  const [insight, lowProducts] = await Promise.all([
+    getReportInsights(),
+    db.product.findMany({ where: { isActive: true }, select: { id: true, name: true, stock: true, minStock: true } }),
   ]);
-
-  const kpiMap = new Map(kpis.map((kpi) => [kpi.employeeId, kpi.totalScore]));
-  const correlation = marginRows
-    .map((row) => ({
-      employee: row.name,
-      label: `${row.name.split(" ")[0]} (${kpiMap.get(row.id) ?? "-"})`,
-      margin: row.margin,
-      marginMln: +M(row.margin).toFixed(1),
-      kpi: kpiMap.get(row.id) ?? 0,
-    }))
-    .sort((a, b) => b.kpi - a.kpi);
+  const correlation = insight.correlation
+    .map((row) => {
+      const value = row.profit ?? row.net;
+      return {
+        employee: row.label,
+        label: `${row.label} · ${row.unit}${row.kpi !== null ? ` (KPI ${row.kpi})` : ""}`,
+        margin: value,
+        marginMln: +M(value).toFixed(1),
+        kpi: row.kpi ?? 0,
+      };
+    })
+    .sort((a, b) => b.margin - a.margin);
   const critical = lowProducts.find((product) => product.stock < product.minStock * 0.4);
 
   return {
     correlation,
+    insights: insight.insights,
+    hasCost: insight.hasCost,
     critical: critical
-      ? {
-          id: critical.id,
-          name: critical.name,
-          stock: critical.stock,
-          minStock: critical.minStock,
-        }
+      ? { id: critical.id, name: critical.name, stock: critical.stock, minStock: critical.minStock }
       : null,
   };
 }
