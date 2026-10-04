@@ -15,10 +15,12 @@ type Rec = {
   lateMinutes: number;
   penalty: number;
   status: string | null;
+  /** Xodimning dorixonasi (smenasi bo'lmasa shu ko'rsatiladi) */
+  unit?: string | null;
 };
 
 /** F-Apteka smenasi (birinchi va oxirgi chek) */
-export type ShiftInfo = { opened: string; closed: string; active: boolean; checks: number };
+export type ShiftInfo = { opened: string; closed: string; active: boolean; checks: number; unit: string };
 
 function statusBadge(status: string | null, late: number, shift?: ShiftInfo) {
   if (status === "ON_LEAVE") return <Badge color="blue">Ta&apos;til</Badge>;
@@ -92,6 +94,7 @@ export function AttendancePanel({
           <thead>
             <tr className="border-b border-edge text-left text-[11px] uppercase text-muted">
               <th className="pb-2 pr-3 font-medium">Xodim</th>
+              <th className="pb-2 pr-3 font-medium">Dorixona</th>
               <th className="pb-2 pr-3 font-medium">Kelish</th>
               <th className="pb-2 pr-3 font-medium">Kassa yopish</th>
               <th className="pb-2 pr-3 font-medium">Kechikish</th>
@@ -104,6 +107,7 @@ export function AttendancePanel({
             {shown.map((r) => (
               <tr key={r.employeeId} className="border-b border-edge last:border-0 hover:bg-surface">
                 <td className="py-2.5 pr-3 font-medium">{r.name}</td>
+                <td className="py-2.5 pr-3 text-muted">{shifts[r.employeeId]?.unit ?? r.unit ?? "—"}</td>
                 {/* Kelish: kassada smena ochilgani (birinchi chek), bo'lmasa qo'lda kiritilgani */}
                 <td className="py-2.5 pr-3" title={shifts[r.employeeId] ? `${shifts[r.employeeId].checks} ta chek` : undefined}>
                   {shifts[r.employeeId]

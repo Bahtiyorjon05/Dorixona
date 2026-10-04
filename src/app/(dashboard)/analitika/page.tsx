@@ -1,4 +1,5 @@
 import { getAnalyticsData } from "@/lib/queries";
+import { getAnalyticsExtra } from "@/lib/analytics-extra";
 import { formatNumber } from "@/lib/format";
 import { MetricCard, PageHeader } from "@/components/ui";
 import { AnalitikaView } from "@/components/AnalitikaView";
@@ -17,6 +18,7 @@ export default async function AnalitikaPage({
 }) {
   const year = parseYear((await searchParams).yil);
   const d = await getAnalyticsData(year);
+  const extra = await getAnalyticsExtra(d.year);
 
   const oxirgi = d.monthly.at(-1);
   const jamiSavdo = d.monthly.reduce((s, m) => s + m.savdo, 0);
@@ -61,6 +63,10 @@ export default async function AnalitikaPage({
         turnoverRatio={d.turnoverRatio}
         vedomost={d.vedomost}
         dailySales={d.dailySales}
+        payments={extra.payments}
+        checks={extra.checks}
+        groups={extra.groups}
+        suppliers={extra.suppliers}
       />
 
       {!d.hasFinance && !d.hasInventory && (

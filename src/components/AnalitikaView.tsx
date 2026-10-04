@@ -20,6 +20,10 @@ type SlowItem = { name: string; stock: number; qty: number; value: number };
 type RatioItem = { name: string; stock: number; qty: number; ratio: number };
 type VedomostItem = { name: string; incoming: number; sold: number; stock: number };
 type DayPoint = { label: string; savdo: number; foyda: number };
+type PaymentRow = { day: string; unit: string; method: string; amount: number };
+type CheckRow = { day: string; unit: string; checks: number; net: number };
+type GroupRow = { name: string; qty: number; turnover: number };
+type SupplierRow = { name: string; amount: number; docs: number };
 
 type Props = {
   year: number;
@@ -34,6 +38,10 @@ type Props = {
   turnoverRatio: RatioItem[];
   vedomost: VedomostItem[];
   dailySales: DayPoint[];
+  payments: PaymentRow[];
+  checks: CheckRow[];
+  groups: GroupRow[];
+  suppliers: SupplierRow[];
 };
 
 /** F-Apteka "Отчеты" ro'yxati — o'zbekcha. `ready` = bizda ma'lumot bormi. */
@@ -43,9 +51,9 @@ const REPORTS = [
   { key: "lejeboki", label: "Sekin sotiladigan (lejeboki)", ready: true },
   { key: "aylanuvchanlik", label: "Aylanuvchanlik", ready: true },
   { key: "vedomost", label: "Tovar bo'yicha aylanma vedomost", ready: true },
-  { key: "tolov", label: "To'lov usullari bo'yicha", ready: false },
-  { key: "cheklar", label: "Cheklar bo'yicha", ready: false },
-  { key: "guruhlar", label: "Guruhlar bo'yicha savdo", ready: false },
+  { key: "tolov", label: "To'lov usullari bo'yicha", ready: true },
+  { key: "cheklar", label: "Cheklar bo'yicha", ready: true },
+  { key: "guruhlar", label: "Guruhlar bo'yicha savdo", ready: true },
 ] as const;
 
 /** F-Apteka "Графики" ro'yxati (5 ta) + bizda ishlaydigan qo'shimchalar. */
@@ -57,7 +65,7 @@ const CHARTS = [
   { key: "kunlik", label: "Kunlik savdo grafigi", ready: true },
   { key: "postavshik_qoldiq", label: "Yetkazib beruvchilar — qoldiq", ready: false },
   { key: "postavshik_qoldiq_savdo", label: "Yetkazib beruvchilar — qoldiq/savdo", ready: false },
-  { key: "postavshik_kirim", label: "Yetkazib beruvchilar — kirim", ready: false },
+  { key: "postavshik_kirim", label: "Yetkazib beruvchilar — kirim", ready: true },
   { key: "postavshik_savdo", label: "Yetkazib beruvchilar — savdo", ready: false },
 ] as const;
 
@@ -69,8 +77,7 @@ function Kutilyapti({ nima }: { nima: string }) {
     <div className="flex h-[220px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-edge px-6 text-center">
       <span className="text-2xl">⏳</span>
       <p className="text-sm text-muted">
-        Bu hisobot <b>{nima}</b> talab qiladi. Hozirgi F-Apteka API&apos;sida bu ma&apos;lumot yo&apos;q —
-        texnik bo&apos;lim qo&apos;shib bergach avtomatik to&apos;ladi.
+        Bu grafik <b>{nima}</b> talab qiladi — ulanmoqda.
       </p>
     </div>
   );
@@ -123,6 +130,10 @@ export function AnalitikaView({
   turnoverRatio,
   vedomost,
   dailySales,
+  payments,
+  checks,
+  groups,
+  suppliers,
 }: Props) {
   const router = useRouter();
   const [report, setReport] = useState<ReportKey>("assortiment");
@@ -147,6 +158,20 @@ export function AnalitikaView({
     "rounded-lg border border-edge bg-transparent px-3 py-2 text-sm outline-none focus:border-primary";
   const dateClass =
     "rounded-lg border border-edge bg-transparent px-2.5 py-2 text-sm outline-none focus:border-primary";
+
+  // To'lov va cheklar kunlik keladi — hisobotning dan/gacha sanasi bo'yicha
+  const inRange = (day: string) => day >= dan && day <= gacha;
+  const payRange = payments.filter((p) => inRange(p.day));
+  const units = [...new Set(payRange.map((p) => p.unit))].sort();
+  const methods = [...new Set(payRange.map((p) => p.method))];
+  const payTotal = payRange.reduce((s, p) => s + p.amount, 0);
+  const payBy = (method: string, unit?: string) =>
+    payRange.filter((p) => p.method === method && (!unit || p.unit === unit)).reduce((s, p) => s + p.amount, 0);
+  const checkRange = checks.filter((c) => inRange(c.day));
+  const checkTotal = checkRange.reduce((s, c) => s + c.checks, 0);
+  const checkNet = checkRange.reduce((s, c) => s + c.net, 0);
+  const groupTotal = groups.reduce((s, g) => s + g.turnover, 0);
+  const supplierTotal = suppliers.reduce((s, x) => s + x.amount, 0);
 
   const activeReport = REPORTS.find((r) => r.key === report)!;
   const activeChart = CHARTS.find((c) => c.key === chart)!;
@@ -275,15 +300,61 @@ export function AnalitikaView({
               />
             </div>
           )
-        ) : (
-          <Kutilyapti
-            nima={
-              report === "guruhlar"
-                ? "F-Apteka tovar guruhlari ma'lumotini"
-                : "F-Apteka chek ma'lumotini (14-hisobot)"
-            }
-          />
-        )}
+        ) : report === "tolov" ? (
+          methods.length === 0 ? <Bosh /> : (
+            <div>
+              <p className="mb-2 text-sm text-muted">
+                Kassaga tushgan pul, jami {formatNumber(Math.round(payTotal))} so&apos;m
+              </p>
+              <DataTable
+                head={["To'lov usuli", ...units, "Jami", "Ulush"]}
+                rows={methods
+                  .map((m) => ({ m, total: payBy(m) }))
+                  .sort((a, b) => b.total - a.total)
+                  .map(({ m, total }) => [
+                    m,
+                    ...units.map((u) => formatNumber(Math.round(payBy(m, u)))),
+                    formatNumber(Math.round(total)),
+                    payTotal > 0 ? `${((total / payTotal) * 100).toFixed(1)}%` : "—",
+                  ])}
+              />
+            </div>
+          )
+        ) : report === "cheklar" ? (
+          checkRange.length === 0 ? <Bosh /> : (
+            <div>
+              <p className="mb-2 text-sm text-muted">
+                {formatNumber(checkTotal)} ta chek, {formatNumber(Math.round(checkNet))} so&apos;m, o&apos;rtacha chek{" "}
+                {formatNumber(checkTotal > 0 ? Math.round(checkNet / checkTotal) : 0)} so&apos;m
+              </p>
+              <DataTable
+                head={["Kun", "Dorixona", "Chek", "Savdo", "O'rtacha chek"]}
+                rows={checkRange.map((c) => [
+                  c.day.split("-").reverse().join("."),
+                  c.unit,
+                  formatNumber(c.checks),
+                  formatNumber(Math.round(c.net)),
+                  formatNumber(c.checks > 0 ? Math.round(c.net / c.checks) : 0),
+                ])}
+              />
+            </div>
+          )
+        ) : report === "guruhlar" ? (
+          groups.length === 0 ? <Bosh /> : (
+            <div>
+              <p className="mb-2 text-sm text-muted">{year}-yil — tovar guruhlari bo&apos;yicha savdo</p>
+              <DataTable
+                head={["Guruh", "Soni", "Tushum (mln)", "Ulush"]}
+                rows={groups.map((g) => [
+                  g.name,
+                  formatNumber(g.qty),
+                  (g.turnover / 1_000_000).toFixed(1),
+                  groupTotal > 0 ? `${((g.turnover / groupTotal) * 100).toFixed(1)}%` : "—",
+                ])}
+              />
+            </div>
+          )
+        ) : null}
       </Card>
 
       {/* ─── Grafiklar (F-Apteka "Графики") ─── */}
@@ -359,7 +430,25 @@ export function AnalitikaView({
             </>
           )
         )}
-        {!activeChart.ready && <Kutilyapti nima="F-Apteka yetkazib beruvchi ma'lumotini" />}
+        {chart === "postavshik_kirim" && (
+          suppliers.length === 0 ? <Bosh /> : (
+            <>
+              <p className="mb-3 text-sm text-muted">
+                {year}-yil — yetkazib beruvchilardan kirim, jami {(supplierTotal / 1_000_000).toFixed(1)} mln so&apos;m
+              </p>
+              <DataTable
+                head={["Yetkazib beruvchi", "Hujjat", "Kirim (mln)", "Ulush"]}
+                rows={suppliers.map((x) => [
+                  x.name,
+                  formatNumber(x.docs),
+                  (x.amount / 1_000_000).toFixed(1),
+                  supplierTotal > 0 ? `${((x.amount / supplierTotal) * 100).toFixed(1)}%` : "—",
+                ])}
+              />
+            </>
+          )
+        )}
+        {!activeChart.ready && <Kutilyapti nima="har bir tovarning yetkazib beruvchisini (F-Apteka bazasidan)" />}
       </Card>
     </div>
   );

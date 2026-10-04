@@ -115,11 +115,18 @@ export default async function DavomatPage({
             lateMinutes: r.lateMinutes,
             penalty: r.penalty,
             status: r.status,
+            unit: employees.find((e) => e.id === r.employeeId)?.unit ?? null,
           }))}
           shifts={Object.fromEntries(
             Object.entries(smena.byEmployee).map(([id, sh]) => [
               id,
-              { opened: sh.opened.toISOString(), closed: sh.closed.toISOString(), active: sh.active, checks: sh.checks },
+              {
+                opened: sh.opened.toISOString(),
+                closed: sh.closed.toISOString(),
+                active: sh.active,
+                checks: sh.checks,
+                unit: sh.unit,
+              },
             ]),
           )}
           unmatched={smena.unmatched}
