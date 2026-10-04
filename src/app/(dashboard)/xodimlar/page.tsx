@@ -3,11 +3,13 @@ import { formatNumber } from "@/lib/format";
 import { MetricCard, PageHeader } from "@/components/ui";
 import { EmployeesPanel } from "@/components/panels/EmployeesPanel";
 import { currentFilial } from "@/lib/filial-server";
+import { getMissingCashiers } from "@/lib/missing-cashiers";
+import { MissingCashiers } from "@/components/panels/MissingCashiers";
 
 export const dynamic = "force-dynamic";
 
 export default async function XodimlarPage() {
-  const [employees, filial] = await Promise.all([getEmployeesData(), currentFilial()]);
+  const [employees, filial, missing] = await Promise.all([getEmployeesData(), currentFilial(), getMissingCashiers()]);
 
   const active = employees.filter((e) => e.status === "ACTIVE");
   const payroll = employees.reduce((sum, e) => sum + e.baseSalary, 0);
@@ -35,6 +37,8 @@ export default async function XodimlarPage() {
           sub={filial === "Umumiy" ? "Barcha filiallar" : "Tanlangan filial"}
         />
       </div>
+
+      <MissingCashiers items={missing.filter((m) => filial === "Umumiy" || m.unit === filial)} />
 
       <EmployeesPanel employees={employees} />
     </div>

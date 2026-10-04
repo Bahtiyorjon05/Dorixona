@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { retailTotals, utcDay } from "@/lib/monthly-finance";
 
 /**
  * Analitika: avval "kutilyapti" turgan hisobotlar uchun ma'lumot.
@@ -121,12 +122,20 @@ export async function getAnalyticsExtra(year: number) {
   }
   for (const entry of supplierStock.values()) entry.months = salesMonths.size;
 
+  // Cheklar (SaleItem) savdoni ~3% oshirib ko'rsatadi; F-Apteka jamlanmasiga
+  // nisbatan koeffitsient — TOP va guruhlar summalari shunga to'g'rilanadi
+  const retail = await retailTotals(utcDay(localStart), utcDay(localEnd), null);
+  const checkTotal = groupRows.reduce((s, r) => s + r.turnover, 0);
+  const rawFactor = retail.known && checkTotal > 0 ? retail.turnover / checkTotal : 1;
+  const salesFactor = rawFactor > 0.5 && rawFactor < 1.5 ? rawFactor : 1;
+
   return {
+    salesFactor,
     supplierStock: [...supplierStock.values()].filter((r) => r.stock > 0 || r.sales > 0),
     hasSupplierMap: stockRows.some((r) => r.org),
     payments,
     checks: [...checkMap.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.unit.localeCompare(b.unit))),
-    groups: groupRows.map((row) => ({ name: row.name, qty: Math.round(row.qty), turnover: row.turnover })),
+    groups: groupRows.map((row) => ({ name: row.name, qty: Math.round(row.qty), turnover: row.turnover * salesFactor })),
     suppliers: [...supplierMap.values()].sort((a, b) => b.amount - a.amount),
   };
 }

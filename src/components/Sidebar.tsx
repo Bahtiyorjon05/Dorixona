@@ -15,7 +15,7 @@ const NAV: { section?: string; items: { href: string; label: string; icon: strin
       { href: "/ombor", label: "Ombor", icon: "📦", permission: "ombor" },
       { href: "/narxlar", label: "Narx nazorati", icon: "🏷️", permission: "narxlar" },
       { href: "/savdo", label: "Savdo", icon: "💹", permission: "savdo" },
-      { href: "/pos", label: "Kassa (POS)", icon: "🛒", permission: "pos" },
+      // "Kassa (POS)" menyudan olindi: savdo F-Apteka kassasida bo'ladi. Sahifa /pos da qoladi.
       { href: "/mijozlar", label: "Mijozlar", icon: "🪪", permission: "mijozlar" },
     ],
   },

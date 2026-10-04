@@ -20,12 +20,14 @@ type Product = {
   expiryDate: string | null;
   fromFapteka: boolean;
   status: { label: string; color: "green" | "amber" | "red" };
+  /** Dorixona bo'yicha qoldiq (SITE.exe) */
+  byUnit?: Record<string, number>;
 };
 
 /** Ming-minglab dori bir yo'la chizilsa sahifa va qidiruv qotadi */
 const PAGE_SIZE = 100;
 
-export function InventoryPanel({ products }: { products: Product[] }) {
+export function InventoryPanel({ products, unitColumns = [] }: { products: Product[]; unitColumns?: string[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   // Yozish darhol ko'rinadi, jadval esa bir zumdan keyin yangilanadi
@@ -111,6 +113,9 @@ export function InventoryPanel({ products }: { products: Product[] }) {
               <th className="pb-2 pr-3 font-medium">Manba</th>
               <th className="pb-2 pr-3 font-medium">Kategoriya</th>
               <th className="pb-2 pr-3 font-medium">Qoldiq</th>
+              {unitColumns.map((unit) => (
+                <th key={unit} className="pb-2 pr-3 font-medium">{unit}</th>
+              ))}
               <th className="pb-2 pr-3 font-medium">Min</th>
               <th className="pb-2 pr-3 font-medium">Narx</th>
               <th className="pb-2 pr-3 font-medium">Holat</th>
@@ -129,6 +134,11 @@ export function InventoryPanel({ products }: { products: Product[] }) {
                 </td>
                 <td className="py-2.5 pr-3 text-muted">{p.category}</td>
                 <td className="py-2.5 pr-3">{p.stock} dona</td>
+                {unitColumns.map((unit) => (
+                  <td key={unit} className="py-2.5 pr-3 text-muted">
+                    {p.byUnit?.[unit] ? formatNumber(p.byUnit[unit]) : "—"}
+                  </td>
+                ))}
                 <td className="py-2.5 pr-3 text-muted">{p.minStock}</td>
                 <td className="py-2.5 pr-3">{formatNumber(p.salePrice)}</td>
                 <td className="py-2.5 pr-3">
@@ -156,7 +166,7 @@ export function InventoryPanel({ products }: { products: Product[] }) {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-6 text-center text-muted">
+                <td colSpan={8 + unitColumns.length} className="py-6 text-center text-muted">
                   Hech narsa topilmadi
                 </td>
               </tr>

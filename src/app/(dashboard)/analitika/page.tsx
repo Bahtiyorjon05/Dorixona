@@ -58,7 +58,12 @@ export default async function AnalitikaPage({
         inventoryByCategory={d.inventoryByCategory}
         inventoryTotal={d.inventoryTotal}
         assortment={d.assortment}
-        topProducts={d.topProducts}
+        topProducts={d.topProducts.map((item) => ({
+          ...item,
+          // F-Apteka jamlanmasiga moslangan; foyda boshqa joylardagi kabi QQSsiz
+          turnover: +(item.turnover * extra.salesFactor).toFixed(1),
+          profit: +((item.profit * extra.salesFactor) / 1.12).toFixed(1),
+        }))}
         slowMovers={d.slowMovers}
         turnoverRatio={d.turnoverRatio}
         vedomost={d.vedomost}
