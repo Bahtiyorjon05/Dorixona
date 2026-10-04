@@ -1,4 +1,6 @@
 import { getKpiData } from "@/lib/queries";
+import { getCashierData } from "@/lib/cashiers";
+import { CashierTotals } from "@/components/CashierViews";
 import { formatNumber, monthName } from "@/lib/format";
 import { KPI_WEIGHTS } from "@/lib/kpi";
 import { Badge, Card, MetricCard, PageHeader } from "@/components/ui";
@@ -30,6 +32,12 @@ const WEIGHTS = [
 
 export default async function KpiPage() {
   const d = await getKpiData();
+  const kassaNow = new Date();
+  const kassa = await getCashierData({
+    from: new Date(kassaNow.getFullYear(), kassaNow.getMonth(), 1),
+    to: kassaNow,
+    unit: null,
+  });
 
   return (
     <div>
@@ -205,6 +213,10 @@ export default async function KpiPage() {
           </Card>
         )}
       </div>
+
+      <Card title="Kassirlar savdosi — shu oy (F-Apteka)" icon="🧑‍💼" className="mt-4">
+        <CashierTotals data={kassa} />
+      </Card>
     </div>
   );
 }

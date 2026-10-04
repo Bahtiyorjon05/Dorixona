@@ -95,8 +95,8 @@ $Reports = [ordered]@{
 # ----------------------------------------------------------------------------
 
 if (-not $Days) { $Days = $DaysDefault }
-if ($Only -eq "revaluation") {
-  # Faqat pereotsenka (bazadan) - API hisobotlari o'tkazib yuboriladi
+if ($Only -eq "revaluation" -or $Only -eq "shifts") {
+  # Faqat bazadan olinadigan qism - API hisobotlari o'tkazib yuboriladi
   $Reports = [ordered]@{}
 } elseif ($Only) {
   if (-not $Reports.Contains($Only)) {
@@ -149,7 +149,7 @@ if ($Token -eq "BU_YERGA_TOKEN" -or -not $Token) {
   exit 1
 }
 
-Write-Log "relay v21 boshlandi (API uzilsa ham bazadagilari ketadi)"
+Write-Log "relay v22 boshlandi (kassir smenalari)"
 
 # ---- Avval F-Apteka API ishlayotganini tekshiramiz ------------------------
 # Aks holda har kun uchun bir xil "ulanib bo'lmadi" xatosi chiqib, sabab
@@ -437,6 +437,81 @@ if ((-not $Only -or $Only -eq "revaluation") -and $SqlConn) {
   $thisMonth = Get-Date -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
   if ((Get-Date).Day -le 5) { Send-Revaluation $thisMonth.AddMonths(-1) }
   Send-Revaluation $thisMonth
+}
+
+# ---- Kassir smenalari bazadan ---------------------------------------------
+# Har chekda kassir (USERS) va smena (SMENA) yozilgan. F-Apteka'ning SMENA
+# jadvali eskirgan, shuning uchun smena cheklardan tuziladi. Bitta SMENA
+# kunlab ochiq turishi mumkin - ish kuni bo'yicha bo'linadi (06:00 dan
+# 06:00 gacha: yarim tundan keyin tugagan smena o'z kuniga yoziladi).
+function Send-Shifts([datetime]$From, [datetime]$To) {
+  $label = "smenalar {0:yyyy-MM-dd}..{1:yyyy-MM-dd}" -f $From, $To.AddDays(-1)
+  $inv = [Globalization.CultureInfo]::InvariantCulture
+  try {
+    $conn = New-Object System.Data.SqlClient.SqlConnection($SqlConn)
+    $conn.Open()
+    $cmd = $conn.CreateCommand()
+    $cmd.CommandTimeout = 300
+    $cmd.CommandText = @"
+SELECT i.OTDEL AS OTD,
+       CAST(i.SMENA AS varchar(20)) + ':' + CONVERT(varchar(8), DATEADD(hour, -6, i.DATAENTER), 112) AS SM,
+       i.USERS AS U, MAX(u.NAME) AS NAME,
+       CONVERT(varchar(19), MIN(i.DATAENTER), 126) AS A,
+       CONVERT(varchar(19), MAX(i.DATAENTER), 126) AS B,
+       SUM(CASE WHEN i.DOCTYPE = 2 THEN 1 ELSE 0 END) AS C,
+       SUM(CASE WHEN i.DOCTYPE = 2 THEN i.SUMMA ELSE 0 END) AS S,
+       SUM(CASE WHEN i.DOCTYPE = 4 THEN ABS(i.SUMMA) ELSE 0 END) AS R
+FROM [NGLOBAL].dbo.INVOICE i
+LEFT JOIN [NGLOBAL].dbo.USERS u ON u.ID = i.USERS
+WHERE i.DOCTYPE IN (2, 4) AND i.SMENA IS NOT NULL AND i.USERS IS NOT NULL
+  AND i.DATA >= @f AND i.DATA < @t
+GROUP BY i.OTDEL, i.SMENA, i.USERS, CONVERT(varchar(8), DATEADD(hour, -6, i.DATAENTER), 112)
+"@
+    [void]$cmd.Parameters.AddWithValue("@f", $From)
+    [void]$cmd.Parameters.AddWithValue("@t", $To)
+    $rows = @()
+    $reader = $cmd.ExecuteReader()
+    while ($reader.Read()) {
+      $sum = 0; if ($reader["S"] -isnot [DBNull]) { $sum = [decimal]$reader["S"] }
+      $ret = 0; if ($reader["R"] -isnot [DBNull]) { $ret = [decimal]$reader["R"] }
+      $rows += [ordered]@{
+        OTD  = [string]$reader["OTD"]
+        SM   = [string]$reader["SM"]
+        U    = [string]$reader["U"]
+        NAME = [string]$reader["NAME"]
+        A    = [string]$reader["A"]
+        B    = [string]$reader["B"]
+        C    = [string]$reader["C"]
+        S    = $sum.ToString($inv)
+        R    = $ret.ToString($inv)
+      }
+    }
+    $reader.Close()
+    $conn.Close()
+  } catch {
+    Write-Log ("XATO  {0}  BAZA: {1}" -f $label, $_.Exception.Message)
+    return
+  }
+  if ($rows.Count -eq 0) { Write-Log ("BOSH  {0}" -f $label); return }
+
+  try {
+    $body = @{ kind = "shifts"; dateFrom = $From.ToString("yyyy-MM-dd");
+               dateTo = $To.AddDays(-1).ToString("yyyy-MM-dd"); rows = @($rows) } |
+            ConvertTo-Json -Depth 4 -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+    $api = New-Object System.Net.WebClient
+    $api.Headers.Add("Authorization", "Bearer $Token")
+    $api.Headers.Add("Content-Type", "application/json; charset=utf-8")
+    $answer = [System.Text.Encoding]::UTF8.GetString($api.UploadData($SqlUrl, "POST", $bytes))
+    Write-Log ("OK    {0}  {1} smena  {2}" -f $label, $rows.Count, $answer)
+  } catch {
+    Write-Log ("XATO  {0}  ERP: {1}" -f $label, (Get-ErrorText $_))
+  }
+}
+
+if ((-not $Only -or $Only -eq "shifts") -and $SqlConn) {
+  # Bir kun oldindan boshlanadi - kechki smena yarim tundan oshgan bo'lishi mumkin
+  Send-Shifts (Get-Date).Date.AddDays(-$Days) (Get-Date).Date.AddDays(1)
 }
 
 # ---- Narx nazorati --------------------------------------------------------

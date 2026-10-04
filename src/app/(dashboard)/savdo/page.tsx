@@ -1,4 +1,6 @@
 import { Card, MetricCard, PageHeader } from "@/components/ui";
+import { getCashierData } from "@/lib/cashiers";
+import { CashierTotals, ShiftList } from "@/components/CashierViews";
 import { formatDate, formatNumber, formatSom } from "@/lib/format";
 import { getSalesData } from "@/lib/queries";
 
@@ -35,6 +37,7 @@ export default async function SavdoPage({
   const from = parseDay(params.dan) ?? new Date(today.getFullYear(), today.getMonth(), 1);
   const to = parseDay(params.gacha) ?? today;
   const d = await getSalesData({ from, to });
+  const kassa = await getCashierData({ from, to, unit: d.filial === "Umumiy" ? null : d.filial });
 
   const days = d.daily.length;
   const average = days > 0 ? d.turnover / days : 0;
@@ -199,6 +202,15 @@ export default async function SavdoPage({
             )}
           </Card>
         </div>
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        <Card title="Kassirlar" icon="🧑‍💼">
+          <CashierTotals data={kassa} />
+        </Card>
+        <Card title="Smenalar" icon="🕐">
+          <ShiftList data={kassa} />
+        </Card>
       </div>
     </div>
   );

@@ -1,4 +1,6 @@
 import { getAttendanceData } from "@/lib/queries";
+import { getCashierData } from "@/lib/cashiers";
+import { ShiftCalendar } from "@/components/CashierViews";
 import { formatTime, monthName } from "@/lib/format";
 import { Card, MetricCard, PageHeader } from "@/components/ui";
 import { AttendancePanel } from "@/components/panels/AttendancePanel";
@@ -14,6 +16,11 @@ const RULES = [
 export default async function DavomatPage() {
   const d = await getAttendanceData();
   const now = new Date();
+  const kassa = await getCashierData({
+    from: new Date(now.getFullYear(), now.getMonth(), 1),
+    to: now,
+    unit: null,
+  });
 
   return (
     <div>
@@ -75,6 +82,10 @@ export default async function DavomatPage() {
             </div>
           ))}
         </div>
+      </Card>
+
+      <Card title="Smenalar bo'yicha ish kunlari (F-Apteka)" icon="🗓️" className="mt-4">
+        <ShiftCalendar data={kassa} year={now.getFullYear()} month={now.getMonth() + 1} />
       </Card>
     </div>
   );

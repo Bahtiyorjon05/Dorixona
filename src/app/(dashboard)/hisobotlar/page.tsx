@@ -1,4 +1,6 @@
 import { getReportsData } from "@/lib/queries";
+import { getCashierData } from "@/lib/cashiers";
+import { CashierTotals } from "@/components/CashierViews";
 import { Badge, Card, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +24,12 @@ function CorrelationBars({ data }: { data: { label: string; value: number; kpi: 
 
 export default async function HisobotlarPage() {
   const d = await getReportsData();
+  const kassaNow = new Date();
+  const kassa = await getCashierData({
+    from: new Date(kassaNow.getFullYear(), kassaNow.getMonth(), 1),
+    to: kassaNow,
+    unit: null,
+  });
 
   const tips = [
     {
@@ -115,6 +123,10 @@ export default async function HisobotlarPage() {
           </div>
         </Card>
       </div>
+
+      <Card title="Kassirlar bo'yicha savdo — shu oy" icon="🧑‍💼" className="mt-4">
+        <CashierTotals data={kassa} />
+      </Card>
     </div>
   );
 }

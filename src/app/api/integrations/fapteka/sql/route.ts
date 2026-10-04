@@ -7,6 +7,7 @@ import {
 } from "@/lib/integrations/fapteka/sync";
 import type { FaptekaRow } from "@/lib/integrations/fapteka/client";
 import { syncRevaluationFromDb, type RevaluationDbRow } from "@/lib/revaluation";
+import { syncShiftsFromDb, type ShiftDbRow } from "@/lib/cashiers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,29 @@ export async function POST(request: NextRequest) {
       });
       revalidatePath("/harajatlar");
       revalidatePath("/moliya");
+      return NextResponse.json({ ok: true, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "xato";
+      await writeLog({ rowCount: rows.length, note: `${label} | XATO: ${message}`, ok: false });
+      return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    }
+  }
+
+  // Kassir smenalari (INVOICE: SMENA x USERS jamlanmasi)
+  if (payload.kind === "shifts") {
+    const label = `shifts ${dateFrom}..${dateTo}`;
+    try {
+      const result = await syncShiftsFromDb(rows as ShiftDbRow[]);
+      await writeLog({
+        rowCount: rows.length,
+        sample: rows.length ? JSON.stringify(rows[0]).slice(0, 500) : undefined,
+        note: `${label} | smena: ${result.saved}` + (result.skipped ? `, o'tkazildi: ${result.skipped}` : ""),
+        ok: true,
+      });
+      revalidatePath("/savdo");
+      revalidatePath("/kpi");
+      revalidatePath("/hisobotlar");
+      revalidatePath("/davomat");
       return NextResponse.json({ ok: true, ...result });
     } catch (error) {
       const message = error instanceof Error ? error.message : "xato";

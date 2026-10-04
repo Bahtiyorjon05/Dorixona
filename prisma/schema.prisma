@@ -562,3 +562,28 @@ model Revaluation {
 
   @@index([unit, at])
 }
+
+/// Kassir smenasi — F-Apteka cheklaridan (NGLOBAL.INVOICE: SMENA, USERS).
+/// F-Apteka'ning SMENA jadvali eskirgan, shuning uchun smena cheklardan
+/// tuziladi: birinchi va oxirgi chek vaqti, cheklar soni, savdo.
+model CashierShift {
+  id        String   @id @default(cuid())
+  /// Dorixona: Yunusobod, Shayxontohur
+  unit      String
+  /// F-Apteka SMENA ID
+  shiftId   String
+  /// F-Apteka USERS ID (kassir)
+  userId    String
+  cashier   String
+  openedAt  DateTime
+  closedAt  DateTime
+  /// Smena ochilgan kun (Toshkent sanasi, UTC yarim tunda)
+  day       DateTime
+  checks    Int      @default(0)
+  sales     Decimal  @default(0) @db.Decimal(16, 2)
+  returns   Decimal  @default(0) @db.Decimal(16, 2)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([unit, shiftId, userId])
+  @@index([day])
+}
