@@ -91,6 +91,18 @@ export async function GET(req: Request) {
   });
   await bot.api.setMyCommands(customerCommands);
 
+  // Umumiy menyu tugmasi — mijozlar Mini App'i. Xodimlarga pastda chat
+  // bo'yicha "Panel" qo'yiladi. Avval hammaga "Admin panel" ko'rinardi.
+  const customerUrl = (() => {
+    const base = getTelegramWebAppUrl() ?? new URL("/tg-admin", url.origin).toString();
+    const parsed = new URL(base);
+    parsed.pathname = "/mijoz";
+    return parsed.toString();
+  })();
+  await bot.api
+    .setChatMenuButton({ menu_button: { type: "web_app", text: "🪪 Mening kartam", web_app: { url: customerUrl } } })
+    .catch(() => null);
+
   const webAppUrl = getTelegramWebAppUrl() ?? new URL("/tg-admin", url.origin).toString();
   const admins = adminIds();
   const staff = (await staffChatIds()).filter((id) => !admins.includes(id));

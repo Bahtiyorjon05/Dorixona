@@ -175,6 +175,25 @@ function customerAppUrl() {
   }
 }
 
+/**
+ * Chat menyu tugmasi (pastki chapdagi). Eski sozlama ("Admin panel") chatda
+ * saqlanib qoladi — har /start da shu odamga mos qilib qayta o'rnatamiz:
+ * mijozga "Mening kartam", xodimga "Panel".
+ */
+async function setMenuButton(ctx: Context, kind: "customer" | "staff") {
+  const chatId = ctx.chat?.id;
+  const url = kind === "staff" ? getTelegramWebAppUrl() : customerAppUrl();
+  if (!chatId || !url) return;
+  try {
+    await ctx.api.setChatMenuButton({
+      chat_id: chatId,
+      menu_button: { type: "web_app", text: kind === "staff" ? "Panel" : "🪪 Mening kartam", web_app: { url } },
+    });
+  } catch {
+    // Menyu tugmasi o'rnatilmasa ham javob ketaversin
+  }
+}
+
 /** "🪪 Mening kartam" tugmasi (Mini App sozlanmagan bo'lsa yo'q) */
 function customerCardButton() {
   const url = customerAppUrl();
@@ -281,6 +300,7 @@ function mainMenu() {
 
 async function sendAdminPanel(ctx: Context) {
   const url = getTelegramWebAppUrl();
+  await setMenuButton(ctx, "staff");
   if (!url) {
     await ctx.reply(
       "Mini App URL sozlanmagan.\n\n" +
@@ -369,6 +389,7 @@ function registerBotHandlers(bot: Bot) {
       // Xodim avval mijoz bo'lib yozilgan bo'lishi mumkin — raqamiga qarab
       // xodimligi aniqlansa, panel ochiladi
       if (await handleStaffPhone(ctx, existing.phone)) return;
+      await setMenuButton(ctx, "customer");
 
       await ctx.reply(
         `Xush kelibsiz, ${existing.fullName ?? "mijoz"}! 🌿\n\n` +
@@ -450,6 +471,7 @@ function registerBotHandlers(bot: Bot) {
         `Endi har xaridingizda ball to'playsiz. Balans: /balans`,
       { reply_markup: { remove_keyboard: true } },
     );
+    await setMenuButton(ctx, "customer");
     const button = customerCardButton();
     if (button) await ctx.reply("Kartangiz, ballaringiz va dori qidirish:", { reply_markup: button });
   });
@@ -464,6 +486,7 @@ function registerBotHandlers(bot: Bot) {
     }
 
     const spent = Number(customer.totalSpent);
+    await setMenuButton(ctx, "customer");
     const tierInfo = TIERS[customer.tier];
     const next = spentToNextTier(spent);
     const nextLine = next
