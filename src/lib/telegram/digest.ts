@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatTime } from "@/lib/format";
+import { currentWorkDay } from "@/lib/cashiers";
 import {
   DEBT_DUE_SOON_DAYS,
   DEBT_URGENT_DAYS,
@@ -412,7 +413,7 @@ export async function digestMessage() {
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
 
-  const [todaySplit, monthSplit, pay, expenses, debts, low] = await Promise.all([
+  const [todaySplit, monthSplit, pay, expenses, debts, low, shifts] = await Promise.all([
     salesSplit(today, tomorrow, null),
     salesSplit(monthStart, nextMonth, null),
     paymentBreakdown(today, tomorrow, null),
@@ -424,6 +425,10 @@ export async function digestMessage() {
     debtSummary(),
     // Tugayotgan dorilar soni — runningOut() da izohlangan mezon bo'yicha
     runningOut(1),
+    // Bugungi smenalar (davomat) — F-Apteka cheklaridan, ish kuni 06:00 dan
+    db.cashierShift
+      .findMany({ where: { day: new Date(`${currentWorkDay()}T00:00:00Z`) }, orderBy: [{ unit: "asc" }, { openedAt: "asc" }] })
+      .catch(() => []),
   ]);
 
   const red = debts.overdue.length + debts.urgent.length;
@@ -435,6 +440,12 @@ export async function digestMessage() {
     `Oylik xarajat: ${money(num(expenses._sum.amount))}`,
     `\nOchiq qarz: ${debts.openCount} ta${red ? ` · 🔴 shoshilinch ${red} ta` : ""}${debts.soon.length ? ` · 🟡 ${debts.soon.length} ta` : ""}`,
     low.count ? `Tugayapti: ${som(low.count)} ta dori` : "Tugayotgan dori yo'q",
+    shifts.length ? "\n👥 <b>Bugungi smenalar</b>" : "",
+    ...shifts.map(
+      (s) =>
+        `${s.unit}: ${s.cashier} ${formatTime(s.openedAt)}–${formatTime(s.closedAt)}` +
+        ` · ${s.checks} chek · ${som(Number(s.sales) - Number(s.returns))}`,
+    ),
   ];
 
   return parts.filter(Boolean).join("\n");

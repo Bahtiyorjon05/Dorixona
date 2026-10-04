@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCashierData, nameKey, namesMatch } from "@/lib/cashiers";
 import { retailTotals, utcDay } from "@/lib/monthly-finance";
 import { formatNumber } from "@/lib/format";
+import { runningOut } from "@/lib/telegram/digest";
 
 /**
  * Hisobotlar sahifasi — jonli ma'lumotdan.
@@ -80,9 +81,9 @@ export async function getReportInsights(now = new Date()) {
           select: { counterparty: true, totalAmount: true, paidAmount: true, currency: true },
         })
         .catch(() => []),
-      db.product
-        .count({ where: { isActive: true, stock: { gt: 0, lte: 2 } } })
-        .catch(() => 0),
+      // Telegram ombor eslatmasi bilan bir xil mezon: qoldiq <= 3 va oxirgi
+      // 30 kunda 20+ dona sotilgan. Sotilmay turganlar sanalmaydi.
+      runningOut(3).catch(() => ({ rows: [], count: 0 })),
     ]);
 
   // ─── Korrelyatsiya: kassirlar ───
@@ -165,8 +166,13 @@ export async function getReportInsights(now = new Date()) {
     });
   }
 
-  if (lowStock > 0) {
-    insights.push({ tone: "warn", text: `${formatNumber(lowStock)} ta tovardan 1–2 dona qolgan — buyurtma bering.` });
+  if (lowStock.count > 0) {
+    insights.push({
+      tone: "warn",
+      text:
+        `${formatNumber(lowStock.count)} ta tez sotiladigan dori tugayapti (3 donadan kam qoldi, oxirgi 30 kunda 20+ sotilgan): ` +
+        `${lowStock.rows.map((r) => r.name).join(", ")}${lowStock.count > lowStock.rows.length ? "…" : ""} — buyurtma bering.`,
+    });
   }
 
   if (!insights.length) insights.push({ tone: "info", text: "Bu oy uchun ma'lumot hali kelmagan." });

@@ -1,6 +1,7 @@
 import { Card, MetricCard, PageHeader } from "@/components/ui";
 import { getCashierData } from "@/lib/cashiers";
-import { CashierTotals, ShiftList } from "@/components/CashierViews";
+import { CashierEmpty, CashierTotals } from "@/components/CashierViews";
+import { ShiftTable } from "@/components/ShiftTable";
 import { formatDate, formatNumber, formatSom } from "@/lib/format";
 import { getSalesData } from "@/lib/queries";
 
@@ -209,7 +210,22 @@ export default async function SavdoPage({
           <CashierTotals data={kassa} />
         </Card>
         <Card title="Smenalar" icon="🕐">
-          <ShiftList data={kassa} />
+          {kassa.shifts.length === 0 ? (
+            <CashierEmpty data={kassa} />
+          ) : (
+            <ShiftTable
+              shifts={kassa.shifts.map((s) => ({
+                id: s.id,
+                unit: s.unit,
+                cashier: s.cashier,
+                opened: s.openedAt.toISOString(),
+                closed: s.closedAt.toISOString(),
+                hours: s.hours,
+                checks: s.checks,
+                net: s.net,
+              }))}
+            />
+          )}
         </Card>
       </div>
     </div>
