@@ -12,6 +12,6 @@ export const config = {
    * o'rnatish" umuman ishlamaydi — Chrome manifestni topolmay qoladi.
    */
   matcher: [
-    "/((?!api|tg-admin|_next/static|_next/image|favicon.ico|icons|manifest.webmanifest|sw.js|offline.html|.*\\.svg$|.*\\.png$).*)",
+    "/((?!api|tg-admin|mijoz|_next/static|_next/image|favicon.ico|icons|manifest.webmanifest|sw.js|offline.html|.*\\.svg$|.*\\.png$).*)",
   ],
 };

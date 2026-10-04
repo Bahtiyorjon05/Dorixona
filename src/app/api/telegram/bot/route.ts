@@ -161,6 +161,26 @@ async function guard(ctx: Context, permission: AppPermission) {
   return true;
 }
 
+/** Mijozlar Mini App'i (/mijoz) — xodimlar paneli manzilidan olinadi */
+function customerAppUrl() {
+  const base = getTelegramWebAppUrl();
+  if (!base) return null;
+  try {
+    const url = new URL(base);
+    url.pathname = url.pathname.replace(/\/tg-admin\/?$/, "/mijoz");
+    if (!url.pathname.endsWith("/mijoz")) url.pathname = "/mijoz";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** "🪪 Mening kartam" tugmasi (Mini App sozlanmagan bo'lsa yo'q) */
+function customerCardButton() {
+  const url = customerAppUrl();
+  return url ? new InlineKeyboard().webApp("🪪 Mening kartam", url) : undefined;
+}
+
 /** Mini App'ni kerakli bo'limda ochadigan havola */
 function webAppUrl(section?: string) {
   const base = getTelegramWebAppUrl();
@@ -353,7 +373,8 @@ function registerBotHandlers(bot: Bot) {
       await ctx.reply(
         `Xush kelibsiz, ${existing.fullName ?? "mijoz"}! 🌿\n\n` +
           `Sizning bonus kartangiz: ${existing.cardCode}\n` +
-          `Balansingizni ko'rish uchun /balans buyrug'ini yuboring.`,
+          `Karta, ballar va dori qidirish — pastdagi tugmada.`,
+        { reply_markup: customerCardButton() },
       );
       return;
     }
@@ -429,6 +450,8 @@ function registerBotHandlers(bot: Bot) {
         `Endi har xaridingizda ball to'playsiz. Balans: /balans`,
       { reply_markup: { remove_keyboard: true } },
     );
+    const button = customerCardButton();
+    if (button) await ctx.reply("Kartangiz, ballaringiz va dori qidirish:", { reply_markup: button });
   });
 
   bot.command("balans", async (ctx) => {
@@ -454,6 +477,7 @@ function registerBotHandlers(bot: Bot) {
         `🏅 Daraja: ${tierInfo.label} (${tierDiscount(customer.tier)}% chegirma)\n` +
         `🛒 Jami xarid: ${som(spent)} so'm` +
         nextLine,
+      { reply_markup: customerCardButton() },
     );
   });
 
