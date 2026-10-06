@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { REVALUATION_EXPENSE_TITLE } from "@/lib/revaluation";
 
@@ -114,21 +115,22 @@ export async function carryRecurringExpenses(now = new Date()): Promise<Recurrin
     // 5-sana, kun o'rtasida: UTC ham, Toshkent ham shu kunga tushadi
     const spentAt = new Date(Date.UTC(year, month, CARRY_DAY, 12));
     const created: { title: string; unit: string | null; amount: number }[] = [];
+    // Hammasi bitta createMany bilan — har birini alohida yozish tranzaksiyaning
+    // 5 soniyalik chegarasiga sig'mas edi (oktabrda ko'chmay qolgan sabab)
+    const rows: Prisma.ExpenseCreateManyInput[] = [];
 
     for (const expense of previous) {
       const id = sameKey(expense.title, expense.unit, expense.branchId);
       if (taken.has(id)) continue;
       taken.add(id);
-      await tx.expense.create({
-        data: {
-          title: expense.title,
-          category: expense.category,
-          amount: expense.amount,
-          isRecurring: true,
-          unit: expense.unit,
-          spentAt,
-          branchId: expense.branchId,
-        },
+      rows.push({
+        title: expense.title,
+        category: expense.category,
+        amount: expense.amount,
+        isRecurring: true,
+        unit: expense.unit,
+        spentAt,
+        branchId: expense.branchId,
       });
       created.push({ title: expense.title, unit: expense.unit, amount: Number(expense.amount) });
     }
@@ -141,19 +143,19 @@ export async function carryRecurringExpenses(now = new Date()): Promise<Recurrin
       const { title, short } = salaryTitles(employee.fullName);
       if (salaryTaken.has(title.toLowerCase()) || salaryTaken.has(short.toLowerCase())) continue;
       salaryTaken.add(title.toLowerCase());
-      await tx.expense.create({
-        data: {
-          title,
-          category: "SALARY",
-          amount: employee.baseSalary,
-          isRecurring: true,
-          unit: employee.unit,
-          spentAt,
-          branchId: employee.branchId,
-        },
+      rows.push({
+        title,
+        category: "SALARY",
+        amount: employee.baseSalary,
+        isRecurring: true,
+        unit: employee.unit,
+        spentAt,
+        branchId: employee.branchId,
       });
       created.push({ title, unit: employee.unit, amount: Number(employee.baseSalary) });
     }
+
+    if (rows.length) await tx.expense.createMany({ data: rows });
 
     const list = created.map((e) => `${e.title}${e.unit ? ` (${e.unit})` : ""}: ${e.amount}`).join("; ");
     await tx.integrationLog.create({
@@ -166,5 +168,5 @@ export async function carryRecurringExpenses(now = new Date()): Promise<Recurrin
     });
 
     return { status: "done", month: key, created } as const;
-  });
+  }, { maxWait: 10_000, timeout: 30_000 });
 }
