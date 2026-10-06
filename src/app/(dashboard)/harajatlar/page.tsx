@@ -38,7 +38,7 @@ export default async function HarajatlarPage({
 }) {
   // Cron ishlamay qolsa ham: sahifa ochilganda doimiy xarajatlar shu oyga
   // yoziladi (oyiga bir marta, keyin darrov qaytadi)
-  await carryRecurringExpenses().catch(() => null);
+  await carryRecurringExpenses().catch((error) => console.error("Doimiy xarajatlar ko'chirilmadi", error));
   let d: Awaited<ReturnType<typeof getExpensesData>>;
   try {
     d = await getExpensesData(parseMonth((await searchParams).oy));

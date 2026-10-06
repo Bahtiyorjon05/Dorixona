@@ -57,6 +57,9 @@ if (Test-Path $SqlFile) { $SqlConn = (Get-Content $SqlFile -Raw).Trim() }
 $NoticeUrls = [ordered]@{
   "kunlik xulosa"      = "https://dorixonaa.vercel.app/api/notifications/kunlik"
   "ombor eslatmasi"    = "https://dorixonaa.vercel.app/api/notifications/ombor"
+  # Doimiy xarajatlar har oy 5-sanada shu oyga ko'chiriladi - Vercel Cron'ga
+  # bog'liq bo'lmasin; oyiga bir marta ishlaydi, keyin "already" qaytaradi
+  "doimiy xarajatlar"  = "https://dorixonaa.vercel.app/api/expenses/recurring"
 }
 $Token   = "BU_YERGA_TOKEN"            # Vercel'dagi FAPTEKA_SITE_TOKEN (SITE.exe TOCING bilan bir xil)
 $Filials = @("2", "3")                 # 2 = Yunusobod, 3 = Shayxontohur

@@ -24,7 +24,7 @@ function allowed(request: NextRequest) {
   return bearer === expected || request.nextUrl.searchParams.get("token")?.trim() === expected;
 }
 
-export async function GET(request: NextRequest) {
+async function handle(request: NextRequest) {
   if (!allowed(request)) {
     return NextResponse.json({ ok: false, error: "Token noto'g'ri" }, { status: 401 });
   }
@@ -42,4 +42,13 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
+/** Relay har 15 daqiqada turtadi (Vercel Cron ishlamay qolsa ham) */
+export async function POST(request: NextRequest) {
+  return handle(request);
 }
