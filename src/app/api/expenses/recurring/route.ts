@@ -29,7 +29,9 @@ async function handle(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Token noto'g'ri" }, { status: 401 });
   }
   try {
-    const result = await carryRecurringExpenses();
+    // ?majburan=1 — oy belgilangan bo'lsa ham yetishmaganlarini qo'shadi (faqat token bilan)
+    const force = request.nextUrl.searchParams.get("majburan") === "1" && !request.headers.get("x-vercel-cron");
+    const result = await carryRecurringExpenses(new Date(), { force });
     if (result.status === "done" && result.created.length) {
       revalidatePath("/harajatlar");
       revalidatePath("/moliya");

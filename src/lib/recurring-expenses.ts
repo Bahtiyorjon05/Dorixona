@@ -65,7 +65,15 @@ async function alreadyCarried(key: string) {
   return Boolean(mark);
 }
 
-export async function carryRecurringExpenses(now = new Date()): Promise<RecurringCarryResult> {
+/**
+ * force — oy uchun belgi bo'lsa ham qayta tekshiradi (qo'lda, token bilan).
+ * Xavfsiz: shu oyda nomi va dorixonasi bir xil yozuv bo'lsa qo'shilmaydi,
+ * ya'ni faqat yetishmaganlari yoziladi.
+ */
+export async function carryRecurringExpenses(
+  now = new Date(),
+  options: { force?: boolean } = {},
+): Promise<RecurringCarryResult> {
   const { year, month, day } = tashkentMonth(now);
   const key = monthKey(year, month);
   const monthStart = new Date(Date.UTC(year, month, 1));
@@ -73,7 +81,7 @@ export async function carryRecurringExpenses(now = new Date()): Promise<Recurrin
   if (day < CARRY_DAY) return { status: "waiting", month: key, day: CARRY_DAY };
 
   // Ko'p hollarda shu yerda tugaydi — sahifa har ochilganda tranzaksiya ochilmasin
-  if (await alreadyCarried(key)) return { status: "already", month: key };
+  if (!options.force && (await alreadyCarried(key))) return { status: "already", month: key };
 
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_KEY})`;
@@ -82,7 +90,7 @@ export async function carryRecurringExpenses(now = new Date()): Promise<Recurrin
       where: { source: LOG_SOURCE, ok: true, note: { startsWith: key } },
       select: { id: true },
     });
-    if (mark) return { status: "already", month: key } as const;
+    if (mark && !options.force) return { status: "already", month: key } as const;
 
     const prevStart = new Date(Date.UTC(year, month - 1, 1));
     const nextStart = new Date(Date.UTC(year, month + 1, 1));
